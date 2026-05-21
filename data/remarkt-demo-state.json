@@ -7994,6 +7994,24 @@
           "monitorDatabaseModel": "HP EliteDisplay E231",
           "identityOptions": [],
           "identityChoice": null
+        },
+        {
+          "sticker": "monitor_manual_1779355680906",
+          "deviceName": "HP Compaq LA2306x",
+          "merk": "HP Compaq",
+          "model": "LA2306x",
+          "serial": "3CQ214BSMZ",
+          "display": "23\"",
+          "resolution": "1920x1080",
+          "videoInputs": "DisplayPort / DVI / VGA",
+          "leverancier_class": "",
+          "meldingen": "",
+          "herkomst": "handmatige monitorinvoer",
+          "batchId": "monitor_manual",
+          "batchNummer": "Manual",
+          "monitorDatabaseModel": "HP Compaq LA2306x",
+          "identityOptions": [],
+          "identityChoice": null
         }
       ]
     },
@@ -41509,6 +41527,20 @@
       "user_id": "tim",
       "user_naam": "Tim",
       "printedAt": "2026-05-21T08:19:37.370Z"
+    },
+    {
+      "sticker": "monitor_manual_1779355680906",
+      "deviceName": "HP Compaq LA2306x",
+      "merk": "HP Compaq",
+      "model": "LA2306x",
+      "serial": "3CQ214BSMZ",
+      "grade": "A",
+      "videoInputs": "DisplayPort / DVI / VGA",
+      "batchId": "monitor_manual",
+      "batchNummer": "Manual",
+      "user_id": "tim",
+      "user_naam": "Tim",
+      "printedAt": "2026-05-21T09:28:11.000Z"
     }
   ],
   "auditLogs": [
@@ -43501,11 +43533,35 @@
         "grade": "A"
       },
       "createdAt": "2026-05-21T08:19:37.370Z"
+    },
+    {
+      "action": "print_monitor_label",
+      "entityType": "monitor",
+      "entityId": "monitor_manual_1779355680906",
+      "userId": "tim",
+      "userName": "Tim",
+      "details": {
+        "grade": "A",
+        "browserProfile": "dymo-label-54x25"
+      },
+      "createdAt": "2026-05-21T09:28:10.024Z"
+    },
+    {
+      "action": "monitor_label_printed",
+      "entityType": "monitor",
+      "entityId": "monitor_manual_1779355680906",
+      "userId": "tim",
+      "userName": "Tim",
+      "details": {
+        "batchNummer": "Manual",
+        "grade": "A"
+      },
+      "createdAt": "2026-05-21T09:28:11.000Z"
     }
   ],
   "deletedBatchIds": [],
   "deletedLaptopStickers": [],
   "deletedMonitorBatchIds": [],
   "deletedMonitorStickers": [],
-  "updatedAt": "2026-05-21T08:19:36.122Z"
+  "updatedAt": "2026-05-21T09:28:09.673Z"
 }

@@ -625,7 +625,7 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
     }
     return true;
   } catch (error) {
-    console.warn('DYMO direct print unavailable, using browser fallback.', error);
+    reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
   }
 
   if (openBrowserPrintLabel(rows, type, fallbackWindow, browserProfile)) {
@@ -657,7 +657,7 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
     }
     return true;
   } catch (error) {
-    console.warn('DYMO direct print unavailable, using browser fallback.', error);
+    reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
   }
 
   if (openBrowserPrintLabel(rows, 'monitor', fallbackWindow, browserProfile)) {

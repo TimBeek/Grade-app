@@ -38,7 +38,7 @@ function bindClick(selector, handler) {
       event.preventDefault();
       event.stopPropagation();
       Promise.resolve(handler(element, event)).catch(error => {
-        console.error('Action failed', error);
+        reportAppError('Action failed', error);
         setAppMessage('Action failed. Try again.');
         render();
       });
@@ -398,7 +398,7 @@ function handleDelegatedKeydown(e) {
         selectMonitorForLabel(sticker);
       } else if (STATE.currentScreen === 'sticker_scan') {
         Promise.resolve(scanAndPrintStickerLabel(sticker, { source: 'scan' })).catch(error => {
-          console.error('Label print failed', error);
+          reportAppError('Label print failed', error);
           setAppMessage('Label print failed. Try again.');
           render();
         });
@@ -422,7 +422,7 @@ function handleDelegatedKeydown(e) {
     e.preventDefault();
     const grade = key === 'x' ? 'D' : key.toUpperCase();
     Promise.resolve(scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, grade, { source: 'keyboard' })).catch(error => {
-      console.error('Monitor label print failed', error);
+      reportAppError('Monitor label print failed', error);
       setAppMessage('Monitor label print failed. Try again.');
       render();
     });

@@ -1,0 +1,7 @@
+logs/
+screenshots/
+test-results/
+tmp/
+data/backups/
+*.log
+*.tmp

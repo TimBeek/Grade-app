@@ -270,7 +270,7 @@ async function exportSupplierComparison(batchNummer = 'all') {
       downloadComparisonCsv(rows, batchNummer);
     }
   } catch (error) {
-    console.warn('Excel export unavailable, using CSV.', error);
+    reportAppWarning('Excel export unavailable, using CSV.', error);
     downloadComparisonCsv(rows, batchNummer);
   }
 

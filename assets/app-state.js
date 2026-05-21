@@ -37,6 +37,16 @@ const STATE = {
   theme: 'light',
 };
 
+const APP_DEBUG = false;
+
+function reportAppWarning(...args) {
+  if (APP_DEBUG && typeof console !== 'undefined' && console.warn) console.warn(...args);
+}
+
+function reportAppError(...args) {
+  if (APP_DEBUG && typeof console !== 'undefined' && console.error) console.error(...args);
+}
+
 const DEMO_AUTH_SALT = 'remarkt-demo:';
 const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20260520-monitor-db';
 const DEMO_STORAGE_KEYS = {
@@ -322,7 +332,7 @@ function loadUsers() {
       USERS.splice(0, USERS.length, ...Array.from(defaultById.values()));
     }
   } catch (err) {
-    console.warn('Users could not be loaded', err);
+    reportAppWarning('Users could not be loaded', err);
   }
 }
 
@@ -347,7 +357,7 @@ function loadSessionUser() {
     STATE.currentScreen = 'home';
     STATE.homeTab = 'workflow';
   } catch (err) {
-    console.warn('Session could not be loaded', err);
+    reportAppWarning('Session could not be loaded', err);
   }
 }
 
@@ -825,7 +835,7 @@ async function loadMonitorPortDatabase() {
       return true;
     })
     .catch(error => {
-      console.warn('Monitor database kon niet worden geladen', error);
+      reportAppWarning('Monitor database kon niet worden geladen', error);
       monitorPortDatabaseLoadPromise = null;
       return false;
     });
@@ -1408,7 +1418,7 @@ function readLocalDemoStateBackup() {
   try {
     return JSON.parse(localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup) || 'null');
   } catch (error) {
-    console.warn('Lokale demo-backup kon niet worden gelezen', error);
+    reportAppWarning('Lokale demo-backup kon niet worden gelezen', error);
     return null;
   }
 }
@@ -1618,7 +1628,7 @@ async function loadSharedDemoState() {
     if (applied) saveLocalDemoStateBackup(state);
     return applied;
   } catch (error) {
-    console.warn('Gedeelde demo-opslag kon niet worden geladen', error);
+    reportAppWarning('Gedeelde demo-opslag kon niet worden geladen', error);
     return loadLocalDemoStateBackup();
   }
 }
@@ -1635,7 +1645,7 @@ async function saveSharedDemoState() {
     });
     return response.ok;
   } catch (error) {
-    console.warn('Gedeelde demo-opslag kon niet worden opgeslagen', error);
+    reportAppWarning('Gedeelde demo-opslag kon niet worden opgeslagen', error);
     return false;
   }
 }
