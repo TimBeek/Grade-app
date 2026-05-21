@@ -1,0 +1,400 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const port = Number(process.env.PORT || 8080);
+const dataDir = path.join(root, "data");
+const demoStatePath = path.join(dataDir, "remarkt-demo-state.json");
+const backupDir = path.join(dataDir, "backups");
+const maxBackups = 10;
+
+const contentTypes = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".json": "application/json; charset=utf-8",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xls": "application/vnd.ms-excel",
+};
+
+function getCacheControl(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if ([".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico"].includes(ext)) {
+    return "public, max-age=604800";
+  }
+  return "no-cache";
+}
+
+function sendText(response, status, body) {
+  response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(body);
+}
+
+function sendJson(response, status, payload) {
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(JSON.stringify(payload));
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.on("data", chunk => {
+      body += chunk;
+      if (body.length > 10 * 1024 * 1024) {
+        reject(new Error("Payload too large"));
+        request.destroy();
+      }
+    });
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON"));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
+async function readDemoState() {
+  try {
+    return JSON.parse(await fs.promises.readFile(demoStatePath, "utf8"));
+  } catch {
+    return {
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      deletedBatchIds: [],
+      deletedLaptopStickers: [],
+      deletedMonitorBatchIds: [],
+      deletedMonitorStickers: [],
+      updatedAt: null,
+    };
+  }
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map(value => String(value || "").trim())
+    .filter(Boolean)));
+}
+
+function withoutValues(values, valuesToRemove) {
+  const remove = new Set(valuesToRemove);
+  return uniqueStrings(values).filter(value => !remove.has(value));
+}
+
+function normalizeStickerCode(value) {
+  const compact = String(value || "").trim().replace(/\s+/g, "");
+  if (!compact) return "";
+  if (/^0+\d+$/.test(compact)) return compact.replace(/^0+/, "") || "0";
+  return compact;
+}
+
+function normalizeDemoState(state) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) {
+    throw new Error("State must be an object");
+  }
+  const version = Number(state.version);
+
+  return {
+    version: Number.isFinite(version) ? version : 1,
+    users: Array.isArray(state.users) ? state.users : [],
+    batches: Array.isArray(state.batches) ? state.batches : [],
+    monitorBatches: Array.isArray(state.monitorBatches) ? state.monitorBatches : [],
+    history: Array.isArray(state.history) ? state.history : [],
+    labelPrints: Array.isArray(state.labelPrints) ? state.labelPrints : [],
+    monitorLabelPrints: Array.isArray(state.monitorLabelPrints) ? state.monitorLabelPrints : [],
+    auditLogs: Array.isArray(state.auditLogs) ? state.auditLogs.slice(-500) : [],
+    deletedBatchIds: uniqueStrings(state.deletedBatchIds),
+    deletedLaptopStickers: uniqueStrings(state.deletedLaptopStickers).map(normalizeStickerCode),
+    deletedMonitorBatchIds: uniqueStrings(state.deletedMonitorBatchIds),
+    deletedMonitorStickers: uniqueStrings(state.deletedMonitorStickers).map(normalizeStickerCode),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function keyedMerge(existingRows, incomingRows, keyFn) {
+  const merged = new Map();
+  let anonymousIndex = 0;
+
+  for (const row of Array.isArray(existingRows) ? existingRows : []) {
+    const key = keyFn(row) || `existing:${anonymousIndex++}`;
+    merged.set(key, row);
+  }
+  for (const row of Array.isArray(incomingRows) ? incomingRows : []) {
+    const key = keyFn(row) || `incoming:${anonymousIndex++}`;
+    merged.set(key, row);
+  }
+
+  return Array.from(merged.values());
+}
+
+function batchKey(batch) {
+  return batch && (batch.id || batch.nummer) ? String(batch.id || batch.nummer) : "";
+}
+
+function historyKey(item) {
+  if (!item || typeof item !== "object") return "";
+  if (item.id) return String(item.id);
+  return [
+    item.sticker,
+    item.serial,
+    item.batchNummer,
+    item.grade,
+    item.user_id,
+    item.tijd,
+  ].map(value => String(value || "")).join("|");
+}
+
+function labelPrintKey(item) {
+  if (!item || typeof item !== "object") return "";
+  return [
+    normalizeStickerCode(item.sticker),
+    item.batchNummer,
+    item.user_id,
+    item.printedAt,
+  ].map(value => String(value || "")).join("|");
+}
+
+function monitorLabelPrintKey(item) {
+  if (!item || typeof item !== "object") return "";
+  return [
+    normalizeStickerCode(item.sticker),
+    item.batchNummer,
+    item.grade,
+    item.user_id,
+    item.printedAt,
+  ].map(value => String(value || "")).join("|");
+}
+
+function batchKeys(batches) {
+  return uniqueStrings((Array.isArray(batches) ? batches : []).map(batchKey));
+}
+
+function laptopStickersFromBatches(batches) {
+  return uniqueStrings((Array.isArray(batches) ? batches : []).flatMap(batch => (
+    Array.isArray(batch && batch.laptops) ? batch.laptops.map(laptop => normalizeStickerCode(laptop && laptop.sticker)) : []
+  )));
+}
+
+function monitorStickersFromBatches(batches) {
+  return uniqueStrings((Array.isArray(batches) ? batches : []).flatMap(batch => (
+    Array.isArray(batch && batch.monitors) ? batch.monitors.map(monitor => normalizeStickerCode(monitor && monitor.sticker)) : []
+  )));
+}
+
+function auditKey(item) {
+  if (!item || typeof item !== "object") return "";
+  return [
+    item.action,
+    item.entityType,
+    item.entityId,
+    item.userId,
+    item.createdAt,
+  ].map(value => String(value || "")).join("|");
+}
+
+function applyDeletionMarkersToBatches(batches, deletedBatchIds, deletedLaptopStickers) {
+  const deletedBatches = new Set(deletedBatchIds);
+  const deletedLaptops = new Set(deletedLaptopStickers);
+  return (batches || [])
+    .filter(batch => batch && !deletedBatches.has(batchKey(batch)))
+    .map(batch => ({
+      ...batch,
+      laptops: Array.isArray(batch.laptops)
+        ? batch.laptops.filter(laptop => !deletedLaptops.has(normalizeStickerCode(laptop && laptop.sticker)))
+        : [],
+    }))
+    .filter(batch => batch.laptops.length);
+}
+
+function applyDeletionMarkersToMonitorBatches(batches, deletedBatchIds, deletedMonitorStickers) {
+  const deletedBatches = new Set(deletedBatchIds);
+  const deletedMonitors = new Set(deletedMonitorStickers);
+  return (batches || [])
+    .filter(batch => batch && !deletedBatches.has(batchKey(batch)))
+    .map(batch => ({
+      ...batch,
+      monitors: Array.isArray(batch.monitors)
+        ? batch.monitors.filter(monitor => !deletedMonitors.has(normalizeStickerCode(monitor && monitor.sticker)))
+        : [],
+    }))
+    .filter(batch => batch.monitors.length);
+}
+
+function mergeDemoState(existingState, incomingState) {
+  const existing = normalizeDemoState(existingState || {});
+  const incoming = normalizeDemoState(incomingState);
+  const incomingBatchKeys = batchKeys(incoming.batches);
+  const incomingLaptopStickers = laptopStickersFromBatches(incoming.batches);
+  const incomingMonitorBatchKeys = batchKeys(incoming.monitorBatches);
+  const incomingMonitorStickers = monitorStickersFromBatches(incoming.monitorBatches);
+  const deletedBatchIds = withoutValues([...existing.deletedBatchIds, ...incoming.deletedBatchIds], incomingBatchKeys);
+  const deletedLaptopStickers = withoutValues([
+    ...existing.deletedLaptopStickers,
+    ...incoming.deletedLaptopStickers,
+  ].map(normalizeStickerCode), incomingLaptopStickers);
+  const deletedMonitorBatchIds = withoutValues([...existing.deletedMonitorBatchIds, ...incoming.deletedMonitorBatchIds], incomingMonitorBatchKeys);
+  const deletedMonitorStickers = withoutValues([
+    ...existing.deletedMonitorStickers,
+    ...incoming.deletedMonitorStickers,
+  ].map(normalizeStickerCode), incomingMonitorStickers);
+  const batches = keyedMerge(existing.batches, incoming.batches, batchKey);
+  const monitorBatches = keyedMerge(existing.monitorBatches, incoming.monitorBatches, batchKey);
+
+  return {
+    version: Math.max(existing.version || 1, incoming.version || 1),
+    users: keyedMerge(existing.users, incoming.users, user => user && user.id ? String(user.id) : ""),
+    batches: applyDeletionMarkersToBatches(batches, deletedBatchIds, deletedLaptopStickers),
+    monitorBatches: applyDeletionMarkersToMonitorBatches(monitorBatches, deletedMonitorBatchIds, deletedMonitorStickers),
+    history: keyedMerge(existing.history, incoming.history, historyKey),
+    labelPrints: keyedMerge(existing.labelPrints, incoming.labelPrints, labelPrintKey),
+    monitorLabelPrints: keyedMerge(existing.monitorLabelPrints, incoming.monitorLabelPrints, monitorLabelPrintKey),
+    auditLogs: keyedMerge(existing.auditLogs, incoming.auditLogs, auditKey).slice(-1000),
+    deletedBatchIds,
+    deletedLaptopStickers,
+    deletedMonitorBatchIds,
+    deletedMonitorStickers,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function backupExistingState() {
+  try {
+    await fs.promises.access(demoStatePath, fs.constants.F_OK);
+  } catch {
+    return;
+  }
+
+  await fs.promises.mkdir(backupDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  await fs.promises.copyFile(demoStatePath, path.join(backupDir, `remarkt-demo-state-${stamp}.json`));
+
+  const backups = await fs.promises.readdir(backupDir);
+  const stateBackups = backups
+    .filter(name => name.startsWith("remarkt-demo-state-") && name.endsWith(".json"))
+    .sort()
+    .reverse();
+
+  await Promise.all(
+    stateBackups.slice(maxBackups).map(name => fs.promises.rm(path.join(backupDir, name), { force: true }))
+  );
+}
+
+async function writeDemoState(state) {
+  await fs.promises.mkdir(dataDir, { recursive: true });
+  const existing = await readDemoState();
+  await backupExistingState();
+  const normalized = mergeDemoState(existing, state);
+  const tempPath = `${demoStatePath}.${process.pid}.tmp`;
+  await fs.promises.writeFile(tempPath, JSON.stringify(normalized, null, 2), "utf8");
+  await fs.promises.rename(tempPath, demoStatePath);
+  return normalized;
+}
+
+async function handleDemoStateApi(request, response) {
+  if (request.method === "GET") {
+    const state = await readDemoState();
+    sendJson(response, 200, state);
+    return true;
+  }
+
+  if (request.method === "POST") {
+    try {
+      const state = await readJsonBody(request);
+      const saved = await writeDemoState(state);
+      sendJson(response, 200, { ok: true, updatedAt: saved.updatedAt });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, error: error.message });
+    }
+    return true;
+  }
+
+  sendJson(response, 405, { ok: false, error: "Method not allowed" });
+  return true;
+}
+
+async function handleHealthApi(response) {
+  const state = await readDemoState();
+  sendJson(response, 200, {
+    ok: true,
+    service: "remarkt-grading",
+    port,
+    statePath: demoStatePath,
+    updatedAt: state.updatedAt,
+    counts: {
+      users: Array.isArray(state.users) ? state.users.length : 0,
+      batches: Array.isArray(state.batches) ? state.batches.length : 0,
+      monitorBatches: Array.isArray(state.monitorBatches) ? state.monitorBatches.length : 0,
+      history: Array.isArray(state.history) ? state.history.length : 0,
+      labelPrints: Array.isArray(state.labelPrints) ? state.labelPrints.length : 0,
+      monitorLabelPrints: Array.isArray(state.monitorLabelPrints) ? state.monitorLabelPrints.length : 0,
+      auditLogs: Array.isArray(state.auditLogs) ? state.auditLogs.length : 0,
+    },
+  });
+}
+
+http
+  .createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url, "http://localhost");
+      let requestedPath = decodeURIComponent(url.pathname);
+
+      if (requestedPath === "/api/demo-state") {
+        await handleDemoStateApi(request, response);
+        return;
+      }
+
+      if (requestedPath === "/api/health") {
+        await handleHealthApi(response);
+        return;
+      }
+
+      if (requestedPath === "/") {
+        requestedPath = "/remarkt-grading-app.html";
+      }
+
+      const filePath = path.normalize(path.join(root, requestedPath));
+      const relativePath = path.relative(root, filePath);
+
+      if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+        sendText(response, 403, "Forbidden");
+        return;
+      }
+
+      fs.stat(filePath, (error, stat) => {
+        if (error || !stat.isFile()) {
+          sendText(response, 404, "Not found");
+          return;
+        }
+
+        response.writeHead(200, {
+          "Content-Type":
+            contentTypes[path.extname(filePath).toLowerCase()] ||
+            "application/octet-stream",
+          "Cache-Control": getCacheControl(filePath),
+        });
+        fs.createReadStream(filePath).pipe(response);
+      });
+    } catch {
+      sendText(response, 500, "Server error");
+    }
+  })
+  .listen(port, "0.0.0.0", () => {
+    console.log(`ReMarkt Grading live op http://localhost:${port}/`);
+  });

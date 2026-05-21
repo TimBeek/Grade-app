@@ -1,0 +1,694 @@
+﻿// =============================================================================
+// LABEL PRINTING
+// Specslabels, probleemlabels en printvensters.
+// =============================================================================
+const DYMO_LABEL_CONFIG = {
+  productCode: 'S0722520',
+  dymoLabelNumber: '11352',
+  labelName: 'Large Return Address Labels',
+  labelSize: 'LW 25x54mm',
+  paperName: '11352 Return Address Int',
+  paperId: 'ReturnAddressInt',
+  widthMm: 54,
+  heightMm: 25,
+  sdkPath: 'assets/dymo.connect.framework.js?v=20260519-dymo-labelwriter-450',
+};
+
+const BROWSER_PRINT_PROFILES = {
+  dymoLabel: {
+    id: 'dymo-label-54x25',
+    label: 'DYMO fallback 54x25mm',
+    widthMm: 54,
+    heightMm: 25,
+    windowWidth: 420,
+    windowHeight: 260,
+  },
+  hpEngageReceipt: {
+    id: 'hp-engage-80x297',
+    label: 'HP Engage One Prime 80mm receipt',
+    widthMm: 80,
+    heightMm: 86,
+    printableWidthMm: 48,
+    leftOffsetMm: 22,
+    windowWidth: 420,
+    windowHeight: 360,
+  },
+};
+
+let dymoFrameworkPromise = null;
+let dymoInitPromise = null;
+
+function labelValue(value, fallback = '-') {
+  const clean = String(value || '').trim();
+  return clean || fallback;
+}
+
+function compactProblemText(text) {
+  return String(text || '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/reparatie\s*\/\s*niet verkoopbaar/i, 'Repair')
+    .replace(/repair\s*\/\s*not sellable/i, 'Repair')
+    .replace('Keyboard', 'KB')
+    .replace('toetsenbord', 'KB')
+    .replace('LCD / glas', 'LCD')
+    .replace('Bovenkap', 'Lid')
+    .replace('Onderkant', 'Bottom')
+    .replace('Scharnieren', 'Hinge')
+    .replace('Touchpad', 'TP')
+    .replace(' gemarkeerd als defect', ' defect')
+    .replace('niet functioneel', 'defect')
+    .trim();
+}
+
+function getRepairIssues(laptop, result) {
+  result = result || {};
+  const repairWords = /(defect|faulty|cracked|broken|dead battery|missing battery|battery missing|toets werkt niet|touchpad werkt niet|pixel|flikker|scharnier kapot|safety|veiligheidsrisico|niet functioneel|ontbreekt)/i;
+  const resultIssues = (result.problems || []).filter(Boolean);
+  const supplierIssues = splitSupplierIssues(laptop).filter(issue => repairWords.test(issue));
+  return Array.from(new Set(resultIssues.concat(supplierIssues))).map(compactProblemText);
+}
+
+function getProblemLabelRows(laptop, result) {
+  result = result || {};
+  const grade = result.eindgrade === 'D' ? 'X' : result.eindgrade;
+  const repairIssues = getRepairIssues(laptop, result);
+  const isRepair = needsProblemLabel(laptop, result);
+  const status = isRepair ? `Repair${grade ? ' / ' + grade : ''}` : `Grade ${grade}`;
+  const problems = repairIssues.length ? repairIssues : [isRepair ? 'Check repair' : 'No repair needed'];
+
+  return [
+    `${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim(),
+    `Barcode ${labelValue(laptop.sticker)} / ${status}`,
+    problems[0] || '',
+    problems.slice(1, 3).join(' / ')
+  ];
+}
+
+function getSpecsLabelRows(laptop, result, options = {}) {
+  const grade = result && result.eindgrade === 'D' ? 'X' : result && result.eindgrade;
+  const touch = isTouchscreenLaptop(laptop) ? 'Ja' : 'Nee';
+  const battery = labelValue(laptop.battery, '');
+  const gpu = labelValue(laptop.labelGpu || getNoteworthyGpu(laptop.gpu), '');
+  const row4Parts = [];
+  if (battery) row4Parts.push(`Accu ${battery}`);
+  if (gpu) row4Parts.push(gpu);
+
+  return [
+    `${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim(),
+    `${labelValue(laptop.processor)} / ${labelValue(laptop.ram)} / ${labelValue(laptop.ssd)}`,
+    options.hideGrade ? `Grade ...... / Touch ${touch}` : `Grade ${grade} / Touch ${touch}`,
+    row4Parts.join(' / ')
+  ];
+}
+
+function compactMonitorVideoInputs(value) {
+  return labelValue(value, 'Video in onbekend')
+    .replace(/\bmini\s*display\s*port\b/gi, 'Mini DP')
+    .replace(/\bmini\s*displayport\b/gi, 'Mini DP')
+    .replace(/\bdisplay\s*port\b/gi, 'DP')
+    .replace(/\bdisplayport\b/gi, 'DP')
+    .replace(/\bdisplaypoort\b/gi, 'DP')
+    .replace(/\bscherm\s*poort\b/gi, 'DP')
+    .replace(/\bschermport\b/gi, 'DP')
+    .replace(/\bschermpoort\b/gi, 'DP')
+    .replace(/\busb\s*\/\s*c\b/gi, 'USB-C')
+    .replace(/\busb[\s-]*c\b/gi, 'USB-C')
+    .replace(/\btype[\s-]*c\b/gi, 'USB-C')
+    .replace(/\bd[\s-]*sub\b/gi, 'VGA')
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getMonitorLabelRows(monitor, grade) {
+  const displayParts = [];
+  if (monitor.display) displayParts.push(monitor.display);
+  if (monitor.resolution) displayParts.push(monitor.resolution);
+  const videoInputs = compactMonitorVideoInputs(monitor.videoInputs);
+  return [
+    labelValue(monitor.deviceName || `${labelValue(monitor.merk, '')} ${labelValue(monitor.model, '')}`.trim(), 'Monitor'),
+    `Grade ${displayMonitorGrade(grade)}${displayParts.length ? ' / ' + displayParts.join(' / ') : ''}`,
+    `Video in: ${videoInputs}`
+  ];
+}
+
+function getLabelRows(laptop, result, type = 'specs', options = {}) {
+  return type === 'problems' ? getProblemLabelRows(laptop, result || { eindgrade: '', problems: [] }) : getSpecsLabelRows(laptop, result, options);
+}
+
+function needsProblemLabel(laptop, result) {
+  result = result || {};
+  const grade = result.eindgrade === 'D' ? 'X' : result.eindgrade;
+  return grade === 'X' || getRepairIssues(laptop, result).length > 0;
+}
+
+function getDymoLabelConfig() {
+  return { ...DYMO_LABEL_CONFIG };
+}
+
+function getBrowserPrintProfiles() {
+  return {
+    dymoLabel: { ...BROWSER_PRINT_PROFILES.dymoLabel },
+    hpEngageReceipt: { ...BROWSER_PRINT_PROFILES.hpEngageReceipt },
+  };
+}
+
+function isLikelyHpEngageDevice() {
+  const nav = typeof navigator !== 'undefined' ? navigator : {};
+  const text = `${nav.userAgent || ''} ${nav.platform || ''}`.toLowerCase();
+  const touchPoints = Number(nav.maxTouchPoints || 0);
+  return /hp.*engage|engage.*hp|android/.test(text) || (touchPoints > 0 && /linux arm|android/.test(text));
+}
+
+function getBrowserPrintProfile(options = {}) {
+  if (options.browserPrintProfile === 'hp-engage' || options.browserPrintProfile === 'hpEngageReceipt') {
+    return { ...BROWSER_PRINT_PROFILES.hpEngageReceipt };
+  }
+  if (options.browserPrintProfile === 'dymo-label' || options.browserPrintProfile === 'dymoLabel') {
+    return { ...BROWSER_PRINT_PROFILES.dymoLabel };
+  }
+  return isLikelyHpEngageDevice()
+    ? { ...BROWSER_PRINT_PROFILES.hpEngageReceipt }
+    : { ...BROWSER_PRINT_PROFILES.dymoLabel };
+}
+
+function getHpEngagePageHeightMm(rows, type = 'specs') {
+  const cleanRows = rows.map(row => String(row || '').trim()).filter(Boolean);
+  const wrapPenalty = cleanRows.reduce((sum, row) => sum + Math.max(0, Math.ceil(row.length / 30) - 1), 0);
+  const baseHeight = type === 'problems' ? 72 : 78;
+  return Math.min(105, Math.max(baseHeight, baseHeight + (wrapPenalty * 6)));
+}
+
+function escapeXml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function getDymoFrameworkObject() {
+  if (typeof window === 'undefined' || !window.dymo || !window.dymo.label) return null;
+  return window.dymo.label.framework || null;
+}
+
+function loadDymoFramework() {
+  const existingFramework = getDymoFrameworkObject();
+  if (existingFramework) return Promise.resolve(existingFramework);
+  if (dymoFrameworkPromise) return dymoFrameworkPromise;
+  if (typeof document === 'undefined' || !document.createElement) {
+    return Promise.reject(new Error('DYMO Connect Framework can only load in the browser.'));
+  }
+
+  dymoFrameworkPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const timeoutId = setTimeout(() => reject(new Error('DYMO Connect Framework is not responding.')), 7000);
+
+    script.src = DYMO_LABEL_CONFIG.sdkPath;
+    script.async = true;
+    script.dataset.dymoConnectFramework = 'true';
+    script.onload = () => {
+      clearTimeout(timeoutId);
+      const framework = getDymoFrameworkObject();
+      if (framework) resolve(framework);
+      else reject(new Error('DYMO Connect Framework loaded but is not available.'));
+    };
+    script.onerror = () => {
+      clearTimeout(timeoutId);
+      reject(new Error('DYMO Connect Framework could not be loaded.'));
+    };
+
+    (document.head || document.documentElement).appendChild(script);
+  }).catch(error => {
+    dymoFrameworkPromise = null;
+    throw error;
+  });
+
+  return dymoFrameworkPromise;
+}
+
+function initializeDymoFramework(framework) {
+  if (!framework || typeof framework.init !== 'function') return Promise.resolve(framework);
+  if (dymoInitPromise) return dymoInitPromise;
+
+  dymoInitPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('DYMO Connect Web Service is not responding.'));
+    }, 7000);
+
+    try {
+      framework.init(() => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve(framework);
+      });
+    } catch (error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      reject(error);
+    }
+  }).catch(error => {
+    dymoInitPromise = null;
+    throw error;
+  });
+
+  return dymoInitPromise;
+}
+
+async function getReadyDymoFramework() {
+  const framework = await loadDymoFramework();
+  await initializeDymoFramework(framework);
+  return framework;
+}
+
+function validateDymoEnvironment(framework) {
+  if (!framework || typeof framework.checkEnvironment !== 'function') return;
+  const environment = framework.checkEnvironment();
+  if (!environment) return;
+  if (environment.isBrowserSupported === false) {
+    throw new Error('This browser is not supported by DYMO Connect.');
+  }
+  if (Object.prototype.hasOwnProperty.call(environment, 'isWebServicePresent') && environment.isWebServicePresent === false) {
+    throw new Error('DYMO Connect Web Service is not running.');
+  }
+  if (Object.prototype.hasOwnProperty.call(environment, 'isFrameworkInstalled') && environment.isFrameworkInstalled === false) {
+    throw new Error('DYMO Connect Framework is not active on this device.');
+  }
+}
+
+function normalizeDymoPrinters(printers) {
+  if (!printers) return [];
+  if (Array.isArray(printers)) return printers;
+  if (Array.isArray(printers.printers)) return printers.printers;
+  return Object.values(printers).filter(printer => printer && typeof printer === 'object');
+}
+
+async function getDymoPrinters(framework) {
+  if (framework && typeof framework.getPrintersAsync === 'function') {
+    return normalizeDymoPrinters(await framework.getPrintersAsync());
+  }
+  if (framework && typeof framework.getPrinters === 'function') {
+    return normalizeDymoPrinters(framework.getPrinters());
+  }
+  return [];
+}
+
+function getDymoPrinterText(printer) {
+  return `${printer && printer.name ? printer.name : ''} ${printer && printer.modelName ? printer.modelName : ''}`.trim();
+}
+
+function findPreferredDymoPrinter(printers) {
+  const usablePrinters = normalizeDymoPrinters(printers)
+    .filter(printer => printer && printer.name)
+    .filter(printer => printer.isConnected !== false);
+  const labelWriters = usablePrinters.filter(printer => /dymo|labelwriter/i.test(getDymoPrinterText(printer)));
+  return labelWriters.find(printer => /labelwriter\s*450/i.test(getDymoPrinterText(printer)))
+    || labelWriters[0]
+    || usablePrinters[0]
+    || null;
+}
+
+function dymoTextObject(name, text, bounds, fontSize, bold = false) {
+  return `
+    <ObjectInfo>
+      <TextObject>
+        <Name>${name}</Name>
+        <ForeColor Alpha="255" Red="0" Green="0" Blue="0" />
+        <BackColor Alpha="0" Red="255" Green="255" Blue="255" />
+        <LinkedObjectName></LinkedObjectName>
+        <Rotation>Rotation0</Rotation>
+        <IsMirrored>False</IsMirrored>
+        <IsVariable>True</IsVariable>
+        <HorizontalAlignment>Left</HorizontalAlignment>
+        <VerticalAlignment>Middle</VerticalAlignment>
+        <TextFitMode>ShrinkToFit</TextFitMode>
+        <UseFullFontHeight>False</UseFullFontHeight>
+        <Verticalized>False</Verticalized>
+        <StyledText>
+          <Element>
+            <String>${escapeXml(text)}</String>
+            <Attributes>
+              <Font Family="Arial" Size="${fontSize}" Bold="${bold ? 'True' : 'False'}" Italic="False" Underline="False" Strikeout="False" />
+              <ForeColor Alpha="255" Red="0" Green="0" Blue="0" />
+            </Attributes>
+          </Element>
+        </StyledText>
+      </TextObject>
+      <Bounds X="${bounds.x}" Y="${bounds.y}" Width="${bounds.width}" Height="${bounds.height}" />
+    </ObjectInfo>`;
+}
+
+function buildDymoLabelXml(rows, type = 'specs') {
+  const isMonitorLabel = type === 'monitor';
+  const cleanRows = rows.map(row => String(row || '').trim()).slice(0, isMonitorLabel ? 3 : 4);
+  const longestRow = Math.max(...cleanRows.map(row => row.length), 1);
+  const tight = longestRow > 46;
+  const compact = longestRow > 34;
+  const fontSizes = isMonitorLabel
+    ? (tight ? [10.2, 8.1, 8.1] : compact ? [11.5, 8.8, 8.8] : [13, 9.6, 9.6])
+    : (tight
+      ? [9.5, 6.8, 6.8, 6.2]
+      : compact
+        ? [11.2, 7.8, 7.8, 6.8]
+        : [13, 8.8, 8.8, 7.5]);
+  const bounds = isMonitorLabel
+    ? [
+      { x: 170, y: 90, width: 2770, height: 410 },
+      { x: 170, y: 520, width: 2770, height: 345 },
+      { x: 170, y: 885, width: 2770, height: 345 },
+    ]
+    : [
+      { x: 170, y: 50, width: 2770, height: 330 },
+      { x: 170, y: 390, width: 2770, height: 285 },
+      { x: 170, y: 680, width: 2770, height: 285 },
+      { x: 170, y: 970, width: 2770, height: 310 },
+    ];
+  const objects = cleanRows
+    .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
+    .join('');
+
+  return `<?xml version="1.0" encoding="utf-8"?>
+<DieCutLabel Version="8.0" Units="twips">
+  <PaperOrientation>Landscape</PaperOrientation>
+  <Id>${DYMO_LABEL_CONFIG.paperId}</Id>
+  <PaperName>${DYMO_LABEL_CONFIG.paperName}</PaperName>
+  <DrawCommands>
+    <RoundRectangle X="0" Y="0" Width="1440" Height="3060" Rx="180" Ry="180" />
+  </DrawCommands>
+  ${objects}
+</DieCutLabel>`;
+}
+
+async function printRowsWithDymo(rows, type = 'specs') {
+  const framework = await getReadyDymoFramework();
+  validateDymoEnvironment(framework);
+  const printer = findPreferredDymoPrinter(await getDymoPrinters(framework));
+  if (!printer) throw new Error('No DYMO LabelWriter printer found.');
+
+  const labelXml = buildDymoLabelXml(rows, type);
+  const label = framework.openLabelXml(labelXml);
+  if (label && typeof label.isValidLabel === 'function' && !label.isValidLabel()) {
+    throw new Error(`DYMO rejected the ${DYMO_LABEL_CONFIG.labelSize} label template.`);
+  }
+
+  if (label && typeof label.print === 'function') {
+    label.print(printer.name);
+  } else if (typeof framework.printLabel === 'function') {
+    framework.printLabel(printer.name, '', labelXml, '');
+  } else {
+    throw new Error('DYMO print function is unavailable.');
+  }
+
+  return { printerName: printer.name };
+}
+
+function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel) {
+  const longestRow = Math.max(...rows.map(row => String(row || '').length), 1);
+  const isMonitorLabel = type === 'monitor';
+  const scaleClass = `${isMonitorLabel ? 'monitor-label' : ''} ${longestRow > 46 ? 'tight' : longestRow > 34 ? 'compact' : ''}`.trim();
+  if (profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id) {
+    const safeRows = rows.map(row => String(row || '').trim());
+    const labelHtml = `
+      <div class="receipt-brand">REMARKT.</div>
+      <div class="receipt-type">${type === 'problems' ? 'REPAIR LABEL' : 'SPECS LABEL'}</div>
+      <div class="receipt-main">${escapeHtml(safeRows[0] || 'Device')}</div>
+      ${safeRows.slice(1).map(row => row ? `<div class="receipt-row">${escapeHtml(row)}</div>` : '').join('')}
+      <div class="receipt-footer">Printed via HP Engage · ${new Date().toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}</div>
+    `;
+    return {
+      title: `ReMarkt ${type === 'problems' ? 'repair label' : 'specs label'} HP Engage`,
+      scaleClass: 'receipt-mode',
+      labelHtml,
+    };
+  }
+
+  const labelHtml = rows
+    .map((row, index) => row ? `<div class="label-row row-${index + 1}">${escapeHtml(row)}</div>` : '')
+    .join('');
+
+  return {
+    title: `ReMarkt ${type === 'monitor' ? 'monitor label' : type === 'problems' ? 'repair label' : 'specs label'}`,
+    scaleClass,
+    labelHtml,
+  };
+}
+
+function createPreparedPrintWindow(type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel) {
+  const printWindow = window.open('', `remarktLabelPrint_${type}`, `width=${profile.windowWidth},height=${profile.windowHeight}`);
+  if (!printWindow) return null;
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="nl">
+    <head>
+      <meta charset="utf-8">
+      <title>Preparing ReMarkt label</title>
+      <style>
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, Helvetica, sans-serif; color: #222; background: #f3f3f3; }
+        div { font-size: 14px; }
+      </style>
+    </head>
+    <body><div>Preparing label...</div></body>
+    </html>
+  `);
+  printWindow.document.close();
+  return printWindow;
+}
+
+function closePreparedPrintWindow(printWindow) {
+  try {
+    if (printWindow && !printWindow.closed) printWindow.close();
+  } catch {
+    // Browser may block window control after the print path changes.
+  }
+}
+
+function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, profile = BROWSER_PRINT_PROFILES.dymoLabel) {
+  const { title, scaleClass, labelHtml } = getBrowserLabelMarkup(rows, type, profile);
+  const pageHeightMm = profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
+    ? getHpEngagePageHeightMm(rows, type)
+    : profile.heightMm;
+  const receiptPrintableWidthMm = profile.printableWidthMm || profile.widthMm;
+  const receiptLeftOffsetMm = profile.leftOffsetMm || 0;
+  const printWindow = preparedWindow || window.open('', `remarktLabelPrint_${type}`, `width=${profile.windowWidth},height=${profile.windowHeight}`);
+  if (!printWindow) {
+    setAppMessage('Pop-up blocked. Allow pop-ups for this page to print labels.');
+    render();
+    return false;
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="nl">
+    <head>
+      <meta charset="utf-8">
+      <title>${escapeHtml(title)}</title>
+      <style>
+        @page { size: ${profile.widthMm}mm ${pageHeightMm}mm; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body {
+          width: ${profile.widthMm}mm;
+          min-height: ${pageHeightMm}mm;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          color: #000;
+          font-family: Arial, Helvetica, sans-serif;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+        .label {
+          width: ${DYMO_LABEL_CONFIG.widthMm}mm;
+          height: ${DYMO_LABEL_CONFIG.heightMm}mm;
+          padding: 1.1mm 1.4mm 1.1mm 3mm;
+          display: grid;
+          grid-template-rows: 6.4mm 5.4mm 5.4mm 5.5mm;
+          align-content: center;
+          overflow: hidden;
+        }
+        .label-row {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          line-height: 0.98;
+          letter-spacing: 0;
+        }
+        .row-1 { font-size: 11pt; font-weight: 800; }
+        .row-2 { font-size: 8.1pt; font-weight: 700; }
+        .row-3 { font-size: 8.1pt; font-weight: 800; }
+        .row-4 { font-size: 7pt; font-weight: 700; }
+        .compact .row-1 { font-size: 9.5pt; }
+        .compact .row-2, .compact .row-3 { font-size: 7.2pt; }
+        .compact .row-4 { font-size: 6.4pt; }
+        .tight { grid-template-rows: repeat(4, 5.55mm); }
+        .tight .label-row { line-height: 1; }
+        .tight .row-1 { font-size: 8.7pt; }
+        .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
+        .monitor-label {
+          grid-template-rows: 8mm 6.7mm 6.7mm;
+        }
+        .monitor-label .row-1 { font-size: 11pt; font-weight: 800; }
+        .monitor-label .row-2,
+        .monitor-label .row-3 { font-size: 8.4pt; font-weight: 800; }
+        .monitor-label.compact .row-1 { font-size: 9.5pt; }
+        .monitor-label.compact .row-2,
+        .monitor-label.compact .row-3 { font-size: 7.4pt; }
+        .monitor-label.tight { grid-template-rows: repeat(3, 7.05mm); }
+        .monitor-label.tight .row-1 { font-size: 8.8pt; }
+        .monitor-label.tight .row-2,
+        .monitor-label.tight .row-3 { font-size: 6.7pt; }
+        .receipt-mode {
+          width: ${receiptPrintableWidthMm}mm;
+          height: auto;
+          min-height: ${pageHeightMm}mm;
+          margin: 0 0 0 ${receiptLeftOffsetMm}mm;
+          padding: 3.2mm 0 3mm;
+          display: block;
+          background: #fff;
+        }
+        .receipt-brand {
+          font-size: 12.8pt;
+          font-weight: 900;
+          letter-spacing: 0;
+          color: #000;
+          margin-bottom: 1mm;
+        }
+        .receipt-type {
+          display: inline-block;
+          border: 1px solid #000;
+          border-radius: 1mm;
+          padding: 0.7mm 1.2mm;
+          font-size: 6.8pt;
+          font-weight: 800;
+          margin-bottom: 2.8mm;
+        }
+        .receipt-main {
+          font-size: 9.5pt;
+          line-height: 1.1;
+          font-weight: 900;
+          margin-bottom: 2mm;
+          word-break: break-word;
+        }
+        .receipt-row {
+          border-top: 1px solid #000;
+          padding: 1.8mm 0;
+          font-size: 7.6pt;
+          line-height: 1.22;
+          font-weight: 800;
+          word-break: break-word;
+        }
+        .receipt-footer {
+          border-top: 1px dashed #000;
+          margin-top: 3.2mm;
+          padding-top: 1.8mm;
+          font-size: 6.2pt;
+          line-height: 1.25;
+        }
+        @media screen {
+          body { display: grid; place-items: center; width: 100vw; height: 100vh; background: #f3f3f3; }
+          .label, .receipt-mode { background: #fff; border: 1px solid #ddd; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="label ${scaleClass}">${labelHtml}</div>
+      <script>
+        window.onload = () => {
+          window.focus();
+          window.print();
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  return true;
+}
+
+async function printLabelFor(laptop, result, type = 'specs', options = {}) {
+  const rows = getLabelRows(laptop, result, type, options);
+  const browserProfile = getBrowserPrintProfile(options);
+  logAudit('print_label', 'laptop', laptop && laptop.sticker, { type, hideGrade: Boolean(options.hideGrade), browserProfile: browserProfile.id });
+  const fallbackWindow = options.preparedWindow || createPreparedPrintWindow(type, browserProfile);
+
+  try {
+    const printResult = await printRowsWithDymo(rows, type);
+    closePreparedPrintWindow(fallbackWindow);
+    if (!options.suppressMessage) {
+      setAppMessage(`${type === 'problems' ? 'Repair label' : 'Specs label'} sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');
+      render();
+    }
+    return true;
+  } catch (error) {
+    console.warn('DYMO direct print unavailable, using browser fallback.', error);
+  }
+
+  if (openBrowserPrintLabel(rows, type, fallbackWindow, browserProfile)) {
+    if (!options.suppressMessage) {
+      setAppMessage(browserProfile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
+        ? 'DYMO direct print is unavailable. An HP Engage print window opened automatically with 80x297 mm paper size.'
+        : 'DYMO direct print is unavailable on this device. An exact 54x25 mm fallback print window opened.');
+      render();
+    }
+    return true;
+  }
+
+  return false;
+}
+
+async function printMonitorLabelFor(monitor, grade, options = {}) {
+  const normalizedGrade = normalizeMonitorGrade(grade);
+  const rows = getMonitorLabelRows(monitor, normalizedGrade);
+  const browserProfile = getBrowserPrintProfile(options);
+  logAudit('print_monitor_label', 'monitor', monitor && monitor.sticker, { grade: normalizedGrade, browserProfile: browserProfile.id });
+  const fallbackWindow = options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile);
+
+  try {
+    const printResult = await printRowsWithDymo(rows, 'monitor');
+    closePreparedPrintWindow(fallbackWindow);
+    if (!options.suppressMessage) {
+      setAppMessage(`Monitor label sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');
+      render();
+    }
+    return true;
+  } catch (error) {
+    console.warn('DYMO direct print unavailable, using browser fallback.', error);
+  }
+
+  if (openBrowserPrintLabel(rows, 'monitor', fallbackWindow, browserProfile)) {
+    if (!options.suppressMessage) {
+      setAppMessage(browserProfile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
+        ? 'DYMO direct print is unavailable. An HP Engage print window opened automatically with 80x297 mm paper size.'
+        : 'DYMO direct print is unavailable on this device. An exact 54x25 mm fallback print window opened.');
+      render();
+    }
+    return true;
+  }
+
+  return false;
+}
+
+async function printCurrentLabel(type = 'specs') {
+  if (!STATE.currentLaptop || !STATE.currentGrading || !STATE.currentGrading.result) {
+    setAppMessage('There is no result to print yet.');
+    render();
+    return;
+  }
+  await printLabelFor(STATE.currentLaptop, STATE.currentGrading.result, type);
+}
+
+async function printSupplierLabel(type = 'specs') {
+  if (!STATE.currentLaptop) {
+    setAppMessage('No device selected.');
+    render();
+    return;
+  }
+  const supplierResult = { eindgrade: '', problems: [] };
+  await printLabelFor(STATE.currentLaptop, supplierResult, type, { hideGrade: type === 'specs' });
+}
+

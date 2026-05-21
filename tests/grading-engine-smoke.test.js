@@ -1,0 +1,1713 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const vm = require('node:vm');
+
+function loadAppSandbox() {
+  const scriptNames = [
+    'grading-engine.js',
+    'app-state.js',
+    'import-workflow.js',
+    'analytics-history.js',
+    'label-printing.js',
+    'i18n.js',
+    'ui-rendering.js',
+    'app-workflow.js',
+    'remarkt-grading.js',
+  ];
+  const scripts = scriptNames.map(name => ({
+    name,
+    source: fs.readFileSync(path.join(__dirname, '..', 'assets', name), 'utf8'),
+  }));
+  const appElement = {
+    dataset: {},
+    innerHTML: '',
+    addEventListener() {},
+  };
+  const localStore = new Map();
+
+  const sandbox = {
+    console,
+    window: {
+      performance: {
+        mark() {},
+        measure() {},
+      },
+      crypto: {
+        subtle: null,
+      },
+    },
+    document: {
+      getElementById(id) {
+        if (id === 'app') return appElement;
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+    },
+    localStorage: {
+      getItem(key) {
+        return localStore.has(key) ? localStore.get(key) : null;
+      },
+      setItem(key, value) {
+        localStore.set(key, String(value));
+      },
+      removeItem(key) {
+        localStore.delete(key);
+      },
+    },
+    alert() {},
+    confirm() {
+      return true;
+    },
+    setTimeout,
+    clearTimeout,
+    TextEncoder,
+    DOMParser: class {},
+    Image: class {
+      set src(value) {
+        this._src = value;
+      }
+      get src() {
+        return this._src;
+      }
+    },
+  };
+  sandbox.__appElement = appElement;
+
+  vm.createContext(sandbox);
+  scripts.forEach(script => {
+    vm.runInContext(script.source, sandbox, { filename: `assets/${script.name}` });
+  });
+  return sandbox;
+}
+
+function allChoices(sandbox, letter) {
+  return Object.fromEntries(
+    sandbox.getGradingOnderdelen().map(component => [component.id, letter])
+  );
+}
+
+test('alles A geeft grade A met score 0', () => {
+  const app = loadAppSandbox();
+  const result = app.calculateGrade(allChoices(app, 'A'), {});
+
+  assert.equal(result.eindgrade, 'A');
+  assert.equal(result.score, 0);
+});
+
+test('LCD defect trigger geeft reparatie/defect', () => {
+  const app = loadAppSandbox();
+  const result = app.calculateGrade(allChoices(app, 'A'), { pixel_lcd: true });
+
+  assert.equal(result.eindgrade, 'D');
+  assert.match(result.plafondReden, /LCD/i);
+});
+
+test('scharnier defect trigger geeft reparatie/defect', () => {
+  const app = loadAppSandbox();
+  const result = app.calculateGrade(allChoices(app, 'A'), { scharnier_kapot: true });
+
+  assert.equal(result.eindgrade, 'D');
+  assert.match(result.plafondReden, /Hinges/i);
+});
+
+test('veel kleine B-schade blijft binnen B-band', () => {
+  const app = loadAppSandbox();
+  const result = app.calculateGrade(allChoices(app, 'B'), {});
+
+  assert.equal(result.eindgrade, 'B');
+  assert.equal(result.score, 22);
+});
+
+test('max-C trigger geeft nooit hoger dan C', () => {
+  const app = loadAppSandbox();
+  const result = app.calculateGrade(allChoices(app, 'A'), { barst_lcd: true });
+
+  assert.equal(result.eindgrade, 'C');
+  assert.equal(result.score, 0);
+});
+
+test('incomplete grading wordt als ontbrekend herkend', () => {
+  const app = loadAppSandbox();
+  const missing = app.getMissingGradingOnderdelen({ keuzes: { lcd: 'A' } });
+
+  assert.ok(missing.length > 0);
+  assert.ok(missing.some(component => component.id === 'bovenkap'));
+});
+
+test('actieve sessie blijft bewaard na refresh en logout wist sessie', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    saveSessionUser(USERS.find(user => user.id === 'tim'));
+    STATE.currentUser = null;
+    STATE.currentScreen = 'login';
+    loadSessionUser();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentUser.id', app), 'tim');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), 'tim');
+
+  await app.handleAction('logout', { dataset: {} });
+
+  assert.equal(vm.runInContext('STATE.currentUser', app), null);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'login');
+  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
+});
+
+test('taalvertaling laat productnamen en poortnamen ongemoeid', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`STATE.language = 'nl';`, app);
+
+  assert.equal(app.translateCopy('HP EliteDisplay E243i'), 'HP EliteDisplay E243i');
+  assert.equal(app.translateCopy('HP EliteDesk 800 G5'), 'HP EliteDesk 800 G5');
+  assert.equal(app.translateCopy('DisplayPort / HDMI / VGA'), 'DisplayPort / HDMI / VGA');
+  assert.equal(app.translateCopy('Mini DisplayPort / USB-C'), 'Mini DisplayPort / USB-C');
+  assert.equal(app.translateCopy('Display'), 'Scherm');
+});
+
+test('gedeelde demo-state heeft lokale backup voor geschiedenis en labels', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [{
+      id: 'hist_5CG30429G0',
+      sticker: '7771198',
+      serial: '5CG30429G0',
+      batchNummer: '50375',
+      merk: 'HP',
+      model: 'EliteBook 860 G9',
+      grade: 'B',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      modus: 'expert',
+      tijd: '10:30',
+      duurSec: 42,
+      result: { problems: [] }
+    }];
+    STATE.labelPrints = [{
+      sticker: '7771198',
+      merk: 'HP',
+      model: 'EliteBook 860 G9',
+      batchNummer: '50375',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      printedAt: '2026-05-20T10:30:00.000Z'
+    }];
+  `, app);
+
+  const savedToServer = await app.saveSharedDemoState();
+  assert.equal(savedToServer, false);
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)', app), /5CG30429G0/);
+
+  vm.runInContext(`
+    STATE.history = [];
+    STATE.labelPrints = [];
+    loadLocalDemoStateBackup();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('STATE.history[0].serial', app), '5CG30429G0');
+  assert.equal(vm.runInContext('STATE.labelPrints.length', app), 1);
+});
+
+test('lokale monitorimport blijft staan wanneer gedeelde state ouder is', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    window.location = { protocol: 'https:' };
+    localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify({
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [{
+        id: 'monitor_batch_local',
+        nummer: 'LOCAL',
+        leverancier: 'Monitor import',
+        geimporteerd: '20-5-2026',
+        monitors: [{
+          sticker: 'MON-LOCAL-1',
+          deviceName: 'Dell P2422H Monitor',
+          merk: 'Dell',
+          model: 'P2422H',
+          videoInputs: 'HDMI / DisplayPort',
+          batchId: 'monitor_batch_local',
+          batchNummer: 'LOCAL'
+        }]
+      }],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-05-20T09:00:00.000Z'
+    }));
+  `, app);
+  app.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-05-20T08:00:00.000Z',
+    }),
+  });
+
+  assert.equal(await app.loadSharedDemoState(), true);
+  assert.equal(vm.runInContext('MONITOR_BATCHES.length', app), 1);
+  assert.equal(vm.runInContext('MONITOR_BATCHES[0].monitors[0].sticker', app), 'MON-LOCAL-1');
+});
+
+test('lokale monitorimport blijft staan wanneer gedeelde state nieuwer maar leeg is', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    window.location = { protocol: 'https:' };
+    localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify({
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [{
+        id: 'monitor_batch_local_newer_remote',
+        nummer: 'LOCAL2',
+        leverancier: 'Monitor import',
+        geimporteerd: '20-5-2026',
+        monitors: [{
+          sticker: 'MON-LOCAL-2',
+          deviceName: 'HP E243i',
+          merk: 'HP',
+          model: 'E243i',
+          videoInputs: 'DisplayPort / HDMI',
+          batchId: 'monitor_batch_local_newer_remote',
+          batchNummer: 'LOCAL2'
+        }]
+      }],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-05-20T08:00:00.000Z'
+    }));
+  `, app);
+  app.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [],
+      history: [{ id: 'remote_history_marker' }],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      deletedMonitorBatchIds: ['monitor_batch_local_newer_remote'],
+      updatedAt: '2026-05-20T09:00:00.000Z',
+    }),
+  });
+
+  assert.equal(await app.loadSharedDemoState(), true);
+  assert.equal(vm.runInContext("Boolean(getMonitorBySticker('MON-LOCAL-2'))", app), true);
+  assert.equal(vm.runInContext('STATE.history[0].id', app), 'remote_history_marker');
+  assert.equal(vm.runInContext("STATE.deletedMonitorBatchIds.includes('monitor_batch_local_newer_remote')", app), false);
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)', app), /MON-LOCAL-2/);
+});
+
+test('dashboard scheidt werkstroom, support en analyse', () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'home';
+    STATE.homeTab = 'workflow';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Grade Device/);
+  assert.match(app.__appElement.innerHTML, /Laptop Workflow/);
+  assert.match(app.__appElement.innerHTML, /Monitor Workflow/);
+  assert.match(app.__appElement.innerHTML, /Scan a device, review all parts/);
+  assert.match(app.__appElement.innerHTML, /Label Scan/);
+  assert.match(app.__appElement.innerHTML, /Print specs labels with a blank grade line/);
+  assert.match(app.__appElement.innerHTML, /grade-work/);
+  assert.match(app.__appElement.innerHTML, /sticker-work/);
+  assert.match(app.__appElement.innerHTML, /Test Grading/);
+  assert.match(app.__appElement.innerHTML, /Delete batch/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Volgende open laptop/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Batch Import/);
+
+  vm.runInContext(`STATE.homeTab = 'support'; render();`, app);
+  assert.match(app.__appElement.innerHTML, /Batch Import/);
+  assert.match(app.__appElement.innerHTML, /User Management/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
+
+  vm.runInContext(`
+    STATE.monitorLabelPrints = [{
+      sticker: 'MON-DASH-1',
+      deviceName: 'Dell P2422H Monitor',
+      grade: 'B',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      printedAt: '2026-05-20T12:00:00.000Z'
+    }];
+    rebuildMonitorLabelPrintIndexes();
+    STATE.homeTab = 'monitor';
+    render();
+  `, app);
+  assert.match(app.__appElement.innerHTML, /Label Scan/);
+  assert.match(app.__appElement.innerHTML, /Separated monitor intake with scan, grade choice and label print/);
+  assert.match(app.__appElement.innerHTML, /Latest Result/);
+  assert.match(app.__appElement.innerHTML, /B · Dell P2422H Monitor/);
+  assert.match(app.__appElement.innerHTML, /Grade Mix/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Label Content/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Grade Moment/);
+  assert.match(app.__appElement.innerHTML, /workflow-monitor-route-6-step-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /route-steps-6/);
+  assert.match(app.__appElement.innerHTML, /Supplier batch/);
+  assert.match(app.__appElement.innerHTML, /Scan monitor/);
+  assert.match(app.__appElement.innerHTML, /Check ports/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Match model/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /route-steps-7/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
+
+  vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
+  assert.match(app.__appElement.innerHTML, /Insights Dashboard/);
+  assert.match(app.__appElement.innerHTML, /Open Full History/);
+});
+
+test('historie zoekt op serienummer en toont leverancier tegenover ReMarkt', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'history';
+    STATE.history = [{
+      id: 'hist_serial_lookup',
+      sticker: '8460024',
+      serial: '5CD3258381',
+      batchNummer: '50375',
+      merk: 'HP',
+      model: 'EliteBook 645 G9',
+      processor: 'Ryzen 5',
+      ram: '8GB',
+      ssd: '256GB',
+      display: '14"',
+      battery: '95%',
+      leverancier_class: 'Class B',
+      leverancier_meldingen: 'Lichte krassen op scherm',
+      grade: 'A',
+      score: 0,
+      user_id: 'tim',
+      user_naam: 'Tim',
+      modus: 'expert',
+      tijd: '11:15',
+      duurSec: 38,
+      result: { problems: [], detailRows: [] }
+    }];
+    rebuildHistoryIndexes();
+    STATE.historySearch = '5CD3258381';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /serial number/);
+  assert.match(app.__appElement.innerHTML, /SN 5CD3258381/);
+  assert.match(app.__appElement.innerHTML, /Supplier B -&gt; ReMarkt A|Supplier B -> ReMarkt A/);
+
+  vm.runInContext(`
+    STATE.historyOpenId = getHistoryItemId(STATE.history[0], 0);
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Serial Number:<\/strong> 5CD3258381/);
+  assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt:<\/strong> B -&gt; A|Supplier vs ReMarkt:<\/strong> B -> A/);
+  assert.match(app.__appElement.innerHTML, /Supplier notes:<\/strong> Lichte krassen op scherm/);
+});
+
+test('stickeraar ziet alleen scan-en-print werkstroom', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = { id: 'labelaar', naam: 'Labelaar', rol: 'Stickeraar', initialen: 'L', voorkeur: 'label' };
+    STATE.currentScreen = 'home';
+    STATE.homeTab = 'workflow';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Labeling/);
+  assert.match(app.__appElement.innerHTML, /Scan &amp; Print|Scan & Print/);
+  assert.match(app.__appElement.innerHTML, /specs and repair labels print automatically/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Test Grading/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Manual Entry/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Insights/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Batch Import/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /User Management/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
+
+  await app.handleAction('sticker_scan', {});
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'sticker_scan');
+  assert.match(app.__appElement.innerHTML, /Label Scan/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Specs-label zonder grade printen/);
+
+  await app.handleAction('start_expert', {});
+  assert.equal(vm.runInContext('STATE.currentGrading', app), null);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Labeler-only|without grading/);
+
+  const rows = vm.runInContext(`
+    getLabelRows(getLaptopBySticker('7771198'), { eindgrade: '', problems: [] }, 'specs', { hideGrade: true })
+  `, app);
+  assert.match(rows[2], /^Grade \.\.\.\.\.\. \/ Touch (Ja|Nee)$/);
+});
+
+test('grader ziet alleen begeleide modus en kan expertmodus niet starten', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'thibault');
+    STATE.currentLaptop = getLaptopBySticker('7771198');
+    STATE.currentScreen = 'laptop_info';
+    render();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentUser.rol', app), 'Grader');
+  assert.equal(vm.runInContext('STATE.currentUser.voorkeur', app), 'beginner');
+  assert.match(app.__appElement.innerHTML, /Guided Mode/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Expert Mode/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-action="start_expert"/);
+
+  await app.handleAction('start_expert', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.currentGrading', app), null);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Expert Mode is only available/);
+
+  vm.runInContext(`STATE.appMessage = null; STATE.currentScreen = 'test_start'; render();`, app);
+  assert.match(app.__appElement.innerHTML, /Guided Mode/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-action="start_test_expert"/);
+});
+
+test('scan-en-print markeert label klaar en sluit digitale grading af', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = { id: 'labelaar', naam: 'Labelaar', rol: 'Stickeraar', initialen: 'L', voorkeur: 'label' };
+    STATE.currentScreen = 'sticker_scan';
+    globalThis.printCalls = [];
+    printLabelFor = async function(laptop, result, type, options) {
+      printCalls.push({ sticker: laptop.sticker, type, hideGrade: Boolean(options && options.hideGrade) });
+      return true;
+    };
+  `, app);
+
+  await app.scanAndPrintStickerLabel('7771198');
+
+  const calls = vm.runInContext('printCalls', app);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].sticker, '7771198');
+  assert.equal(calls[0].type, 'specs');
+  assert.equal(calls[0].hideGrade, true);
+  assert.equal(vm.runInContext("isLaptopLabelPrinted('7771198')", app), true);
+  assert.equal(vm.runInContext("getStickerOpenLaptops().some(laptop => laptop.sticker === '7771198')", app), false);
+  assert.equal(vm.runInContext("getOpenLaptops().some(laptop => laptop.sticker === '7771198')", app), false);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /blank grade line|Device completed/);
+  vm.runInContext("selectLaptop('7771198')", app);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'sticker_scan');
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /complete in the digital workflow/);
+
+  vm.runInContext(`STATE.history = [{ sticker: '8460024' }]; rebuildHistoryIndexes();`, app);
+  assert.equal(vm.runInContext("getStickerOpenLaptops().some(laptop => laptop.sticker === '8460024')", app), false);
+});
+
+test('scan-en-print herkent voorloopnullen en print reparatie-label indien nodig', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = { id: 'labelaar', naam: 'Labelaar', rol: 'Stickeraar', initialen: 'L', voorkeur: 'label' };
+    STATE.currentScreen = 'sticker_scan';
+    globalThis.printCalls = [];
+    window.open = function() {
+      return {
+        closed: false,
+        document: { write() {}, close() {} },
+        close() { this.closed = true; },
+        focus() {},
+        print() {},
+      };
+    };
+    printLabelFor = async function(laptop, result, type, options) {
+      printCalls.push({ sticker: laptop.sticker, type, hideGrade: Boolean(options && options.hideGrade) });
+      return true;
+    };
+  `, app);
+
+  assert.equal(vm.runInContext("getLaptopBySticker('007386699').sticker", app), '7386699');
+
+  await app.scanAndPrintStickerLabel('007386699');
+
+  const calls = vm.runInContext('printCalls', app);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].sticker, '7386699');
+  assert.equal(calls[0].type, 'specs');
+  assert.equal(calls[0].hideGrade, true);
+  assert.equal(calls[1].type, 'problems');
+  assert.equal(calls[1].hideGrade, false);
+  assert.equal(vm.runInContext("isLaptopLabelPrinted('007386699')", app), true);
+  assert.equal(vm.runInContext("getOpenLaptops().some(laptop => laptop.sticker === '7386699')", app), false);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /repair label printed|Device completed/);
+});
+
+test('beheerder kan een verkeerde batch verwijderen', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'home';
+  `, app);
+
+  assert.equal(vm.runInContext('BATCHES.length', app), 1);
+  return app.handleAction('remove_batch', { dataset: { removeBatch: 'batch_50375' } }).then(() => {
+    assert.equal(vm.runInContext('BATCHES.length', app), 0);
+    assert.equal(vm.runInContext('getAllLaptops().length', app), 0);
+    assert.match(vm.runInContext('JSON.stringify(STATE.auditLogs)', app), /remove_batch/);
+  });
+});
+
+test('handmatige invoer blokkeert dubbele stickers', () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'manual';
+    document.getElementById = id => ({
+      m_merk: { value: 'Dell' },
+      m_model: { value: 'Latitude 7420' },
+      m_sticker: { value: '7771198' },
+      m_serial: { value: '' },
+      m_processor: { value: '' },
+      m_ram: { value: '' },
+      m_ssd: { value: '' },
+      m_display: { value: '' },
+      m_battery: { value: '' },
+      m_gpu: { value: '' },
+      m_herkomst: { value: '' },
+      app: __appElement,
+    }[id] || null);
+  `, app);
+
+  return app.handleAction('manual_submit', {}).then(() => {
+    assert.match(vm.runInContext('STATE.manualError', app), /already exists/);
+    assert.equal(vm.runInContext('STATE.currentScreen', app), 'manual');
+  });
+});
+
+test('leveranciersrij wordt genormaliseerd naar laptopdata', () => {
+  const app = loadAppSandbox();
+  const laptop = app.importedRowToLaptop({
+    'Product Group': 'Laptops',
+    'Sticker Number': 'ABC-123',
+    'BIOS Make': 'Dell',
+    'BIOS Model': 'Latitude 7420',
+    'Processor Name': 'Intel Core i5',
+    Memory: '8192',
+    'Hard Drive Count': '512GB',
+    Display: 'touch 14',
+    'Serial Number': 'SER123',
+    '[GPU]': 'NVIDIA Corporation RTX 3050',
+  }, 'Terabyte 50737.xlsx');
+
+  assert.equal(laptop.sticker, 'ABC-123');
+  assert.equal(laptop.ram, '8GB');
+  assert.equal(laptop.ssd, '512GB');
+  assert.equal(laptop.display, 'touch 14"');
+  assert.equal(laptop.labelGpu, 'NVIDIA RTX 3050');
+});
+
+test('gemengde leveranciersrijen scheiden laptops en monitoren', () => {
+  const app = loadAppSandbox();
+
+  const laptop = app.importedRowToLaptop({
+    ProductType: 'LAPTOP',
+    UnitID: '13817657',
+    Manufacturer: 'DYNABOOK INC.',
+    Model: 'SATELLITE PRO C50-E-112',
+    SerialNumber: '80034971A',
+    OpticalGrade: 'B',
+    RAM: '8 GB',
+    Storage1Size: '256GB',
+  }, 'mixed.xlsx:Sale ready');
+  const desktop = app.importedRowToLaptop({
+    ProductType: 'DESKTOP',
+    UnitID: '13819999',
+    Manufacturer: 'HP',
+    Model: 'EliteDesk',
+  }, 'mixed.xlsx:Sale ready');
+  const monitor = app.importedRowToMonitor({
+    ProductType: 'MONITOR',
+    UnitID: 'MON-100',
+    Manufacturer: 'Dell',
+    Model: 'P2422H',
+    DeviceName: 'Dell P2422H 24 inch Monitor',
+    SerialNumber: 'CN0ABC123',
+    DisplaySize: '24"',
+    Resolution: '1920x1080',
+    OpticalGrade: 'A',
+    Ports: 'HDMI, DisplayPort, VGA',
+  }, 'monitors.xlsx:Sheet1');
+
+  assert.equal(laptop.sticker, '13817657');
+  assert.equal(laptop.merk, 'DYNABOOK INC.');
+  assert.equal(desktop, null);
+  assert.equal(monitor.sticker, 'MON-100');
+  assert.equal(monitor.deviceName, 'Dell P2422H 24 inch Monitor');
+  assert.equal(monitor.videoInputs, 'HDMI / DisplayPort / VGA');
+});
+
+test('monitor database vult video-in aan op modelmatch zonder batchimport', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    MONITOR_PORT_DATABASE.splice(0, MONITOR_PORT_DATABASE.length,
+      normalizeMonitorPortDatabaseEntry({
+        model: 'Dell Professional P2422H',
+        displaySize: '24',
+        resolution: '1920x1080',
+        videoInputs: 'DisplayPort / HDMI / VGA'
+      })
+    );
+    rebuildMonitorPortDatabaseIndex();
+  `, app);
+
+  const monitor = app.importedRowToMonitor({
+    ProductType: 'MONITOR',
+    UnitID: 'MON-DB-1',
+    Manufacturer: 'Dell',
+    Model: 'P2422H',
+    DeviceName: 'Dell P2422H Monitor',
+    SerialNumber: 'CN0DB123',
+  }, 'monitors.xlsx:Sheet1');
+
+  assert.equal(monitor.videoInputs, 'DisplayPort / HDMI / VGA');
+  assert.equal(monitor.resolution, '1920x1080');
+  assert.equal(monitor.display, '24"');
+  assert.equal(monitor.monitorDatabaseModel, 'Dell Professional P2422H');
+});
+
+test('monitor database blokkeert modelmatch met ander merk en normaliseert schermport', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    MONITOR_PORT_DATABASE.splice(0, MONITOR_PORT_DATABASE.length,
+      normalizeMonitorPortDatabaseEntry({
+        model: 'AOC B24-8T',
+        displaySize: '24',
+        resolution: '1920x1080',
+        videoInputs: 'Schermport / DVI / HDMI'
+      })
+    );
+    rebuildMonitorPortDatabaseIndex();
+  `, app);
+
+  const fujitsu = app.importedRowToMonitor({
+    ProductType: 'MONITOR',
+    UnitID: '8808680',
+    Manufacturer: 'Fujitsu',
+    Model: 'B24-8T W24"',
+    DeviceName: 'Fujitsu B24-8T W24"',
+  }, 'remarkt-supplier.xlsx:Sheet1');
+  assert.notEqual(fujitsu.monitorDatabaseModel, 'AOC B24-8T');
+  assert.equal(fujitsu.videoInputs, '');
+
+  const aoc = app.importedRowToMonitor({
+    ProductType: 'MONITOR',
+    UnitID: 'AOC-1',
+    Manufacturer: 'AOC',
+    Model: 'B24-8T',
+    DeviceName: 'AOC B24-8T Monitor',
+  }, 'monitor-database.xlsx:Sheet1');
+  assert.equal(aoc.monitorDatabaseModel, 'AOC B24-8T');
+  assert.equal(aoc.videoInputs, 'DisplayPort / DVI / HDMI');
+  assert.doesNotMatch(aoc.videoInputs, /Schermport/i);
+});
+
+test('monitor labelscan vraagt keuze bij afwijkende device name en account device name', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    MONITOR_PORT_DATABASE.splice(0, MONITOR_PORT_DATABASE.length,
+      normalizeMonitorPortDatabaseEntry({
+        model: 'HP EliteDisplay E243i',
+        displaySize: '24',
+        resolution: '1920x1200',
+        videoInputs: 'DisplayPort / HDMI / VGA'
+      }),
+      normalizeMonitorPortDatabaseEntry({
+        model: 'HP EliteDisplay E231',
+        displaySize: '23',
+        resolution: '1920x1080',
+        videoInputs: 'DisplayPort / DVI / VGA'
+      })
+    );
+    rebuildMonitorPortDatabaseIndex();
+  `, app);
+
+  const monitor = app.importedRowToMonitor({
+    ProductType: 'MONITOR',
+    UnitID: '8808680',
+    Manufacturer: 'HP',
+    DeviceName: 'HP EliteDisplay E243i',
+    'Account Device Name': 'HP EliteDisplay E231 W23"',
+    SerialNumber: 'SN8808680',
+  }, 'remarkt-supplier.xlsx:Sheet1');
+
+  assert.equal(monitor.sticker, '8808680');
+  assert.equal(monitor.identityOptions.length, 2);
+  assert.equal(monitor.identityOptions[0].videoInputs, 'DisplayPort / HDMI / VGA');
+  assert.equal(monitor.identityOptions[1].videoInputs, 'DisplayPort / DVI / VGA');
+
+  app.__monitorUnderTest = monitor;
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_identity',
+      nummer: 'IDENTITY',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [__monitorUnderTest]
+    });
+    rebuildMonitorIndex();
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade, rows: getMonitorLabelRows(monitor, grade), deviceName: monitor.deviceName, videoInputs: monitor.videoInputs });
+      return true;
+    };
+    STATE.currentScreen = 'monitor_label_scan';
+    render();
+  `, app);
+
+  vm.runInContext(`selectMonitorForLabel('8808680');`, app);
+  assert.match(app.__appElement.innerHTML, /Kies de juiste monitornaam/);
+  assert.match(app.__appElement.innerHTML, /HP EliteDisplay E243i/);
+  assert.match(app.__appElement.innerHTML, /HP EliteDisplay E231 W23&quot;/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-monitor-print-grade="A"/);
+
+  assert.equal(await app.scanAndPrintMonitorLabel('8808680', 'A'), false);
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 0);
+
+  vm.runInContext(`chooseMonitorIdentityForLabel(1);`, app);
+  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+  assert.match(app.__appElement.innerHTML, /HP EliteDisplay E231 W23&quot;/);
+  assert.match(app.__appElement.innerHTML, /DisplayPort \/ DVI \/ VGA/);
+  assert.equal(vm.runInContext('STATE.currentMonitor.deviceName', app), 'HP EliteDisplay E231 W23"');
+  assert.equal(vm.runInContext('STATE.currentMonitor.videoInputs', app), 'DisplayPort / DVI / VGA');
+
+  assert.equal(await app.scanAndPrintMonitorLabel('8808680', 'B'), true);
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.equal(vm.runInContext('monitorPrintCalls[0].deviceName', app), 'HP EliteDisplay E231 W23"');
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Video in: DP \/ DVI \/ VGA/);
+});
+
+test('monitor labelscan print gekozen grade en bewaart monitorhistorie', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_test',
+      nummer: 'MONTEST',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [{
+        sticker: 'MON-100',
+        deviceName: 'Dell P2422H 24 inch Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        serial: 'CN0ABC123',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort / VGA',
+        leverancier_class: 'A',
+        batchId: 'monitor_batch_test',
+        batchNummer: 'MONTEST'
+      }]
+    });
+    rebuildMonitorIndex();
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade, rows: getMonitorLabelRows(monitor, grade) });
+      return true;
+    };
+    STATE.currentScreen = 'monitor_label_scan';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Label Scan/);
+  assert.match(app.__appElement.innerHTML, /Dell P2422H 24 inch Monitor/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-monitor-print-grade="C"/);
+
+  vm.runInContext(`selectMonitorForLabel('MON-100');`, app);
+  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+  assert.match(app.__appElement.innerHTML, /Lichte gebruikssporen/);
+  assert.match(app.__appElement.innerHTML, /Pixel line, dead pixels/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-print-grade="C"/);
+
+  await app.scanAndPrintMonitorLabel('MON-100', 'C');
+
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.equal(vm.runInContext('monitorPrintCalls[0].grade', app), 'C');
+  assert.equal(vm.runInContext('monitorPrintCalls[0].rows.length', app), 3);
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Video in: HDMI \/ DP \/ VGA/);
+  assert.doesNotMatch(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /SN |Barcode/);
+  assert.equal(vm.runInContext('getBrowserLabelMarkup(monitorPrintCalls[0].rows, "monitor").scaleClass.includes("monitor-label")', app), true);
+  assert.doesNotMatch(vm.runInContext('buildDymoLabelXml(monitorPrintCalls[0].rows, "monitor")', app), /ROW_4/);
+  assert.equal(vm.runInContext('STATE.monitorLabelPrints.length', app), 1);
+  assert.equal(vm.runInContext('STATE.monitorLabelPrints[0].grade', app), 'C');
+  assert.equal(vm.runInContext("isMonitorLabelPrinted('MON-100')", app), true);
+});
+
+test('monitor grade info opent uitleg zonder label te printen', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_info',
+      nummer: 'INFO',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [{
+        sticker: 'MON-INFO-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort / VGA',
+        leverancier_class: 'Class A',
+        batchId: 'monitor_batch_info',
+        batchNummer: 'INFO'
+      }]
+    });
+    rebuildMonitorIndex();
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade });
+      return true;
+    };
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-INFO-1');
+  `, app);
+
+  await app.handleDelegatedClick({
+    target: {
+      closest(selector) {
+        if (selector === '[data-monitor-grade-info]') return { dataset: { monitorGradeInfo: 'B' } };
+        return null;
+      }
+    },
+    preventDefault() {},
+    stopPropagation() {},
+  });
+
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 0);
+  assert.equal(vm.runInContext('STATE.monitorGradeInfoOpen', app), 'B');
+  assert.match(app.__appElement.innerHTML, /Duidelijke gebruikssporen/);
+  assert.match(app.__appElement.innerHTML, /monitor-grade-video-banner/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-art/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /monitor-grade-info[^>]*title=/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-hdmi-cutout-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-dp-cutout-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-vga-cutout-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-count[^>]*>1x</);
+  assert.doesNotMatch(app.__appElement.innerHTML, /<strong>HDMI \/ DisplayPort \/ VGA<\/strong>/);
+});
+
+test('monitor poortvisuals tonen aantallen zonder ruwe video-in tekst', () => {
+  const app = loadAppSandbox();
+  const html = vm.runInContext(`renderMonitorPortVisuals('2x DisplayPort / HDMI x2 / VGA')`, app);
+
+  assert.match(html, /monitor-port-count[^>]*>2x<\/strong><span>DP</);
+  assert.match(html, /monitor-port-count[^>]*>2x<\/strong><span>HDMI</);
+  assert.match(html, /monitor-port-count[^>]*>1x<\/strong><span>VGA</);
+  assert.doesNotMatch(html, /DisplayPort \/ HDMI/);
+});
+
+test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'monitor_manual';
+    document.getElementById = id => ({
+      app: __appElement,
+      mm_merk: { value: 'Dell' },
+      mm_series: { value: '' },
+      mm_model: { value: 'P2422H' },
+      mm_sticker: { value: 'MON-MAN-1' },
+      mm_serial: { value: 'SNMAN1' },
+      mm_display: { value: '24"' },
+      mm_resolution: { value: '1920x1080' },
+      mm_herkomst: { value: 'losse voorraad' }
+    }[id] || null);
+    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count]:checked'
+      ? [
+          { value: '2', dataset: { monitorVideoPortCount: 'HDMI' } },
+          { value: '1', dataset: { monitorVideoPortCount: 'DisplayPort' } },
+          { value: '1', dataset: { monitorVideoPortCount: 'VGA' } },
+        ]
+      : [];
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade, rows: getMonitorLabelRows(monitor, grade), deviceName: monitor.deviceName });
+      return true;
+    };
+  `, app);
+
+  vm.runInContext('render();', app);
+  assert.match(app.__appElement.innerHTML, /workflow-monitor-manual-entry-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitoren zonder betrouwbare scan/);
+  assert.match(app.__appElement.innerHTML, /Merk en modelnummer zijn verplicht/);
+  assert.match(app.__appElement.innerHTML, /Kies schermformaat/);
+  assert.match(app.__appElement.innerHTML, /17 inch/);
+  assert.match(app.__appElement.innerHTML, /55 inch/);
+  assert.match(app.__appElement.innerHTML, /list="monitorManualBrandSuggestions"/);
+  assert.match(app.__appElement.innerHTML, /list="monitorManualSeriesSuggestions"/);
+  assert.match(app.__appElement.innerHTML, /list="monitorManualModelSuggestions"/);
+  assert.match(app.__appElement.innerHTML, /Modelnummer \*/);
+  assert.match(app.__appElement.innerHTML, /Labelnaam/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-video-port-select/);
+  assert.match(app.__appElement.innerHTML, /Aansluiting 1/);
+  assert.match(app.__appElement.innerHTML, /Aansluiting 2/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Aansluiting 3/);
+  assert.match(app.__appElement.innerHTML, />2x<\/option>/);
+
+  await app.handleAction('monitor_manual_submit', { dataset: {} });
+
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_label_scan');
+  assert.equal(vm.runInContext('STATE.currentMonitor.sticker', app), 'MON-MAN-1');
+  assert.equal(vm.runInContext('STATE.currentMonitor.deviceName', app), 'Dell P2422H');
+  assert.equal(vm.runInContext('STATE.currentMonitor.display', app), '24"');
+  assert.equal(vm.runInContext('STATE.currentMonitor.videoInputs', app), '2x HDMI / DisplayPort / VGA');
+  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+
+  await app.scanAndPrintMonitorLabel('MON-MAN-1', 'A');
+
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.equal(vm.runInContext('monitorPrintCalls[0].deviceName', app), 'Dell P2422H');
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Dell P2422H/);
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Video in: 2x HDMI \/ DP \/ VGA/);
+  assert.doesNotMatch(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /SN |Barcode/);
+  assert.equal(vm.runInContext('STATE.monitorLabelPrints[0].grade', app), 'A');
+});
+
+test('monitor handmatige invoer gebruikt database autocomplete en vult specs automatisch', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    MONITOR_PORT_DATABASE.splice(0, MONITOR_PORT_DATABASE.length,
+      normalizeMonitorPortDatabaseEntry({
+        model: 'Dell P2422H',
+        displaySize: '24',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort / VGA'
+      }),
+      normalizeMonitorPortDatabaseEntry({
+        model: 'HP E24 G4',
+        displaySize: '24',
+        resolution: '1920x1200',
+        videoInputs: '2x HDMI / USB-C'
+      })
+    );
+    rebuildMonitorPortDatabaseIndex();
+  `, app);
+
+  assert.equal(vm.runInContext("getMonitorManualBrandSuggestions('D').join('|')", app), 'Dell');
+  assert.equal(vm.runInContext("getMonitorManualModelSuggestions('Dell', '', '2422').join('|')", app), 'P2422H');
+  assert.equal(vm.runInContext("findMonitorManualDatabaseMatch('Dell', '', 'P2422H').resolution", app), '1920x1080');
+  assert.equal(vm.runInContext("splitMonitorModelParts('HP EliteDisplay E243i', 'HP').series", app), 'EliteDisplay');
+  assert.equal(vm.runInContext("splitMonitorModelParts('HP EliteDisplay E243i', 'HP').modelNumber", app), 'E243i');
+  assert.equal(vm.runInContext("buildMonitorDeviceName('HP', 'EliteDisplay', 'E243i')", app), 'HP EliteDisplay E243i');
+  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').length", app), 2);
+  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').map(item => item.port).join(' / ')", app), 'HDMI / DisplayPort');
+});
+
+test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezelfde barcode', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_fix',
+      nummer: 'FIX',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [{
+        sticker: 'MON-FIX-1',
+        deviceName: 'AOC B24-8T',
+        merk: 'AOC',
+        model: 'B24-8T',
+        serial: 'WRONGSN',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI',
+        leverancier_class: 'Class B',
+        meldingen: 'Diepere kras op voet',
+        batchId: 'monitor_batch_fix',
+        batchNummer: 'FIX'
+      }]
+    });
+    rebuildMonitorIndex();
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-FIX-1');
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Gegevens corrigeren/);
+
+  await app.handleAction('monitor_manual_from_current', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
+  assert.match(app.__appElement.innerHTML, /Monitorgegevens corrigeren/);
+  assert.match(app.__appElement.innerHTML, /MON-FIX-1/);
+
+  vm.runInContext(`
+    document.getElementById = id => ({
+      app: __appElement,
+      mm_merk: { value: 'Fujitsu' },
+      mm_series: { value: '' },
+      mm_model: { value: 'B24-8T W24"' },
+      mm_sticker: { value: 'MON-FIX-1' },
+      mm_serial: { value: 'NEWSN' },
+      mm_display: { value: '24"' },
+      mm_resolution: { value: '1920x1080' },
+      mm_herkomst: { value: 'gecorrigeerde leveranciersregel' }
+    }[id] || null);
+    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count]:checked'
+      ? [
+          { value: '1', dataset: { monitorVideoPortCount: 'DisplayPort' } },
+          { value: '1', dataset: { monitorVideoPortCount: 'DVI' } },
+          { value: '1', dataset: { monitorVideoPortCount: 'HDMI' } },
+        ]
+      : [];
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade, rows: getMonitorLabelRows(monitor, grade), deviceName: monitor.deviceName, videoInputs: monitor.videoInputs });
+      return true;
+    };
+  `, app);
+
+  await app.handleAction('monitor_manual_submit', { dataset: {} });
+
+  assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').merk", app), 'Fujitsu');
+  assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').model", app), 'B24-8T W24"');
+  assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').videoInputs", app), 'DisplayPort / DVI / HDMI');
+  assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').leverancier_class", app), 'Class B');
+  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Diepere kras op voet/);
+
+  await app.scanAndPrintMonitorLabel('MON-FIX-1', 'B');
+
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Fujitsu B24-8T W24&quot;|Fujitsu B24-8T W24"/);
+  assert.doesNotMatch(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /AOC/);
+  assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Video in: DP \/ DVI \/ HDMI/);
+});
+
+test('monitor grade popup toont merk groot en waarschuwt bij grote problemen', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_problem',
+      nummer: 'MONPROBLEM',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [{
+        sticker: 'MON-X-1',
+        deviceName: 'HP EliteDisplay E243i',
+        merk: 'HP',
+        model: 'EliteDisplay E243i',
+        serial: 'SNMONX1',
+        display: '24"',
+        resolution: '1920x1200',
+        videoInputs: 'DisplayPort / HDMI / VGA',
+        leverancier_class: 'X-grade',
+        meldingen: 'Pixel line, no power issue reported',
+        batchId: 'monitor_batch_problem',
+        batchNummer: 'MONPROBLEM'
+      }]
+    });
+    rebuildMonitorIndex();
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-X-1');
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /<span>Merk<\/span>\s*<strong>HP<\/strong>/);
+  assert.match(app.__appElement.innerHTML, /<span>Model<\/span>\s*<strong>EliteDisplay E243i<\/strong>/);
+  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Device Errors/);
+  assert.match(app.__appElement.innerHTML, /Pixel line/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /X-grade in Excel/);
+});
+
+test('monitor grade popup toont alleen waarschuwing wanneer Device Errors gevuld is', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_supplier_grade',
+      nummer: 'MONGRADE',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '20-5-2026',
+      monitors: [{
+        sticker: 'MON-B-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        videoInputs: 'DisplayPort / HDMI',
+        leverancier_class: 'Class B',
+        meldingen: 'Diepere kras op voet',
+        batchId: 'monitor_batch_supplier_grade',
+        batchNummer: 'MONGRADE'
+      }, {
+        sticker: 'MON-B-2',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        videoInputs: 'DisplayPort / HDMI',
+        leverancier_class: 'Class B',
+        meldingen: '',
+        batchId: 'monitor_batch_supplier_grade',
+        batchNummer: 'MONGRADE'
+      }, {
+        sticker: 'MON-FUNC-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        videoInputs: 'DisplayPort / HDMI',
+        leverancier_class: 'Class B',
+        meldingen: 'Functional unit, not refurbished',
+        batchId: 'monitor_batch_supplier_grade',
+        batchNummer: 'MONGRADE'
+      }, {
+        sticker: 'MON-A-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        videoInputs: 'DisplayPort / HDMI',
+        leverancier_class: 'Class A',
+        meldingen: '',
+        batchId: 'monitor_batch_supplier_grade',
+        batchNummer: 'MONGRADE'
+      }]
+    });
+    rebuildMonitorIndex();
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-B-1');
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Device Errors/);
+  assert.match(app.__appElement.innerHTML, /Diepere kras op voet/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-count[^>]*>1x<\/strong><span>DP</);
+  assert.match(app.__appElement.innerHTML, /monitor-port-count[^>]*>1x<\/strong><span>HDMI</);
+  assert.doesNotMatch(app.__appElement.innerHTML, /B-grade in Excel/);
+
+  vm.runInContext(`selectMonitorForLabel('MON-B-2');`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Device Errors/);
+
+  vm.runInContext(`selectMonitorForLabel('MON-FUNC-1');`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Functional unit/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /not refurbished/);
+
+  vm.runInContext(`selectMonitorForLabel('MON-A-1');`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Device Errors/);
+});
+
+test('specs-label bevat kernspecificaties en grade', () => {
+  const app = loadAppSandbox();
+  const rows = app.getLabelRows({
+    merk: 'Dell',
+    model: 'Latitude 7420',
+    processor: 'i5-1135G7',
+    ram: '16GB',
+    ssd: '512GB',
+    display: 'touch 14"',
+    battery: '88%',
+    gpu: '',
+  }, { eindgrade: 'B' });
+
+  assert.equal(rows[0], 'Dell Latitude 7420');
+  assert.match(rows[1], /i5-1135G7 \/ 16GB \/ 512GB/);
+  assert.equal(rows[2], 'Grade B / Touch Ja');
+  assert.equal(rows[3], 'Accu 88%');
+});
+
+test('DYMO specs-label gebruikt 25x54mm S0722520 template', () => {
+  const app = loadAppSandbox();
+  const config = app.getDymoLabelConfig();
+  const xml = app.buildDymoLabelXml([
+    'Dell Latitude 7420',
+    'i5-1135G7 / 16GB / 512GB',
+    'Grade B / Touch Ja',
+    'Accu 88%',
+  ], 'specs');
+
+  assert.equal(config.productCode, 'S0722520');
+  assert.equal(config.labelSize, 'LW 25x54mm');
+  assert.equal(config.paperName, '11352 Return Address Int');
+  assert.match(xml, /<PaperOrientation>Landscape<\/PaperOrientation>/);
+  assert.match(xml, /<Id>ReturnAddressInt<\/Id>/);
+  assert.match(xml, /<PaperName>11352 Return Address Int<\/PaperName>/);
+  assert.match(xml, /<RoundRectangle X="0" Y="0" Width="1440" Height="3060"/);
+  assert.match(xml, /<Name>ROW_1<\/Name>/);
+  assert.match(xml, /<Bounds X="170" Y="50" Width="2770" Height="330"/);
+  assert.match(xml, /<Font Family="Arial" Size="13"/);
+  assert.match(xml, /Dell Latitude 7420/);
+});
+
+test('DYMO printerselectie kiest LabelWriter 450 wanneer beschikbaar', () => {
+  const app = loadAppSandbox();
+  const printer = app.findPreferredDymoPrinter([
+    { name: 'Microsoft Print to PDF', modelName: '', isConnected: true },
+    { name: 'DYMO LabelWriter 550', modelName: 'LabelWriter 550', isConnected: true },
+    { name: 'DYMO LabelWriter 450', modelName: 'LabelWriter 450', isConnected: true },
+  ]);
+
+  assert.equal(printer.name, 'DYMO LabelWriter 450');
+});
+
+test('browserfallback gebruikt korte HP Engage bon op 80mm papier', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    navigator = {
+      userAgent: 'Mozilla/5.0 (Linux; Android 13; HP Engage One Prime) Chrome/125',
+      platform: 'Linux armv8l',
+      maxTouchPoints: 10
+    };
+  `, app);
+
+  const profile = app.getBrowserPrintProfile();
+  const markup = app.getBrowserLabelMarkup([
+    'HP EliteBook 840',
+    'i5 / 16GB / 512GB',
+    'Grade B / Touch Nee',
+    'Accu 90%'
+  ], 'specs', profile);
+
+  assert.equal(profile.id, 'hp-engage-80x297');
+  assert.equal(profile.widthMm, 80);
+  assert.equal(profile.heightMm, 86);
+  assert.equal(profile.printableWidthMm, 48);
+  assert.equal(profile.leftOffsetMm, 22);
+  assert.equal(markup.scaleClass, 'receipt-mode');
+  assert.match(markup.labelHtml, /SPECS LABEL/);
+  assert.match(markup.labelHtml, /HP EliteBook 840/);
+  const printHtml = vm.runInContext(`
+    let html = '';
+    window.open = function() {
+      return {
+        document: {
+          write(value) { html += value; },
+          close() {}
+        },
+        focus() {},
+        print() {}
+      };
+    };
+    openBrowserPrintLabel([
+      'HP EliteBook 840',
+      'i5 / 16GB / 512GB',
+      'Grade B / Touch Nee',
+      'Accu 90%'
+    ], 'specs', null, getBrowserPrintProfile());
+    html;
+  `, app);
+  assert.match(printHtml, /width: 48mm/);
+  assert.match(printHtml, /margin: 0 0 0 22mm/);
+  assert.match(printHtml, /font-size: 9\.5pt/);
+  assert.equal(app.getHpEngagePageHeightMm([
+    'HP EliteBook 840',
+    'i5 / 16GB / 512GB',
+    'Grade B / Touch Nee',
+    'Accu 90%'
+  ], 'specs'), 78);
+});
+
+test('analyse vergelijkt leverancier-grading met ReMarkt-grading per batch', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [
+      { sticker: 'UP-1', batchNummer: '50737', merk: 'Dell', model: 'Latitude', grade: 'A', score: 0, leverancier_class: 'Class B', user_id: 'tim', user_naam: 'Tim', result: { problems: [] } },
+      { sticker: 'EQ-1', batchNummer: '50737', merk: 'HP', model: 'EliteBook', grade: 'B', score: 10, leverancier_class: 'Class B', user_id: 'tim', user_naam: 'Tim', result: { problems: [] } },
+      { sticker: 'DOWN-1', batchNummer: '50737', merk: 'Lenovo', model: 'ThinkPad', grade: 'C', score: 25, leverancier_class: 'Class B', user_id: 'tim', user_naam: 'Tim', result: { problems: ['LCD kras'] } },
+    ];
+  `, app);
+
+  const stats = vm.runInContext('getSupplierComparisonStats(STATE.history)', app);
+  assert.equal(stats.summary.total, 3);
+  assert.equal(stats.summary.improved, 1);
+  assert.equal(stats.summary.same, 1);
+  assert.equal(stats.summary.downgraded, 1);
+  assert.equal(stats.summary.improvedPercent, 33);
+  assert.equal(stats.summary.netDelta, 0);
+  assert.equal(stats.batches[0].toAFromLower, 1);
+
+  const exportRows = vm.runInContext("getSupplierComparisonExportRows('50737')", app);
+  assert.equal(exportRows.length, 3);
+  assert.equal(exportRows[0]['Supplier grade'], 'B');
+  assert.equal(exportRows[0]['ReMarkt grade'], 'A');
+  assert.equal(exportRows[0].Status, 'Improved');
+
+  vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
+  assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
+  assert.match(app.__appElement.innerHTML, /B -&gt; A/);
+  assert.match(app.__appElement.innerHTML, /Export Report/);
+});
+
+test('probleem-label zet X-keuze en defect-trigger als reparatie op sticker', () => {
+  const app = loadAppSandbox();
+  const laptop = {
+    merk: 'Dell',
+    model: 'Latitude 7420',
+    sticker: 'REP-001',
+    display: '14"',
+  };
+
+  const xChoices = allChoices(app, 'A');
+  xChoices.lcd = 'D';
+  const xResult = app.calculateGrade(xChoices, {});
+  xResult.problems = app.buildProblemRows(xChoices, {});
+  const xRows = app.getLabelRows(laptop, xResult, 'problems');
+
+  assert.equal(xResult.eindgrade, 'D');
+  assert.match(xRows[1], /Repair \/ X/);
+  assert.match(xRows[2], /LCD.*Repair/i);
+
+  const triggerChoices = allChoices(app, 'A');
+  const triggerResult = app.calculateGrade(triggerChoices, { touchpad_kapot: true });
+  triggerResult.problems = app.buildProblemRows(triggerChoices, { touchpad_kapot: true });
+  const triggerRows = app.getLabelRows(laptop, triggerResult, 'problems');
+
+  assert.equal(triggerResult.eindgrade, 'D');
+  assert.match(triggerRows[1], /Repair \/ X/);
+  assert.match(triggerRows[2], /Touchpad not working/i);
+});
+
+test('scharnier X opent keuzevraag in beginner en expert', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    startTestGrading('beginner');
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'scharnieren');
+    applyComponentChoice('scharnieren', 'D', true);
+  `, app);
+
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Hinge X Detail/);
+  assert.match(app.__appElement.innerHTML, /decision-inline/);
+  assert.match(app.__appElement.innerHTML, /Functional/);
+  assert.match(app.__appElement.innerHTML, /Not Functional/);
+  assert.match(app.__appElement.innerHTML, /assets\/dell-grading-fast\/scharnier/);
+
+  vm.runInContext(`
+    STATE.pendingDecision = null;
+    startTestGrading('expert');
+    applyComponentChoice('scharnieren', 'D', false);
+  `, app);
+
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Hinge X Detail/);
+});
+
+test('keuze-afbeeldingen zijn gecentreerd voor tabletweergave', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'assets', 'ui-rendering.js'), 'utf8');
+  const workflow = fs.readFileSync(path.join(__dirname, '..', 'assets', 'app-workflow.js'), 'utf8');
+
+  assert.match(css, /\.decision-option img \{[^}]*object-position: center center/s);
+  assert.match(css, /\.workflow-route-card\.monitor-route-card \.workflow-route-banner img \{[^}]*min-height: 260px/s);
+  assert.match(css, /\.workflow-route-card\.monitor-route-card \.workflow-route-banner img \{[^}]*object-fit: cover/s);
+  assert.match(css, /\.workflow-route-labels\.route-steps-6 \{[^}]*repeat\(6, minmax\(0, 1fr\)\)/s);
+  assert.match(css, /\.visual-thumb img \{[^}]*object-position: center center/s);
+  assert.match(css, /\.visual-thumb \{[^}]*aspect-ratio: 16 \/ 9/s);
+  assert.match(css, /\.grading-visual-screen \.visual-thumb \{[^}]*height: clamp\(288px, 34vh, 394px\)/s);
+  assert.match(css, /@media \(max-width: 1100px\) and \(min-width: 641px\) \{[\s\S]*\.grading-visual-screen \.visual-thumb \{ height: clamp\(263px, 31vh, 356px\)/);
+  assert.match(css, /\.visual-choice \{[^}]*grid-template-columns: 1fr/s);
+  assert.match(css, /\.visual-choice \{[^}]*grid-template-rows: auto minmax\(104px, auto\)/s);
+  assert.match(css, /\.visual-copy \{[^}]*min-height: 104px/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*position: fixed/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*top: 0/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*right: 0/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*bottom: 0/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*left: 0/s);
+  assert.match(css, /\.image-preview-overlay \{[^}]*align-items: center/s);
+  assert.match(css, /\.image-preview-modal \{[^}]*width: 920px/s);
+  assert.match(css, /\.image-preview-modal \{[^}]*max-width: calc\(100% - 32px\)/s);
+  assert.match(css, /\.image-preview-modal \{[^}]*max-height: calc\(100vh - 32px\)/s);
+  assert.match(css, /\.image-preview-body \{[^}]*display: flex/s);
+  assert.match(css, /\.image-preview-body \{[^}]*height: 70vh/s);
+  assert.match(css, /\.image-preview-body \{[^}]*max-height: calc\(100vh - 96px\)/s);
+  assert.match(css, /\.image-preview-modal img \{[^}]*object-fit: contain/s);
+  assert.match(css, /\.image-preview-modal img \{[^}]*object-position: center center/s);
+  assert.match(css, /\.image-preview-close \{[^}]*min-height: 40px/s);
+  assert.match(css, /\.visual-zoom-action \{[^}]*position: absolute/s);
+  assert.match(css, /\.visual-zoom-action \{[^}]*width: 48px/s);
+  assert.match(css, /\.visual-zoom-action \{[^}]*height: 48px/s);
+  assert.match(css, /\.visual-zoom-action \{[^}]*z-index: 30/s);
+  assert.match(css, /\.visual-zoom-action \{[^}]*touch-action: manipulation/s);
+  assert.match(css, /@media \(max-width: 1100px\) and \(min-width: 641px\) \{[^}]*\.visual-choice-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*\.visual-choice-grid \{ grid-template-columns: 1fr/s);
+  assert.match(css, /\.decision-inline \{[^}]*position: fixed/s);
+  assert.match(css, /\.decision-inline \{[^}]*top: 0/s);
+  assert.match(css, /\.decision-inline \{[^}]*right: 0/s);
+  assert.match(css, /\.decision-inline \{[^}]*bottom: 0/s);
+  assert.match(css, /\.decision-inline \{[^}]*left: 0/s);
+  assert.match(css, /\.decision-inline \{[^}]*width: 100%/s);
+  assert.match(css, /\.decision-inline \{[^}]*height: 100dvh/s);
+  assert.match(css, /\.decision-inline \{[^}]*z-index: 1200/s);
+  assert.match(css, /\.monitor-grade-overlay \{[^}]*height: 100dvh/s);
+  assert.match(css, /\.monitor-grade-overlay \{[^}]*align-items: center/s);
+  assert.match(css, /\.monitor-grade-overlay \{[^}]*justify-content: center/s);
+  assert.match(css, /\.monitor-grade-overlay \{[^}]*overflow: hidden/s);
+  assert.match(css, /\.monitor-grade-overlay \{[^}]*z-index: 1200/s);
+  assert.match(css, /\.monitor-grade-modal \{[^}]*width: min\(1020px, calc\(100vw - 32px\)\)/s);
+  assert.match(css, /@media \(max-width: 1100px\) and \(min-width: 641px\) \{[\s\S]*\.monitor-grade-button \{ min-height: 112px/s);
+  assert.match(css, /\.monitor-grade-info-panel \{[^}]*position: absolute/s);
+  assert.match(css, /\.monitor-grade-info-panel \{[^}]*top: calc\(100% \+ 8px\)/s);
+  assert.match(css, /\.monitor-grade-info-panel \{[^}]*display: none/s);
+  assert.match(css, /\.monitor-grade-info-panel\.is-open \{[^}]*display: grid/s);
+  assert.match(ui, /monitor-grade-overlay image-preview-overlay/);
+  assert.match(ui, /style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1300/);
+  assert.match(ui, /monitor-grade-modal image-preview-modal/);
+  assert.match(ui, /style="display:block;width:920px/);
+  assert.match(ui, /data-monitor-grade-info-panel/);
+  assert.match(workflow, /querySelectorAll\('\[data-monitor-grade-info-panel\]'\)/);
+  assert.doesNotMatch(workflow, /STATE\.monitorGradeInfoOpen = STATE\.monitorGradeInfoOpen === normalized \? null : normalized;\s*render\(\);/);
+  assert.match(css, /\.monitor-grade-button\.grade-A \{[^}]*--grade-text: #fff/s);
+  assert.match(css, /\.monitor-grade-button\.grade-B \{[^}]*--grade-text: #fff/s);
+  assert.match(css, /\.monitor-grade-button\.grade-C \{[^}]*--grade-text: #fff/s);
+  assert.match(css, /\.monitor-grade-button\.grade-D \{[^}]*--grade-text: #fff/s);
+  assert.match(css, /\.monitor-manual-port-picker \{/);
+  assert.match(css, /\.monitor-manual-port-picker \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
+  assert.match(css, /\.monitor-manual-port-row \{[^}]*grid-template-columns: minmax\(0, 1fr\) 78px/s);
+  assert.match(css, /\.modal \{[^}]*max-height: calc\(100dvh - 40px\)/s);
+  assert.match(css, /touch-action: manipulation/);
+});
+
+test('gradingbeelden gebruiken snelle tablet-assets', () => {
+  const app = loadAppSandbox();
+  const paths = vm.runInContext(`
+    Object.values(VISUAL_ASSETS).flatMap(group => Object.values(group))
+      .concat(Object.values(CHOICE_DECISIONS).flatMap(decisions =>
+        Object.values(decisions).flatMap(decision => decision.options.map(option => option.image).filter(Boolean))
+      ))
+  `, app);
+
+  assert.ok(paths.length > 0);
+  assert.ok(paths.every(assetPath => assetPath.startsWith('assets/dell-grading-fast/')));
+  assert.ok(paths.every(assetPath => assetPath.endsWith('.jpg')));
+  assert.ok(paths.every(assetPath => !assetPath.includes('wide-ai')));
+  assert.ok(paths.some(assetPath => assetPath.endsWith('keyboard-many-missing-keys-ai.jpg')));
+  assert.ok(paths.some(assetPath => assetPath.endsWith('touchpad-cracked-ai.jpg')));
+  assert.ok(paths.some(assetPath => assetPath.endsWith('scharnier-loshangend-ai.jpg')));
+  paths.forEach(assetPath => {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', assetPath)), `${assetPath} ontbreekt`);
+  });
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    startTestGrading('beginner');
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /assets\/dell-grading-fast\//);
+  assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
+  assert.match(app.__appElement.innerHTML, /visual-zoom-action/);
+  assert.match(app.__appElement.innerHTML, /<circle cx="10\.5" cy="10\.5" r="5\.5"/);
+  assert.match(app.__appElement.innerHTML, /fetchpriority="high"/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /loading="lazy"/);
+});
+
+test('keuze-afbeelding kan vergroot worden zonder keuze te maken', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    startTestGrading('beginner');
+    render();
+    openImagePreviewFromElement({
+      dataset: {
+        previewSrc: 'assets/dell-grading-fast/bovenkap-a.jpg',
+        previewLabel: 'Lid Cover grade A'
+      }
+    });
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /image-preview-overlay/);
+  assert.match(app.__appElement.innerHTML, /data-image-preview-overlay="true"/);
+  assert.match(app.__appElement.innerHTML, /image-preview-close/);
+  assert.match(app.__appElement.innerHTML, /image-preview-body/);
+  assert.match(app.__appElement.innerHTML, /style="position:fixed;top:0;right:0;bottom:0;left:0/);
+  assert.match(app.__appElement.innerHTML, /height:70vh;max-height:calc\(100vh - 96px\)/);
+  assert.match(app.__appElement.innerHTML, /Lid Cover grade A/);
+  assert.equal(vm.runInContext('Boolean(STATE.currentGrading.keuzes.bovenkap)', app), false);
+
+  await app.handleAction('close_image_preview', {});
+  assert.equal(vm.runInContext('STATE.imagePreview', app), null);
+});
+
+test('alleen het vergrootglas opent afbeelding, de foto zelf blijft keuze', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    startTestGrading('beginner');
+    render();
+  `, app);
+
+  const html = app.__appElement.innerHTML;
+  assert.match(html, /<div class="visual-thumb component-bovenkap grade-A">/);
+  assert.match(html, /<button class="visual-zoom-action" data-image-preview="true"/);
+  assert.doesNotMatch(html, /visual-thumb[^>]+data-image-preview="true"/);
+  assert.match(html, /<\/button>\s*<button class="visual-zoom-action" data-image-preview="true"/);
+});
+
+test('vergrootglas gebruikt pointer/touch handler voor tablet', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '..', 'assets', 'app-workflow.js'), 'utf8');
+
+  assert.match(workflow, /addEventListener\('pointerdown', handleDelegatedPointerDown, true\)/);
+  assert.match(workflow, /addEventListener\('touchstart', handleDelegatedPointerDown, true\)/);
+  assert.match(workflow, /function handleDelegatedPointerDown\(e\)/);
+  assert.match(workflow, /openImagePreviewFromElement\(imagePreviewTarget\)/);
+  assert.match(workflow, /data-image-preview-overlay/);
+  assert.match(workflow, /e\.key === 'Escape' && STATE\.imagePreview/);
+});
+
+test('header heeft licht/donker knop zonder systeemoptie', async () => {
+  const app = loadAppSandbox();
+  const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
+
+  vm.runInContext(`
+    document.documentElement = { dataset: {} };
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.homeTab = 'support';
+    STATE.currentScreen = 'home';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /theme-toggle/);
+  assert.match(app.__appElement.innerHTML, /data-theme-value="dark"/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-theme-value="system"/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Weergave/);
+  assert.match(css, /High-contrast dark mode/);
+  assert.match(css, /html\[data-theme="dark"\] \.ops-command/);
+  assert.match(css, /html\[data-theme="dark"\] \.workflow-actions \.action-card\.primary-work/);
+  assert.match(css, /html\[data-theme="dark"\] \.form-input/);
+
+  await app.handleAction('toggle_theme', { dataset: { themeValue: 'dark' } });
+  assert.equal(vm.runInContext('STATE.theme', app), 'dark');
+  assert.equal(vm.runInContext('document.documentElement.dataset.theme', app), 'dark');
+
+  await app.handleAction('toggle_theme', { dataset: { themeValue: 'light' } });
+  assert.equal(vm.runInContext('STATE.theme', app), 'light');
+  assert.equal(vm.runInContext('document.documentElement.dataset.theme', app), 'light');
+});
+
+test('volledige expert-workflow slaat grading op en markeert laptop klaar', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    finishGrading();
+    saveGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('STATE.history[0].sticker', app), '8460024');
+  assert.equal(vm.runInContext('STATE.history[0].grade', app), 'A');
+  assert.equal(vm.runInContext('STATE.history[0].leverancier_class', app), 'Class A');
+  assert.equal(vm.runInContext("GRADED_STICKERS.has('8460024')", app), true);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+});
+
+test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const openedPrintWindows = [];
+    window.open = function(url, name) {
+      const printWindow = {
+        name,
+        closed: false,
+        document: {
+          html: '',
+          write(value) { this.html += value; },
+          close() {}
+        },
+        close() { this.closed = true; },
+        focus() {},
+        print() {}
+      };
+      openedPrintWindows.push(printWindow);
+      return printWindow;
+    };
+    window.__openedPrintWindows = openedPrintWindows;
+    printRowsWithDymo = async function(rows, type) {
+      return { printerName: 'DYMO LabelWriter 450', type };
+    };
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('7771198');
+    startGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.lcd = 'D';
+    finishGrading();
+  `, app);
+
+  await app.handleAction('confirm_save', {});
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('STATE.history[0].grade', app), 'D');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
+  assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 2);
+});
+
+test('grading-test afronden muteert geen voorraad of historie', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    startTestGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'result');
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(vm.runInContext('GRADED_STICKERS.size', app), 0);
+
+  return app.handleAction('finish_test', {}).then(() => {
+    assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+    assert.equal(vm.runInContext('STATE.history.length', app), 0);
+    assert.equal(vm.runInContext('GRADED_STICKERS.size', app), 0);
+  });
+});
