@@ -646,30 +646,24 @@ function getMonitorManualPortCounts(videoInputs) {
 
 function getMonitorManualPortSelections(videoInputs) {
   const counts = getMonitorManualPortCounts(videoInputs);
-  const selections = getMonitorManualPortOptions()
-    .map(option => ({ port: option.value, label: option.label, count: Number(counts[option.value] || 0) }))
-    .filter(selection => selection.count > 0)
-    .slice(0, 2);
-  while (selections.length < 2) selections.push({ port: '', label: '', count: 1 });
-  return selections;
+  return getMonitorManualPortOptions()
+    .map(option => ({ port: option.value, label: option.label, count: Math.min(2, Number(counts[option.value] || 0)) }));
 }
 
 function renderMonitorManualPortPicker(videoInputs) {
   const selections = getMonitorManualPortSelections(videoInputs);
-  const portOptions = getMonitorManualPortOptions();
   return `
     <div class="monitor-manual-port-picker" aria-label="Video-in poorten kiezen">
-      ${selections.map((selection, index) => `
+      ${selections.map(selection => `
         <div class="monitor-manual-port-option">
-          <label class="form-label" for="mm_video_port_${index + 1}">Aansluiting ${index + 1}</label>
+          <span>${escapeHtml(selection.label)}</span>
           <div class="monitor-manual-port-row">
-            <select class="form-input" id="mm_video_port_${index + 1}" data-monitor-video-port-select>
-              <option value="">Geen</option>
-              ${portOptions.map(option => `<option value="${escapeHtml(option.value)}" ${selection.port === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-            </select>
-            <select class="form-input compact" id="mm_video_count_${index + 1}" data-monitor-video-port-count-select>
-              ${[1, 2].map(count => `<option value="${count}" ${selection.count === count ? 'selected' : ''}>${count}x</option>`).join('')}
-            </select>
+            <input type="hidden" data-monitor-video-port-count-select data-monitor-video-port="${escapeHtml(selection.port)}" value="${escapeHtml(String(selection.count))}">
+            <div class="monitor-manual-port-buttons" role="group" aria-label="${escapeHtml(`${selection.label} aantal`)}">
+              ${[0, 1, 2].map(count => `
+                <button class="monitor-manual-port-count-button ${selection.count === count ? 'active' : ''}" type="button" data-monitor-video-port-count-button data-port="${escapeHtml(selection.port)}" data-count="${count}" aria-pressed="${selection.count === count ? 'true' : 'false'}">${count}x</button>
+              `).join('')}
+            </div>
           </div>
         </div>
       `).join('')}
@@ -678,7 +672,7 @@ function renderMonitorManualPortPicker(videoInputs) {
 }
 
 function renderMonitorManualDatabaseLists(merkValue = '', serieValue = '', modelValue = '') {
-  const brands = typeof getMonitorManualBrandSuggestions === 'function' ? getMonitorManualBrandSuggestions(merkValue, 20) : [];
+  const brands = typeof getMonitorManualBrandSuggestions === 'function' ? getMonitorManualBrandSuggestions(merkValue, 80) : [];
   const series = typeof getMonitorManualSeriesSuggestions === 'function' ? getMonitorManualSeriesSuggestions(merkValue, serieValue, 60) : [];
   const models = typeof getMonitorManualModelSuggestions === 'function' ? getMonitorManualModelSuggestions(merkValue, serieValue, modelValue, 80) : [];
   return `
@@ -726,12 +720,12 @@ function getMonitorPortCount(part) {
 
 function getMonitorPortImage(key) {
   const images = {
-    hdmi: 'assets/monitor-port-hdmi-cutout-ai.png',
-    dp: 'assets/monitor-port-dp-cutout-ai.png',
-    dvi: 'assets/monitor-port-dvi-cutout-ai.png',
-    vga: 'assets/monitor-port-vga-cutout-ai.png',
-    'usb-c': 'assets/monitor-port-usb-c-cutout-ai.png',
-    tb: 'assets/monitor-port-tb-cutout-ai.png',
+    hdmi: 'assets/monitor-port-hdmi-clean-ai.png?v=20260521-aiports',
+    dp: 'assets/monitor-port-dp-clean-ai.png?v=20260521-aiports',
+    dvi: 'assets/monitor-port-dvi-clean-ai.png?v=20260521-aiports',
+    vga: 'assets/monitor-port-vga-clean-ai.png?v=20260521-aiports',
+    'usb-c': 'assets/monitor-port-usb-c-clean-ai.png?v=20260521-aiports',
+    tb: 'assets/monitor-port-tb-clean-ai.png?v=20260521-aiports',
   };
   return images[key] || images.hdmi;
 }

@@ -2,6 +2,8 @@
 
 Deze app is gestart als snelle standalone demo. De app is nu opgesplitst in duidelijke browsermodules: HTML-shell, CSS, state/opslag, grading-engine, importverwerking, analyse/historie, labelprinten, UI-rendering, workflow-events en bootstrap.
 
+Zie ook `docs/CODEBASE-STRUCTURE.md` voor de modulegrenzen, actieve assetpaden en veilige verwijderregels.
+
 ## Huidige structuur
 
 - `remarkt-grading-app.html`

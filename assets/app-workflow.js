@@ -148,6 +148,12 @@ async function handleDelegatedClick(e) {
     return;
   }
 
+  const monitorPortCountButton = e.target.closest('[data-monitor-video-port-count-button]');
+  if (monitorPortCountButton) {
+    setMonitorManualPortCount(monitorPortCountButton);
+    return;
+  }
+
   const historyButton = e.target.closest('[data-history-toggle]');
   if (historyButton) {
     const id = historyButton.dataset.historyToggle;
@@ -251,6 +257,22 @@ function toggleMonitorGradeInfo(grade) {
   });
 }
 
+function setMonitorManualPortCount(button) {
+  if (!button) return;
+  const port = button.dataset.port || '';
+  const count = Math.max(0, Math.min(2, Number(button.dataset.count || 0)));
+  const group = button.closest('.monitor-manual-port-option');
+  const input = group ? Array.from(group.querySelectorAll('[data-monitor-video-port-count-select]')).find(field => field.dataset && field.dataset.monitorVideoPort === port) : null;
+  if (input) input.value = String(count);
+  if (group) {
+    group.querySelectorAll('[data-monitor-video-port-count-button]').forEach(item => {
+      const active = item === button;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+}
+
 async function handleDelegatedChange(e) {
   if (e.target.matches('[data-trigger]')) {
     STATE.currentGrading.triggers[e.target.dataset.trigger] = e.target.checked;
@@ -263,6 +285,7 @@ async function handleDelegatedChange(e) {
   }
 
   if (e.target.id === 'mm_merk' || e.target.id === 'mm_series' || e.target.id === 'mm_model') {
+    if (e.target.id === 'mm_series' && e.target.dataset) e.target.dataset.autoFilled = 'false';
     syncMonitorManualDatabaseAssist();
     return;
   }
@@ -305,6 +328,7 @@ function syncModeSelectForRole(role, modeSelect) {
 
 function handleDelegatedInput(e) {
   if (e.target.id === 'mm_merk' || e.target.id === 'mm_series' || e.target.id === 'mm_model') {
+    if (e.target.id === 'mm_series' && e.target.dataset) e.target.dataset.autoFilled = 'false';
     syncMonitorManualDatabaseAssist();
     return;
   }
@@ -330,7 +354,10 @@ function syncMonitorManualDatabaseAssist() {
   updateMonitorManualModelSuggestions(merk, series, model);
   updateMonitorManualDevicePreview(merk, series, model);
   const match = typeof findMonitorManualDatabaseMatch === 'function' ? findMonitorManualDatabaseMatch(merk, series, model) : null;
-  if (!match) return;
+  if (!match) {
+    clearAutoFilledMonitorManualFields();
+    return;
+  }
   applyMonitorManualDatabaseMatch(match);
 }
 
@@ -362,22 +389,52 @@ function setFormValueIfAvailable(id, value) {
   field.value = String(value);
 }
 
+function setAutoFilledFormValue(id, value) {
+  const field = document.getElementById(id);
+  if (!field || value === undefined || value === null) return;
+  field.value = String(value);
+  if (field.dataset) field.dataset.autoFilled = 'true';
+}
+
+function clearAutoFilledMonitorManualFields() {
+  ['mm_series', 'mm_resolution', 'mm_display'].forEach(id => {
+    const field = document.getElementById(id);
+    if (field && field.dataset && field.dataset.autoFilled === 'true') {
+      field.value = '';
+      field.dataset.autoFilled = 'false';
+    }
+  });
+  updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
+}
+
 function applyMonitorManualDatabaseMatch(match) {
   if (!match) return;
-  setFormValueIfAvailable('mm_resolution', match.resolution || '');
-  setFormValueIfAvailable('mm_display', match.displaySize ? `${match.displaySize}"` : '');
+  if (typeof splitMonitorModelParts === 'function' && typeof getMonitorDatabaseBrandName === 'function') {
+    const parts = splitMonitorModelParts(match.model, getMonitorDatabaseBrandName(match));
+    const brandField = document.getElementById('mm_merk');
+    const seriesField = document.getElementById('mm_series');
+    const modelField = document.getElementById('mm_model');
+    if (parts.brand && brandField && !readFormValue('mm_merk')) setAutoFilledFormValue('mm_merk', parts.brand);
+    if (seriesField && (parts.series || seriesField.dataset.autoFilled === 'true')) {
+      if (!readFormValue('mm_series') || seriesField.dataset.autoFilled === 'true') setAutoFilledFormValue('mm_series', parts.series || '');
+    }
+    if (parts.modelNumber && modelField && !readFormValue('mm_model')) setAutoFilledFormValue('mm_model', parts.modelNumber);
+  }
+  setAutoFilledFormValue('mm_resolution', match.resolution || '');
+  setAutoFilledFormValue('mm_display', match.displaySize ? `${match.displaySize}"` : '');
   applyMonitorManualVideoInputsToPicker(match.videoInputs || '');
+  updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
 
 function applyMonitorManualVideoInputsToPicker(videoInputs) {
-  const selects = Array.from(document.querySelectorAll('[data-monitor-video-port-select]') || []);
   const countSelects = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
-  if (!selects.length) return;
+  if (!countSelects.length) return;
   const selections = typeof getMonitorManualPortSelections === 'function' ? getMonitorManualPortSelections(videoInputs) : [];
-  selects.forEach((select, index) => {
-    const selection = selections[index] || { port: '', count: 1 };
-    select.value = selection.port || '';
-    if (countSelects[index]) countSelects[index].value = String(selection.count || 1);
+  const selectionByPort = new Map(selections.map(selection => [selection.port, selection]));
+  countSelects.forEach(select => {
+    const port = select.dataset ? select.dataset.monitorVideoPort : '';
+    const selection = selectionByPort.get(port);
+    select.value = String(selection ? selection.count || 0 : 0);
   });
 }
 
@@ -1012,14 +1069,13 @@ function readFormValue(id) {
 }
 
 function readMonitorManualVideoInputs() {
-  const selects = Array.from(document.querySelectorAll('[data-monitor-video-port-select]') || []);
-  if (selects.length) {
-    const countSelects = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
-    const parts = selects
-      .map((field, index) => {
-        const label = field.value || '';
-        const count = Math.max(1, Math.min(2, Number(countSelects[index] && countSelects[index].value || 1)));
-        if (!label) return '';
+  const countSelects = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
+  if (countSelects.length) {
+    const parts = countSelects
+      .map(field => {
+        const label = field.dataset ? field.dataset.monitorVideoPort : '';
+        const count = Math.max(0, Math.min(2, Number(field.value || 0)));
+        if (!count || !label) return '';
         return count > 1 ? `${count}x ${label}` : label;
       })
       .filter(Boolean);

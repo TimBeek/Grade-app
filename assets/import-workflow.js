@@ -443,7 +443,6 @@ async function importSupplierFiles(files) {
   let totalRows = 0;
   const fileList = Array.from(files);
   const totalFiles = fileList.length;
-  console.time('remarkt-import');
 
   await setImportProgress({
     active: true,
@@ -573,6 +572,5 @@ async function importSupplierFiles(files) {
     monitorBatches: importedMonitorBatches,
   };
   await setImportProgress(null);
-  console.timeEnd('remarkt-import');
 }
 

@@ -533,8 +533,8 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .monitor-grade-fact.monitor-grade-fact-hero strong { color: #fff; }
 .monitor-grade-fact.important strong { font-size: clamp(21px, 2.4vw, 31px); }
 .monitor-port-visuals { display: grid; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); gap: 12px 14px; margin-top: 0; align-items: end; justify-items: center; }
-.monitor-port-tile { width: 100%; max-width: 186px; min-width: 0; display: grid; grid-template-rows: 110px auto; gap: 7px; justify-items: center; align-items: center; justify-self: center; }
-.monitor-port-art { width: 100%; height: 110px; display: block; box-sizing: border-box; object-fit: contain; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; filter: drop-shadow(0 8px 13px rgba(23,23,23,0.18)); }
+.monitor-port-tile { width: 100%; max-width: 140px; min-width: 0; display: grid; grid-template-rows: 83px auto; gap: 7px; justify-items: center; align-items: center; justify-self: center; }
+.monitor-port-art { width: 100%; height: 83px; display: block; box-sizing: border-box; object-fit: contain; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; filter: drop-shadow(0 8px 13px rgba(23,23,23,0.18)); }
 .monitor-port-chip { min-width: 0; height: auto; border: 0; border-bottom: 2px solid rgba(227,6,19,0.26); border-radius: 0; background: transparent; color: var(--remarkt-red); display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 2px 4px; font-size: 15px; font-weight: 950; line-height: 1; box-shadow: none; letter-spacing: 0; text-align: center; }
 .monitor-port-count { color: var(--remarkt-red); font-size: inherit; line-height: 1; font-weight: 950; }
 .monitor-grade-section-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-end; margin: 0 0 10px; }
@@ -617,7 +617,12 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .monitor-manual-port-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .monitor-manual-port-option { min-width: 0; display: grid; gap: 8px; border: 1px solid var(--remarkt-line); border-radius: 8px; background: #fff; padding: 10px; }
 .monitor-manual-port-option span { color: var(--remarkt-ink); font-size: 13px; font-weight: 900; line-height: 1.1; }
-.monitor-manual-port-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px; gap: 8px; align-items: center; }
+.monitor-manual-port-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: center; }
+.monitor-manual-port-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.monitor-manual-port-count-button { min-height: 38px; border: 1px solid var(--remarkt-line); border-radius: 7px; background: #fff; color: var(--remarkt-ink); font-weight: 900; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s; }
+.monitor-manual-port-count-button:hover,
+.monitor-manual-port-count-button:focus-visible { background: #fff; border-color: var(--remarkt-red); box-shadow: 0 0 0 3px rgba(227,6,19,0.10); outline: none; }
+.monitor-manual-port-count-button.active { background: var(--remarkt-red); border-color: var(--remarkt-red); color: #fff; box-shadow: 0 8px 16px rgba(227,6,19,0.16); }
 .form-input.compact { padding-left: 9px; padding-right: 9px; }
 .status-line { min-height: 22px; color: var(--remarkt-red); font-size: 13px; margin-top: 8px; }
 .app-alert { border: 1px solid var(--remarkt-line); border-left: 5px solid var(--remarkt-red); border-radius: 8px; padding: 12px 14px; background: #FFF7F7; color: #700007; margin: 0 auto 14px; max-width: 1180px; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
@@ -775,8 +780,8 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
   .monitor-grade-video-banner { grid-template-columns: minmax(126px, 0.32fr) minmax(0, 1.68fr); gap: 12px; padding: 12px 14px; }
   .monitor-grade-video-copy small { display: none; }
   .monitor-port-visuals { grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px 10px; }
-  .monitor-port-tile { max-width: 132px; grid-template-rows: 68px auto; gap: 4px; }
-  .monitor-port-art { height: 68px; }
+  .monitor-port-tile { max-width: 99px; grid-template-rows: 51px auto; gap: 4px; }
+  .monitor-port-art { height: 51px; }
   .monitor-port-chip { font-size: 12px; padding-bottom: 3px; }
   .monitor-grade-section-head { margin-bottom: 8px; }
   .monitor-grade-section-head span,
@@ -802,8 +807,8 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
   .monitor-grade-video-banner { grid-template-columns: 1fr; gap: 12px; }
   .monitor-port-visuals { grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 10px; }
   .monitor-manual-port-picker { grid-template-columns: 1fr; }
-  .monitor-port-tile { max-width: 116px; grid-template-rows: 76px auto; gap: 6px; }
-  .monitor-port-art { height: 76px; }
+  .monitor-port-tile { max-width: 87px; grid-template-rows: 57px auto; gap: 6px; }
+  .monitor-port-art { height: 57px; }
   .monitor-port-chip { font-size: 13px; gap: 4px; }
   .monitor-grade-section-head { display: grid; gap: 4px; align-items: start; }
   .monitor-grade-button { min-height: 0; padding: 12px; }
@@ -1184,6 +1189,24 @@ html[data-theme="dark"] .monitor-manual-port-option {
 
 html[data-theme="dark"] .monitor-manual-port-option > span {
   color: var(--dark-text);
+}
+
+html[data-theme="dark"] .monitor-manual-port-count-button {
+  background: #101014;
+  border-color: var(--dark-line);
+  color: var(--dark-text);
+}
+
+html[data-theme="dark"] .monitor-manual-port-count-button:hover,
+html[data-theme="dark"] .monitor-manual-port-count-button:focus-visible {
+  background: #17171B;
+  border-color: var(--remarkt-red);
+}
+
+html[data-theme="dark"] .monitor-manual-port-count-button.active {
+  background: var(--remarkt-red);
+  border-color: var(--remarkt-red);
+  color: #fff;
 }
 
 html[data-theme="dark"] .form-input::placeholder,

@@ -738,16 +738,32 @@ function getMonitorManualModelSuggestions(brand = '', series = '', query = '', l
 }
 
 function findMonitorManualDatabaseMatch(brand = '', series = '', modelNumber = '') {
-  const cleanModel = buildMonitorDeviceName(brand, series, modelNumber) || sanitizeExternalText(modelNumber, 180);
-  if (!cleanModel || !MONITOR_PORT_DATABASE.length) return null;
+  if (!MONITOR_PORT_DATABASE.length) return null;
+  if (!sanitizeExternalText(series, 80) && !sanitizeExternalText(modelNumber, 180)) return null;
   const brandKey = normalizeMonitorBrandKey(brand);
-  const lookupKey = normalizeMonitorLookupKey(cleanModel);
-  const candidates = MONITOR_PORT_DATABASE.filter(entry => {
-    if (brandKey && !monitorPortDatabaseBrandAllowed(entry, brandKey)) return false;
-    return entry.lookupKey === lookupKey || entry.model.toLowerCase() === cleanModel.toLowerCase();
-  });
-  if (candidates.length === 1) return candidates[0];
-  return selectBestMonitorPortDatabaseEntry(candidates, [lookupKey], getMonitorLookupTokens(cleanModel), brandKey);
+  const cleanValues = Array.from(new Set([
+    buildMonitorDeviceName(brand, series, modelNumber),
+    `${brand || ''} ${modelNumber || ''}`.trim(),
+    `${series || ''} ${modelNumber || ''}`.trim(),
+    modelNumber,
+  ].map(value => sanitizeExternalText(value, 180)).filter(Boolean)));
+  if (!cleanValues.length) return null;
+
+  const candidateKeys = Array.from(new Set(cleanValues.map(normalizeMonitorLookupKey).filter(Boolean)));
+  const candidateTokens = getMonitorLookupTokens(cleanValues.join(' '));
+  const directCandidates = [];
+  candidateKeys.forEach(key => directCandidates.push(...(MONITOR_PORT_DATABASE_INDEX.get(`key:${key}`) || [])));
+  candidateTokens.forEach(token => directCandidates.push(...(MONITOR_PORT_DATABASE_INDEX.get(`token:${token}`) || [])));
+
+  const directMatch = selectBestMonitorPortDatabaseEntry(directCandidates, candidateKeys, candidateTokens, brandKey);
+  if (directMatch) return directMatch;
+
+  const fallbackCandidates = MONITOR_PORT_DATABASE.filter(entry => candidateKeys.some(key => (
+    key.length >= 5 && entry.lookupKey.includes(key)
+  ) || (
+    entry.lookupKey.length >= 5 && key.includes(entry.lookupKey)
+  )));
+  return selectBestMonitorPortDatabaseEntry(fallbackCandidates, candidateKeys, candidateTokens, brandKey);
 }
 
 function normalizeMonitorVideoInputs(value) {

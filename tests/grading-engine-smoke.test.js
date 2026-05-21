@@ -918,9 +918,9 @@ test('monitor grade info opent uitleg zonder label te printen', async () => {
   assert.match(app.__appElement.innerHTML, /monitor-grade-video-banner/);
   assert.match(app.__appElement.innerHTML, /monitor-port-art/);
   assert.doesNotMatch(app.__appElement.innerHTML, /monitor-grade-info[^>]*title=/);
-  assert.match(app.__appElement.innerHTML, /monitor-port-hdmi-cutout-ai\.png/);
-  assert.match(app.__appElement.innerHTML, /monitor-port-dp-cutout-ai\.png/);
-  assert.match(app.__appElement.innerHTML, /monitor-port-vga-cutout-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-hdmi-clean-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-dp-clean-ai\.png/);
+  assert.match(app.__appElement.innerHTML, /monitor-port-vga-clean-ai\.png/);
   assert.match(app.__appElement.innerHTML, /monitor-port-count[^>]*>1x</);
   assert.doesNotMatch(app.__appElement.innerHTML, /<strong>HDMI \/ DisplayPort \/ VGA<\/strong>/);
 });
@@ -952,11 +952,15 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
       mm_resolution: { value: '1920x1080' },
       mm_herkomst: { value: 'losse voorraad' }
     }[id] || null);
-    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count]:checked'
+    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count-select]'
       ? [
-          { value: '2', dataset: { monitorVideoPortCount: 'HDMI' } },
-          { value: '1', dataset: { monitorVideoPortCount: 'DisplayPort' } },
-          { value: '1', dataset: { monitorVideoPortCount: 'VGA' } },
+          { value: '2', dataset: { monitorVideoPort: 'HDMI' } },
+          { value: '1', dataset: { monitorVideoPort: 'DisplayPort' } },
+          { value: '0', dataset: { monitorVideoPort: 'Mini DisplayPort' } },
+          { value: '0', dataset: { monitorVideoPort: 'DVI' } },
+          { value: '1', dataset: { monitorVideoPort: 'VGA' } },
+          { value: '0', dataset: { monitorVideoPort: 'USB-C' } },
+          { value: '0', dataset: { monitorVideoPort: 'Thunderbolt' } },
         ]
       : [];
     globalThis.monitorPrintCalls = [];
@@ -978,11 +982,12 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   assert.match(app.__appElement.innerHTML, /list="monitorManualModelSuggestions"/);
   assert.match(app.__appElement.innerHTML, /Modelnummer \*/);
   assert.match(app.__appElement.innerHTML, /Labelnaam/);
-  assert.match(app.__appElement.innerHTML, /data-monitor-video-port-select/);
-  assert.match(app.__appElement.innerHTML, /Aansluiting 1/);
-  assert.match(app.__appElement.innerHTML, /Aansluiting 2/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Aansluiting 3/);
-  assert.match(app.__appElement.innerHTML, />2x<\/option>/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-video-port="HDMI"/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-video-port="DisplayPort"/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-video-port="Thunderbolt"/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-video-port-count-button/);
+  assert.match(app.__appElement.innerHTML, />0x<\/button>/);
+  assert.match(app.__appElement.innerHTML, />2x<\/button>/);
 
   await app.handleAction('monitor_manual_submit', { dataset: {} });
 
@@ -1027,11 +1032,41 @@ test('monitor handmatige invoer gebruikt database autocomplete en vult specs aut
   assert.equal(vm.runInContext("getMonitorManualBrandSuggestions('D').join('|')", app), 'Dell');
   assert.equal(vm.runInContext("getMonitorManualModelSuggestions('Dell', '', '2422').join('|')", app), 'P2422H');
   assert.equal(vm.runInContext("findMonitorManualDatabaseMatch('Dell', '', 'P2422H').resolution", app), '1920x1080');
+  assert.equal(vm.runInContext("getMonitorManualBrandSuggestions('H').includes('HP')", app), true);
+  assert.equal(vm.runInContext("findMonitorManualDatabaseMatch('HP', '', 'E24 G4').displaySize", app), '24');
+  assert.equal(vm.runInContext("findMonitorManualDatabaseMatch('HP', '', 'E24 G4').videoInputs", app), '2x HDMI / USB-C');
   assert.equal(vm.runInContext("splitMonitorModelParts('HP EliteDisplay E243i', 'HP').series", app), 'EliteDisplay');
   assert.equal(vm.runInContext("splitMonitorModelParts('HP EliteDisplay E243i', 'HP').modelNumber", app), 'E243i');
   assert.equal(vm.runInContext("buildMonitorDeviceName('HP', 'EliteDisplay', 'E243i')", app), 'HP EliteDisplay E243i');
-  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').length", app), 2);
-  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').map(item => item.port).join(' / ')", app), 'HDMI / DisplayPort');
+  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').length", app), 7);
+  assert.equal(vm.runInContext("getMonitorManualPortSelections('HDMI / DisplayPort / VGA').filter(item => item.count > 0).map(item => item.port).join(' / ')", app), 'HDMI / DisplayPort / VGA');
+  assert.equal(vm.runInContext(`
+    const fields = {
+      app: __appElement,
+      mm_merk: { value: 'HP', dataset: {} },
+      mm_series: { value: '', dataset: {} },
+      mm_model: { value: 'LA2306x', dataset: {} },
+      mm_resolution: { value: '', dataset: {} },
+      mm_display: { value: '', dataset: {} },
+      mm_device_preview: { value: '', dataset: {} },
+    };
+    STATE.currentScreen = 'monitor_manual';
+    document.getElementById = id => fields[id] || null;
+    document.querySelectorAll = () => [];
+    MONITOR_PORT_DATABASE.push(normalizeMonitorPortDatabaseEntry({
+      model: 'HP Compaq LA2306x',
+      displaySize: '23',
+      resolution: '1920x1080',
+      videoInputs: 'DVI / VGA'
+    }));
+    rebuildMonitorPortDatabaseIndex();
+    syncMonitorManualDatabaseAssist();
+    const filled = fields.mm_series.value + '|' + fields.mm_display.value + '|' + fields.mm_resolution.value;
+    fields.mm_merk.value = 'Acer';
+    fields.mm_model.value = 'ZZZ999';
+    syncMonitorManualDatabaseAssist();
+    filled + ' -> ' + fields.mm_series.value + '|' + fields.mm_display.value + '|' + fields.mm_resolution.value;
+  `, app), 'Compaq|23"|1920x1080 -> ||');
 });
 
 test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezelfde barcode', async () => {
@@ -1083,11 +1118,11 @@ test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezel
       mm_resolution: { value: '1920x1080' },
       mm_herkomst: { value: 'gecorrigeerde leveranciersregel' }
     }[id] || null);
-    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count]:checked'
+    document.querySelectorAll = selector => selector === '[data-monitor-video-port-count-select]'
       ? [
-          { value: '1', dataset: { monitorVideoPortCount: 'DisplayPort' } },
-          { value: '1', dataset: { monitorVideoPortCount: 'DVI' } },
-          { value: '1', dataset: { monitorVideoPortCount: 'HDMI' } },
+          { value: '1', dataset: { monitorVideoPort: 'DisplayPort' } },
+          { value: '1', dataset: { monitorVideoPort: 'DVI' } },
+          { value: '1', dataset: { monitorVideoPort: 'HDMI' } },
         ]
       : [];
     globalThis.monitorPrintCalls = [];
@@ -1498,7 +1533,9 @@ test('keuze-afbeeldingen zijn gecentreerd voor tabletweergave', () => {
   assert.match(css, /\.monitor-grade-button\.grade-D \{[^}]*--grade-text: #fff/s);
   assert.match(css, /\.monitor-manual-port-picker \{/);
   assert.match(css, /\.monitor-manual-port-picker \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/s);
-  assert.match(css, /\.monitor-manual-port-row \{[^}]*grid-template-columns: minmax\(0, 1fr\) 78px/s);
+  assert.match(css, /\.monitor-manual-port-row \{[^}]*grid-template-columns: minmax\(0, 1fr\)/s);
+  assert.match(css, /\.monitor-manual-port-buttons \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/s);
+  assert.match(css, /\.monitor-manual-port-count-button\.active \{[^}]*background: var\(--remarkt-red\)/s);
   assert.match(css, /\.modal \{[^}]*max-height: calc\(100dvh - 40px\)/s);
   assert.match(css, /touch-action: manipulation/);
 });
