@@ -182,7 +182,7 @@ const GRADING_IMPACTS = {
   lcd: { A: 'a-plus', B: 'b', C: 'c', D: 'x' },
   keyboard: { A: 'a-plus', B: 'a', C: 'b', D: 'x' },
   touchpad: { A: 'a-plus', B: 'a-minus', C: 'c-plus', D: 'x' },
-  scharnieren: { A: 'a-plus', B: 'a-minus', C: 'c-plus', D: 'c' },
+  scharnieren: { A: 'a-plus', B: 'a-minus', C: 'c-plus', D: 'x' },
 };
 
 const IMPACT_PROFILES = {
@@ -190,6 +190,7 @@ const IMPACT_PROFILES = {
   a: { label: 'A', points: 1, minGrade: 'A' },
   'a-minus': { label: 'A-', points: 2, minGrade: 'A' },
   b: { label: 'B', points: 8, minGrade: 'B' },
+  'b-minus': { label: 'B-', points: 22, minGrade: 'B' },
   'c-plus': { label: 'C+', points: 18, minGrade: 'B' },
   'c-minus': { label: 'C-', points: 30, minGrade: 'C' },
   c: { label: 'C', points: 30, minGrade: 'C' },
@@ -197,6 +198,81 @@ const IMPACT_PROFILES = {
 };
 
 const CHOICE_DECISIONS = {
+  bovenkap: {
+    B: {
+      title: 'Bovenkap B Detail',
+      text: 'Kies de situatie die het beste past bij de bovenkap.',
+      options: [
+        { label: 'Minimale gebruikssporen', detail: 'Kleine krassen of lichte gebruikssporen', impact: 'a-minus', image: 'assets/dell-grading-fast/bovenkap-minimale-krassen-dell-ai.jpg' },
+        { label: 'Meerdere krassen', detail: 'Meerdere kleinere of diepere gebruikssporen', impact: 'b', image: 'assets/dell-grading-fast/bovenkap-meerdere-krassen-dell-ai.jpg' },
+        { label: 'Lichte lakschade', detail: 'Lichte lakschade aanwezig', impact: 'b', image: 'assets/dell-grading-fast/bovenkap-lichte-lakschade-dell-ai.jpg' },
+      ],
+    },
+    C: {
+      title: 'Bovenkap C Detail',
+      text: 'Kies de situatie die het beste past bij de bovenkap.',
+      options: [
+        { label: 'Grote diepe krassen', detail: 'Duidelijke diepe krassen zonder zware lakschade', impact: 'b-minus', image: 'assets/dell-grading-fast/bovenkap-grote-diepe-krassen-dell-ai.jpg' },
+        { label: 'Hevige lakschade', detail: 'Veel of zware lakschade', impact: 'c', image: 'assets/dell-grading-fast/bovenkap-hevige-lakschade-dell-ai.jpg' },
+        { label: 'Deuken + diepe krassen', detail: 'Deuken gecombineerd met diepe krassen', impact: 'c', image: 'assets/dell-grading-fast/bovenkap-deuken-diepe-krassen-dell-ai.jpg' },
+      ],
+    },
+    D: {
+      title: 'Bovenkap X Reden',
+      text: 'Kies waarom de bovenkap als X wordt beoordeeld.',
+      options: [
+        { label: 'Bovenkap gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Bovenkap gebroken' },
+        { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand aanwezig', impact: 'x', repairIssue: 'Bovenkap scherpe rand' },
+        { label: 'Sluit niet goed', detail: 'Bovenkap is verbogen of sluit niet normaal', impact: 'x', repairIssue: 'Bovenkap sluit niet goed' },
+      ],
+    },
+  },
+  randen: {
+    C: {
+      title: 'Zijkant C Detail',
+      text: 'Kies de situatie die het beste past bij de zijkant.',
+      options: [
+        { label: 'Open/verbogen herstelbaar', detail: 'Ijzer of rand staat open, maar kan rechtgemaakt worden', impact: 'a', repairIssue: 'Zijkant open/verbogen rechtmaken', image: 'assets/dell-grading-fast/randen-open-verbogen-herstelbaar-dell-ai.jpg' },
+        { label: 'Open/te zwaar verbogen', detail: 'Zijkant staat open en is te zwaar verbogen om netjes te herstellen', impact: 'c', image: 'assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg' },
+      ],
+    },
+    D: {
+      title: 'Zijkant X Reden',
+      text: 'Kies waarom de zijkant of hoek als X wordt beoordeeld.',
+      options: [
+        { label: 'Zijkant gebroken', detail: 'Hoek of zijkant is gebroken', impact: 'x', repairIssue: 'Zijkant gebroken' },
+        { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand aanwezig', impact: 'x', repairIssue: 'Zijkant scherpe rand' },
+        { label: 'Niet herstelbaar verbogen', detail: 'Zijkant staat open of scheef en is niet netjes te herstellen', impact: 'x', repairIssue: 'Zijkant niet herstelbaar verbogen' },
+      ],
+    },
+  },
+  bezel: {
+    B: {
+      title: 'Schermrand B Detail',
+      text: 'Kies de situatie die het beste past bij de schermrand.',
+      options: [
+        { label: 'Verkleuring rand', detail: 'Verkleuring van de schermrand', impact: 'a-minus', image: 'assets/dell-grading-fast/bezel-verkleuring-rand-dell-ai.jpg' },
+        { label: 'Haarscheurtje bezelrand', detail: 'Klein haarscheurtje in de bezelrand', impact: 'b-minus', image: 'assets/dell-grading-fast/bezel-haarscheurtje-b-dell-ai.jpg' },
+      ],
+    },
+    C: {
+      title: 'Schermrand C Detail',
+      text: 'Kies de situatie die het beste past bij de schermrand.',
+      options: [
+        { label: 'Haarscheurtje bezelrand', detail: 'Klein haarscheurtje in de bezelrand', impact: 'b-minus', image: 'assets/dell-grading-fast/bezel-haarscheurtje-c-dell-ai.jpg' },
+        { label: 'Cracks / zwaar gebroken', detail: 'Duidelijke barsten of zwaar gebroken bezelrand', impact: 'c', image: 'assets/dell-grading-fast/bezel-zwaar-gebroken-dell-ai.jpg' },
+      ],
+    },
+    D: {
+      title: 'Schermrand X Reden',
+      text: 'Kies waarom de schermrand als X wordt beoordeeld.',
+      options: [
+        { label: 'Schermrand gebroken', detail: 'Bezel is zwaar gebroken of mist stukken', impact: 'x', repairIssue: 'Schermrand gebroken' },
+        { label: 'Schermrand los', detail: 'Bezel zit los of klikt niet meer vast', impact: 'x', repairIssue: 'Schermrand los' },
+        { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand rond het scherm', impact: 'x', repairIssue: 'Schermrand scherpe rand' },
+      ],
+    },
+  },
   lcd: {
     B: {
       title: 'LCD B Detail',
@@ -216,24 +292,82 @@ const CHOICE_DECISIONS = {
         { label: 'Mixed C', detail: 'Key marks and whitespot are clearly visible', impact: 'c', image: 'assets/dell-grading-fast/lcd-mixed-c.jpg' },
       ],
     },
+    D: {
+      title: 'LCD X Reden',
+      text: 'Kies waarom het LCD als X wordt beoordeeld.',
+      options: [
+        { label: 'Pixel line', detail: 'Horizontale of verticale lijn in het beeld', impact: 'x', repairIssue: 'LCD pixel line' },
+        { label: 'Cracked screen', detail: 'Scherm of glas is gebarsten', impact: 'x', repairIssue: 'LCD cracked screen' },
+        { label: 'Dead pixels', detail: 'Dode pixels zichtbaar in het beeld', impact: 'x', repairIssue: 'LCD dead pixels' },
+        { label: 'Schermflikkering', detail: 'Beeld flikkert of valt weg', impact: 'x', repairIssue: 'LCD schermflikkering' },
+        { label: 'Geen beeld', detail: 'LCD geeft geen beeld', impact: 'x', repairIssue: 'LCD geen beeld' },
+      ],
+    },
   },
   onderkant: {
     C: {
       title: 'Bottom Cover C Detail',
-      text: 'Choose the closest match: heavy wear without cracks, or real cracks/breaks.',
+      text: 'Choose the closest match: heavy wear, cracks or breaks.',
       options: [
-        { label: 'Heavy wear', detail: 'No cracks or breaks; counts as B impact', impact: 'b', image: 'assets/dell-grading-fast/onderkant-gebruikssporen.jpg' },
-        { label: 'Cracked / broken', detail: 'Crack, break or missing corner; counts as C', impact: 'c', image: 'assets/dell-grading-fast/onderkant-barsten-breuken.jpg' },
+        { label: 'Heavy wear', detail: 'No cracks or breaks', impact: 'b', image: 'assets/dell-grading-fast/onderkant-gebruikssporen.jpg' },
+        { label: 'Cracked / broken', detail: 'Crack, break or missing corner', impact: 'c', image: 'assets/dell-grading-fast/onderkant-barsten-breuken.jpg' },
+      ],
+    },
+    D: {
+      title: 'Onderkant X Reden',
+      text: 'Kies waarom de onderkant als X wordt beoordeeld.',
+      options: [
+        { label: 'Onderkant gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Onderkant gebroken' },
+        { label: 'Onderdeel ontbreekt', detail: 'Rubber, klep of behuizingsdeel ontbreekt ernstig', impact: 'x', repairIssue: 'Onderkant onderdeel ontbreekt' },
+        { label: 'Veiligheidsrisico', detail: 'Scherpe rand of open behuizing', impact: 'x', repairIssue: 'Onderkant veiligheidsrisico' },
       ],
     },
   },
   keyboard: {
     D: {
       title: 'Keyboard X Detail',
-      text: 'Choose the closest match: missing keys, or full keyboard missing/faulty.',
+      text: 'Kies eerst welke situatie het beste past bij het keyboard.',
       options: [
-        { label: 'Keys Missing', detail: 'One or more keys missing, but keyboard is not fully faulty', impact: 'c-minus', image: 'assets/dell-grading-fast/keyboard-many-missing-keys-ai.jpg' },
-        { label: 'Keyboard Missing / Faulty', detail: 'Keyboard is missing or does not work', impact: 'x', image: 'assets/dell-grading-fast/keyboard-defect.jpg' },
+        {
+          label: 'Toetsen ontbreken',
+          detail: 'Een of meerdere toetsen ontbreken',
+          impact: 'x',
+          image: 'assets/dell-grading-fast/keyboard-many-missing-keys-ai.jpg',
+          nextDecision: {
+            title: 'Toetsenbord X Reden',
+            text: 'Kies de exacte reden voor het reparatielabel.',
+            options: [
+              { label: 'Missing key', detail: 'Een toets ontbreekt', impact: 'x', repairIssue: 'Missing key' },
+              { label: 'Meerdere toetsen ontbreken', detail: 'Meerdere toetsen ontbreken', impact: 'x', repairIssue: 'Meerdere toetsen ontbreken' },
+            ],
+          },
+        },
+        {
+          label: 'Keyboard ontbreekt / defect',
+          detail: 'Keyboard mist volledig of werkt niet betrouwbaar',
+          impact: 'x',
+          image: 'assets/dell-grading-fast/keyboard-defect.jpg',
+          nextDecision: {
+            title: 'Toetsenbord X Reden',
+            text: 'Kies de exacte reden voor het reparatielabel.',
+            options: [
+              { label: 'Toets werkt niet', detail: 'Een of meerdere toetsen reageren niet', impact: 'x', repairIssue: 'Toets werkt niet' },
+              { label: 'Keyboard defect', detail: 'Keyboard werkt niet betrouwbaar', impact: 'x', repairIssue: 'Keyboard defect' },
+              { label: 'Keyboard ontbreekt', detail: 'Keyboard mist volledig of is niet bruikbaar', impact: 'x', repairIssue: 'Keyboard ontbreekt' },
+            ],
+          },
+        },
+      ],
+    },
+  },
+  palmrest: {
+    D: {
+      title: 'Palmrest X Reden',
+      text: 'Kies waarom de palmrest als X wordt beoordeeld.',
+      options: [
+        { label: 'Palmrest gebroken', detail: 'Palmrest heeft een breuk of structurele schade', impact: 'x', repairIssue: 'Palmrest gebroken' },
+        { label: 'Hoek ontbreekt', detail: 'Grote hoek of stuk van de palmrest ontbreekt', impact: 'x', repairIssue: 'Palmrest hoek ontbreekt' },
+        { label: 'Veiligheidsrisico', detail: 'Scherpe rand of open behuizing rond de palmrest', impact: 'x', repairIssue: 'Palmrest veiligheidsrisico' },
       ],
     },
   },
@@ -242,18 +376,42 @@ const CHOICE_DECISIONS = {
       title: 'Touchpad C Detail',
       text: 'Choose the closest match: heavy wear or cracks/breaks.',
       options: [
-        { label: 'Heavy wear', detail: 'Visible use but no crack or break; counts as B impact', impact: 'b', image: 'assets/dell-grading-fast/touchpad-gebruikssporen.jpg' },
-        { label: 'Touchpad Cracked', detail: 'Crack in the touchpad; counts as C', impact: 'c', image: 'assets/dell-grading-fast/touchpad-cracked-ai.jpg' },
+        { label: 'Heavy wear', detail: 'Visible use but no crack or break', impact: 'b', image: 'assets/dell-grading-fast/touchpad-gebruikssporen.jpg' },
+        { label: 'Touchpad Cracked', detail: 'Crack in the touchpad', impact: 'c', image: 'assets/dell-grading-fast/touchpad-cracked-ai.jpg' },
+      ],
+    },
+    D: {
+      title: 'Touchpad X Reden',
+      text: 'Kies waarom de touchpad als X wordt beoordeeld.',
+      options: [
+        { label: 'Touchpad werkt niet', detail: 'Touchpad reageert niet of niet betrouwbaar', impact: 'x', repairIssue: 'Touchpad werkt niet' },
+        { label: 'Touchpad ontbreekt', detail: 'Touchpad of knop ontbreekt', impact: 'x', repairIssue: 'Touchpad ontbreekt' },
+        { label: 'Touchpad gebarsten', detail: 'Touchpad is gebarsten of gebroken', impact: 'x', repairIssue: 'Touchpad gebarsten' },
       ],
     },
   },
   scharnieren: {
     D: {
-      title: 'Hinge X Detail',
-      text: 'Choose whether the hinge still works, or is loose/faulty.',
+      title: 'Scharnier X Detail',
+      text: 'Kies eerst of het scharnier nog werkt of echt defect is.',
       options: [
-        { label: 'Functional', detail: 'Hinge works; only cover/corner damage. Counts as C', impact: 'c', image: 'assets/dell-grading-fast/scharnier-functioneel.jpg' },
-        { label: 'Not Functional', detail: 'Hinge is loose or disconnected. Counts as X', impact: 'x', image: 'assets/dell-grading-fast/scharnier-loshangend-ai.jpg' },
+        { label: 'Functioneel', detail: 'Scharnier werkt nog; alleen kap- of hoekschade', impact: 'c', image: 'assets/dell-grading-fast/scharnier-functioneel.jpg' },
+        {
+          label: 'Niet functioneel',
+          detail: 'Scharnier zit los of werkt niet normaal',
+          impact: 'x',
+          image: 'assets/dell-grading-fast/scharnier-loshangend-ai.jpg',
+          nextDecision: {
+            title: 'Scharnier X Reden',
+            text: 'Kies de exacte reden voor het reparatielabel.',
+            options: [
+              { label: 'Scharnier werkt niet', detail: 'Scharnier opent of sluit niet normaal', impact: 'x', repairIssue: 'Scharnier werkt niet' },
+              { label: 'Scharnier los', detail: 'Scharnier zit los of is deels losgekomen', impact: 'x', repairIssue: 'Scharnier los' },
+              { label: 'Behuizing verbogen', detail: 'Behuizing is verbogen bij het scharnier', impact: 'x', repairIssue: 'Scharnier behuizing verbogen' },
+              { label: 'Veiligheidsrisico', detail: 'Scharnier of behuizing vormt een veiligheidsrisico', impact: 'x', repairIssue: 'Scharnier veiligheidsrisico' },
+            ],
+          },
+        },
       ],
     },
   },

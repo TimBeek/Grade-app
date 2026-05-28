@@ -4,6 +4,9 @@ import path from "node:path";
 
 const root = process.cwd();
 const port = Number(process.env.PORT || 8080);
+const appShellFile = fs.existsSync(path.join(root, "index.html"))
+  ? "index.html"
+  : "remarkt-grading-app.html";
 const dataDir = path.join(root, "data");
 const demoStatePath = path.join(dataDir, "remarkt-demo-state.json");
 const backupDir = path.join(dataDir, "backups");
@@ -365,8 +368,12 @@ http
         return;
       }
 
-      if (requestedPath === "/") {
-        requestedPath = "/remarkt-grading-app.html";
+      if (
+        requestedPath === "/" ||
+        requestedPath === "/remarkt-grading-app" ||
+        requestedPath === "/remarkt-grading-app.html"
+      ) {
+        requestedPath = `/${appShellFile}`;
       }
 
       const filePath = path.normalize(path.join(root, requestedPath));

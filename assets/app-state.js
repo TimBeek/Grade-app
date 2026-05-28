@@ -33,6 +33,7 @@ const STATE = {
   importResult: null,
   importProgress: null,
   pendingDecision: null,
+  supplierNotice: null,
   imagePreview: null,
   theme: 'light',
 };
@@ -171,15 +172,15 @@ const VISUAL_ASSETS = {
 };
 
 const SUPPLIER_ISSUE_MAP = [
-  { component: 'lcd', terms: ['scherm', 'display', 'glas', 'pixel', 'white spot', 'whitespot', 'backlight'] },
-  { component: 'bovenkap', terms: ['bovenkap', 'lid cover', 'deksel'] },
-  { component: 'randen', terms: ['hoek', 'hoeken', 'rand', 'deuk hoek'] },
-  { component: 'onderkant', terms: ['rubber', 'rubbers', 'voet', 'voetjes', 'onderkant', 'bottom'] },
-  { component: 'palmrest', terms: ['palmrest', 'polssteun', 'behuizing'] },
+  { component: 'lcd', terms: ['scherm', 'screen', 'display', 'lcd', 'glas', 'glass', 'pixel', 'white spot', 'whitespot', 'backlight', 'pressure'] },
+  { component: 'bovenkap', terms: ['bovenkap', 'lid cover', 'deksel', 'top cover'] },
+  { component: 'randen', terms: ['hoek', 'hoeken', 'corner', 'corners', 'rand', 'edge', 'edges', 'deuk hoek', 'dent'] },
+  { component: 'onderkant', terms: ['rubber', 'rubbers', 'rubber feet', 'voet', 'voetjes', 'onderkant', 'bottom'] },
+  { component: 'palmrest', terms: ['palmrest', 'polssteun', 'behuizing', 'case', 'casing', 'housing'] },
   { component: 'touchpad', terms: ['touchpad'] },
-  { component: 'keyboard', terms: ['keyboard', 'toets', 'toetsenbord'] },
-  { component: 'scharnieren', terms: ['scharnier', 'scharnieren'] },
-  { component: 'stickers', terms: ['sticker', 'stickers', 'lijm'] }
+  { component: 'keyboard', terms: ['keyboard', 'toets', 'toetsenbord', 'key', 'keys'] },
+  { component: 'scharnieren', terms: ['scharnier', 'scharnieren', 'hinge', 'hinges'] },
+  { component: 'stickers', terms: ['sticker', 'stickers', 'lijm', 'glue', 'safety marking', 'safety markings'] }
 ];
 
 function splitSupplierIssues(laptop) {
@@ -199,6 +200,39 @@ function getSupplierIssues(componentId, laptop = STATE.currentLaptop) {
     const text = issue.toLowerCase();
     return rule.terms.some(term => text.includes(term));
   });
+}
+
+function isSupplierPopupIssue(issue, componentId) {
+  const text = String(issue || '').toLowerCase();
+  if (!text) return false;
+
+  if (componentId === 'lcd') {
+    return /(scratch|scratches|kras|krassen|wear mark|pressure|drukplek|pixel|line|lijn|flicker|flikker|white\s*spot|whitespot|backlight|crack|cracked|barst|broken|defect|faulty)/i.test(text);
+  }
+
+  if (componentId === 'keyboard') {
+    return /(missing\s*key|key\(s\)|key missing|toets.*ontbreekt|toets.*kapot|key.*not working|faulty|defect|broken)/i.test(text);
+  }
+
+  if (componentId === 'touchpad') {
+    return /(not working|werkt niet|faulty|defect|missing|crack|cracked|barst|broken|kapot)/i.test(text);
+  }
+
+  if (componentId === 'scharnieren') {
+    return /(loose|not functional|werkt niet|faulty|defect|broken|kapot|bent|verbuig)/i.test(text);
+  }
+
+  return /(sharp|dangerous|veiligheidsrisico|not functional|faulty|defect|broken|crack|cracked|barst|kapot)/i.test(text);
+}
+
+function getSupplierPopupIssues(componentId, laptop = STATE.currentLaptop) {
+  return getSupplierIssues(componentId, laptop)
+    .filter(issue => isSupplierPopupIssue(issue, componentId));
+}
+
+function getSupplierInlineIssues(componentId, laptop = STATE.currentLaptop) {
+  return getSupplierIssues(componentId, laptop)
+    .filter(issue => !isSupplierPopupIssue(issue, componentId));
 }
 
 function isTouchscreenLaptop(laptop = STATE.currentLaptop) {
@@ -300,6 +334,32 @@ function getOpenLaptops() {
 
 function getStickerOpenLaptops() {
   return getAllLaptops().filter(laptop => !isLaptopGraded(laptop.sticker) && !isLaptopLabelPrinted(laptop.sticker));
+}
+
+function getCompletedLaptops() {
+  return getAllLaptops().filter(laptop => isLaptopGraded(laptop.sticker) || isLaptopLabelPrinted(laptop.sticker));
+}
+
+function getLatestHistoryForSticker(sticker) {
+  const canonical = getCanonicalSticker(sticker);
+  const normalized = normalizeStickerCode(canonical || sticker);
+  for (let index = STATE.history.length - 1; index >= 0; index--) {
+    const item = STATE.history[index];
+    const itemSticker = String(item && item.sticker || '');
+    if (itemSticker === canonical || normalizeStickerCode(itemSticker) === normalized) return item;
+  }
+  return null;
+}
+
+function getLatestLabelPrintForSticker(sticker) {
+  const canonical = getCanonicalSticker(sticker);
+  const normalized = normalizeStickerCode(canonical || sticker);
+  for (let index = STATE.labelPrints.length - 1; index >= 0; index--) {
+    const item = STATE.labelPrints[index];
+    const itemSticker = String(item && item.sticker || '');
+    if (itemSticker === canonical || normalizeStickerCode(itemSticker) === normalized) return item;
+  }
+  return null;
 }
 
 function laptopMatchesScanQuery(laptop, query) {

@@ -46,6 +46,10 @@ function cleanGpu(value) {
     .trim();
 }
 
+function isImportYes(value) {
+  return /^(ja|yes|true|1|y)$/i.test(normalizeText(value));
+}
+
 function getNoteworthyGpu(value) {
   const gpu = cleanGpu(value);
   if (!gpu) return '';
@@ -125,6 +129,26 @@ function getRowValue(row, names) {
   return '';
 }
 
+function rowHasAnyHeader(row, names) {
+  const normalizedNames = names.map(name => name.toLowerCase().trim());
+  return Object.keys(row).some(key => normalizedNames.includes(key.toLowerCase().trim()));
+}
+
+function getSupplierSheetName(sourceName) {
+  const text = String(sourceName || '');
+  const separatorIndex = text.lastIndexOf(':');
+  return separatorIndex >= 0 ? text.slice(separatorIndex + 1).trim() : '';
+}
+
+function shouldSkipSupplierSheet(sourceName) {
+  const sheetName = getSupplierSheetName(sourceName);
+  return /^(pc|desktop|desktops|validatie|validation)$/i.test(sheetName);
+}
+
+function isLaptopSupplierSheet(sourceName) {
+  return /laptop/i.test(getSupplierSheetName(sourceName));
+}
+
 function classifyImportedProduct(row) {
   const productText = getRowValue(row, ['ProductType', 'Product Type', 'Product Group', 'Productgroep', 'Category', 'Type']);
   const modelText = getRowValue(row, ['Device Name', 'Product Name', 'Omschrijving', 'Description', 'Name', 'Model', 'BIOS Model']);
@@ -133,6 +157,42 @@ function classifyImportedProduct(row) {
   if (/laptop|notebook|portable/.test(combined)) return 'laptop';
   if (/desktop|workstation|thin\s*client|mini\s*pc|tower|pc\b/.test(combined)) return 'desktop';
   return '';
+}
+
+function inferLaptopBrandFromName(deviceName, fallbackMerk = '') {
+  const fallback = sanitizeExternalText(fallbackMerk, 80);
+  if (fallback) return fallback;
+  const name = sanitizeExternalText(deviceName, 180);
+  if (/^(latitude|inspiron|vostro|precision|xps|alienware)\b/i.test(name)) return 'Dell';
+  if (/^(elitebook|probook|zbook|pavilion|envy|omen)\b/i.test(name)) return 'HP';
+  if (/^(thinkpad|thinkbook|ideapad|yoga|legion)\b/i.test(name) || /^2[0-9][A-Z]{2}$/i.test(name)) return 'Lenovo';
+  if (/^macbook\b/i.test(name)) return 'Apple';
+  if (/^surface\b/i.test(name)) return 'Microsoft';
+  const leadingBrand = (name.match(/^[A-Za-z0-9-]+/) || [''])[0];
+  return leadingBrand;
+}
+
+function formatProcessorWithGeneration(processor, generation) {
+  const cleanProcessor = normalizeText(processor);
+  const cleanGeneration = normalizeText(generation);
+  if (cleanProcessor && cleanGeneration && !cleanProcessor.toLowerCase().includes(cleanGeneration.toLowerCase())) {
+    return `${cleanProcessor} ${cleanGeneration}`;
+  }
+  return cleanProcessor || cleanGeneration;
+}
+
+function formatLaptopDisplayWithTouch(displayValue, touchscreenValue) {
+  const display = formatDisplay(displayValue);
+  if (!display) return '';
+  if (isImportYes(touchscreenValue) && !/^touch\b/i.test(display)) return `touch ${display}`;
+  return display;
+}
+
+function cleanImportedGpu(value) {
+  const text = normalizeText(value);
+  if (/^(nee|no|false|0|n)$/i.test(text)) return '';
+  if (isImportYes(text)) return 'Dedicated GPU';
+  return cleanGpu(text);
 }
 
 function extractVideoInputsFromText(text) {
@@ -216,7 +276,50 @@ function buildMonitorIdentityOptions(deviceName, accountDeviceName, merk, model)
   ]);
 }
 
+function isArontoLaptopRow(row, sourceName) {
+  if (shouldSkipSupplierSheet(sourceName)) return false;
+  if (!rowHasAnyHeader(row, ['ID']) || !rowHasAnyHeader(row, ['Naam'])) return false;
+  if (isLaptopSupplierSheet(sourceName)) return true;
+  return rowHasAnyHeader(row, ['Schermgrootte', 'Touchscreen']);
+}
+
+function importedArontoRowToLaptop(row, sourceName) {
+  if (!isArontoLaptopRow(row, sourceName)) return null;
+
+  const value = (names, maxLength = 160) => sanitizeExternalText(getRowValue(row, names), maxLength);
+  const sticker = value(['ID'], 64).replace(/[^\w.-]/g, '');
+  const deviceName = value(['Naam'], 180);
+  if (!sticker || !deviceName) return null;
+
+  const merk = inferLaptopBrandFromName(deviceName, value(['Merk', 'Manufacturer', 'Brand'], 80));
+  const gpu = cleanImportedGpu(value(['Videokaart', 'GPU', 'Graphics', 'Videokaart Model'], 180));
+  return {
+    sticker,
+    merk,
+    model: deviceName,
+    processor: formatProcessorWithGeneration(
+      value(['Processor Model', 'Processor', 'CPU'], 120),
+      value(['Processor Generatie', 'Processor Generation'], 80)
+    ),
+    ram: formatMemory(value(['Werkgeheugen', 'Memory', 'RAM', 'Geheugen'], 40)),
+    ssd: formatStorage(value(['Opslag', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80), ''),
+    display: formatLaptopDisplayWithTouch(value(['Schermgrootte', 'Display', 'Screen', 'Scherm'], 80), value(['Touchscreen', 'Touch'], 40)),
+    serial: value(['Serial Number', 'Serial', 'Serienummer', 'Service Tag'], 80),
+    leverancier_class: value(['Grade', 'Quality class', 'Quality Class', 'Class', 'Klasse'], 40),
+    meldingen: value(['Meldingen', 'Remarks', 'Remark', 'Defects', 'Problems', 'Device Errors'], 1000),
+    battery: value(['Battery Capacity', 'Battery', 'Batterij', 'Batterijcapaciteit'], 60),
+    gpu,
+    labelGpu: getNoteworthyGpu(gpu),
+    pallet: value(['Pallet Id', 'Pallet', 'Pallet ID'], 80),
+    keyboard: value(['Keyboard layout', 'Keyboard', 'Toetsenbord'], 80),
+    herkomst: sanitizeExternalText(sourceName, 180),
+  };
+}
+
 function importedRowToLaptop(row, sourceName) {
+  const arontoLaptop = importedArontoRowToLaptop(row, sourceName);
+  if (arontoLaptop) return arontoLaptop;
+
   const productType = classifyImportedProduct(row);
   if (productType && productType !== 'laptop') return null;
 
@@ -294,6 +397,7 @@ function importedRowToMonitor(row, sourceName) {
 }
 
 function parseSupplierExcel(xmlText, sourceName) {
+  if (shouldSkipSupplierSheet(sourceName)) return { laptops: [], monitors: [], totalRows: 0 };
   const rows = xmlText.trim().startsWith('<') ? readSpreadsheetRows(xmlText) : readDelimitedRows(xmlText);
   if (rows.length < 2) return { laptops: [], totalRows: 0 };
   const headers = rows[0];
@@ -313,11 +417,12 @@ async function parseSupplierExcelChunked(xmlText, sourceName, onProgress) {
 }
 
 function parseSupplierRows(rows, sourceName) {
+  if (shouldSkipSupplierSheet(sourceName)) return { laptops: [], monitors: [], totalRows: 0 };
   const cleanRows = rows
     .map(row => row.map(cell => normalizeText(cell)))
     .filter(row => row.some(Boolean));
   if (cleanRows.length < 2) return { laptops: [], monitors: [], totalRows: 0 };
-  const headerIndex = cleanRows.findIndex(row => row.some(cell => /^(sticker number|sticker|barcode|assettag|asset tag|unitid|unit id|producttype|product type|model)$/i.test(cell)));
+  const headerIndex = cleanRows.findIndex(row => row.some(cell => /^(sticker number|sticker|barcode|assettag|asset tag|unitid|unit id|producttype|product type|model|id|naam|processor model|schermgrootte|werkgeheugen)$/i.test(cell)));
   const headers = cleanRows[headerIndex >= 0 ? headerIndex : 0];
   const dataRows = cleanRows.slice((headerIndex >= 0 ? headerIndex : 0) + 1);
   const laptops = [];
@@ -367,6 +472,7 @@ async function ensureXlsxLoaded() {
 }
 
 async function parseSupplierRowsChunked(rows, sourceName, onProgress) {
+  if (shouldSkipSupplierSheet(sourceName)) return { laptops: [], monitors: [], totalRows: 0 };
   const cleanRows = [];
   const normalizeChunkSize = 300;
   const totalWork = Math.max(rows.length, 1);
@@ -382,7 +488,7 @@ async function parseSupplierRowsChunked(rows, sourceName, onProgress) {
   }
 
   if (cleanRows.length < 2) return { laptops: [], monitors: [], totalRows: 0 };
-  const headerIndex = cleanRows.findIndex(row => row.some(cell => /^(sticker number|sticker|barcode|assettag|asset tag|unitid|unit id|producttype|product type|model)$/i.test(cell)));
+  const headerIndex = cleanRows.findIndex(row => row.some(cell => /^(sticker number|sticker|barcode|assettag|asset tag|unitid|unit id|producttype|product type|model|id|naam|processor model|schermgrootte|werkgeheugen)$/i.test(cell)));
   const headers = cleanRows[headerIndex >= 0 ? headerIndex : 0];
   const dataRows = cleanRows.slice((headerIndex >= 0 ? headerIndex : 0) + 1);
   const laptops = [];
@@ -432,6 +538,39 @@ async function parseSupplierFile(file, onProgress) {
   return parseSupplierExcelChunked(text, file.name, onProgress);
 }
 
+function getImportBatchNumber(fileName) {
+  return sanitizeExternalText(String(fileName || '').replace(/\.[^.]+$/, ''), 100) || `Import ${Date.now()}`;
+}
+
+function slugifyBatchPart(value) {
+  return (sanitizeExternalText(value, 100) || 'batch')
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 70) || 'batch';
+}
+
+function createImportRunId() {
+  return new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+}
+
+function getImportedItemSignature(items) {
+  return (items || [])
+    .map(item => normalizeStickerCode(item && item.sticker))
+    .filter(Boolean)
+    .sort()
+    .join('|');
+}
+
+function createImportedBatchId(prefix, nummer, importRunId, fileIndex, existingBatches) {
+  const base = `${prefix}_${slugifyBatchPart(nummer)}_${importRunId}_${fileIndex + 1}`;
+  const existingIds = new Set((existingBatches || []).map(batch => batch && batch.id).filter(Boolean));
+  if (!existingIds.has(base)) return base;
+  let counter = 2;
+  while (existingIds.has(`${base}_${counter}`)) counter++;
+  return `${base}_${counter}`;
+}
+
 async function importSupplierFiles(files) {
   const allImported = [];
   const allImportedMonitors = [];
@@ -443,6 +582,7 @@ async function importSupplierFiles(files) {
   let totalRows = 0;
   const fileList = Array.from(files);
   const totalFiles = fileList.length;
+  const importRunId = createImportRunId();
 
   await setImportProgress({
     active: true,
@@ -511,14 +651,18 @@ async function importSupplierFiles(files) {
       title: 'Building batches',
       detail: `${allImported.length} devices ready`,
     });
-    fileList.forEach(file => {
-      const nummer = file.name.replace(/\.[^.]+$/, '');
-      const laptops = (importedByFile.get(file.name) || [])
-        .map(l => ({ ...l, batchId: `batch_${nummer}`, batchNummer: nummer }));
-      if (!laptops.length) return;
-      const existingIndex = BATCHES.findIndex(batch => batch.nummer === nummer);
+    fileList.forEach((file, fileIndex) => {
+      const nummer = getImportBatchNumber(file.name);
+      const sourceLaptops = importedByFile.get(file.name) || [];
+      if (!sourceLaptops.length) return;
+      const incomingSignature = getImportedItemSignature(sourceLaptops);
+      const existingIndex = BATCHES.findIndex(batch => batch.nummer === nummer && getImportedItemSignature(batch.laptops) === incomingSignature);
+      const batchId = existingIndex >= 0
+        ? BATCHES[existingIndex].id
+        : createImportedBatchId('batch', nummer, importRunId, fileIndex, BATCHES);
+      const laptops = sourceLaptops.map(l => ({ ...l, batchId, batchNummer: nummer }));
       const batch = {
-        id: `batch_${nummer}`,
+        id: batchId,
         nummer,
         leverancier: 'Supplier import',
         geimporteerd: new Date().toLocaleDateString('nl-NL'),
@@ -539,14 +683,18 @@ async function importSupplierFiles(files) {
       title: 'Building monitor batches',
       detail: `${allImportedMonitors.length} monitors ready`,
     });
-    fileList.forEach(file => {
-      const nummer = file.name.replace(/\.[^.]+$/, '');
-      const monitors = (monitorImportedByFile.get(file.name) || [])
-        .map(monitor => ({ ...monitor, batchId: `monitor_batch_${nummer}`, batchNummer: nummer }));
-      if (!monitors.length) return;
-      const existingIndex = MONITOR_BATCHES.findIndex(batch => batch.nummer === nummer);
+    fileList.forEach((file, fileIndex) => {
+      const nummer = getImportBatchNumber(file.name);
+      const sourceMonitors = monitorImportedByFile.get(file.name) || [];
+      if (!sourceMonitors.length) return;
+      const incomingSignature = getImportedItemSignature(sourceMonitors);
+      const existingIndex = MONITOR_BATCHES.findIndex(batch => batch.nummer === nummer && getImportedItemSignature(batch.monitors) === incomingSignature);
+      const batchId = existingIndex >= 0
+        ? MONITOR_BATCHES[existingIndex].id
+        : createImportedBatchId('monitor_batch', nummer, importRunId, fileIndex, MONITOR_BATCHES);
+      const monitors = sourceMonitors.map(monitor => ({ ...monitor, batchId, batchNummer: nummer }));
       const batch = {
-        id: `monitor_batch_${nummer}`,
+        id: batchId,
         nummer,
         leverancier: 'Monitor supplier import',
         geimporteerd: new Date().toLocaleDateString('nl-NL'),

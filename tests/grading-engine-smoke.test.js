@@ -383,6 +383,84 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
   assert.match(app.__appElement.innerHTML, /Open Full History/);
 });
 
+test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'analytics';
+    STATE.history = [{
+      sticker: 'DASH-1',
+      batchNummer: 'BI-1',
+      merk: 'Dell',
+      model: 'Latitude 5420',
+      serial: 'SN-DASH-1',
+      battery: '86%',
+      grade: 'A',
+      score: 0,
+      duurSec: 42,
+      user_id: 'tim',
+      user_naam: 'Tim',
+      leverancier_class: 'Class B',
+      result: { problems: [], detailRows: [] }
+    }, {
+      sticker: 'DASH-2',
+      batchNummer: 'BI-1',
+      merk: 'HP',
+      model: 'EliteBook 840',
+      serial: 'SN-DASH-2',
+      battery: '71%',
+      grade: 'D',
+      score: 80,
+      duurSec: 66,
+      user_id: 'tim',
+      user_naam: 'Tim',
+      leverancier_class: 'Class C',
+      result: {
+        problems: ['Pixel line'],
+        detailRows: [{ naam: 'LCD', keuze: 'X', punten: 80 }]
+      }
+    }];
+    STATE.labelPrints = [{
+      sticker: 'DASH-LABEL',
+      merk: 'Lenovo',
+      model: 'ThinkPad T14',
+      batchNummer: 'BI-2',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      printedAt: new Date().toISOString()
+    }];
+    STATE.monitorLabelPrints = [{
+      sticker: 'MON-BI-1',
+      merk: 'Dell',
+      model: 'P2422H',
+      grade: 'B',
+      videoInputs: 'HDMI / DisplayPort',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      printedAt: new Date().toISOString()
+    }];
+    rebuildHistoryIndexes();
+    rebuildLabelPrintIndexes();
+    rebuildMonitorLabelPrintIndexes();
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /analytics-pro-screen/);
+  assert.match(app.__appElement.innerHTML, /analytics-kpi-grid/);
+  assert.match(app.__appElement.innerHTML, /data-analytics-filter="dateRange"/);
+  assert.match(app.__appElement.innerHTML, /Grade distribution/);
+  assert.match(app.__appElement.innerHTML, /Throughput trend/);
+  assert.match(app.__appElement.innerHTML, /Batch completion/);
+  assert.match(app.__appElement.innerHTML, /Employee performance/);
+  assert.match(app.__appElement.innerHTML, /Repair bottlenecks/);
+  assert.match(app.__appElement.innerHTML, /Productivity heatmap/);
+  assert.match(app.__appElement.innerHTML, /Recent activity/);
+
+  vm.runInContext(`setAnalyticsFilter('brand', 'Dell');`, app);
+  assert.equal(vm.runInContext(`getAnalyticsFilters().brand`, app), 'Dell');
+});
+
 test('historie zoekt op serienummer en toont leverancier tegenover ReMarkt', () => {
   const app = loadAppSandbox();
 
@@ -561,6 +639,216 @@ test('scan-en-print herkent voorloopnullen en print reparatie-label indien nodig
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /repair label printed|Device completed/);
 });
 
+test('laptoplabel toont accuwaarde als percentage', () => {
+  const app = loadAppSandbox();
+  const rows = app.getLabelRows({
+    merk: 'HP',
+    model: 'EliteBook 840',
+    processor: 'i5',
+    ram: '16GB',
+    ssd: '512GB',
+    display: '14"',
+    battery: '0.73',
+  }, { eindgrade: 'B', problems: [] }, 'specs');
+
+  assert.match(rows[3], /Accu 73%/);
+});
+
+test('afgeronde laptop kan via dezelfde scan opnieuw worden geprint', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    const confirmCalls = [];
+    printLabelFor = async function(laptop, result, type, options) {
+      calls.push({ sticker: laptop.sticker, grade: result.eindgrade, type, hideGrade: Boolean(options && options.hideGrade) });
+      return true;
+    };
+    confirm = function(message) {
+      confirmCalls.push(message);
+      return true;
+    };
+    window.__printCalls = calls;
+    window.__confirmCalls = confirmCalls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [{
+      sticker: '8460024',
+      merk: 'HP',
+      model: 'EliteBook 645 G9',
+      grade: 'A',
+      score: 0,
+      result: { eindgrade: 'A', score: 0, problems: [] },
+      user_id: 'tim',
+      user_naam: 'Tim',
+      batchNummer: '50375'
+    }];
+    rebuildHistoryIndexes();
+  `, app);
+
+  await app.selectLaptop('8460024');
+
+  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
+  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /al gescand en gegradeerd/);
+  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /opnieuw wilt printen/);
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /reprinted/);
+});
+
+test('afgeronde laptop print niet opnieuw als bevestiging wordt geweigerd', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    const confirmCalls = [];
+    printLabelFor = async function(laptop, result, type, options) {
+      calls.push({ sticker: laptop.sticker, type });
+      return true;
+    };
+    confirm = function(message) {
+      confirmCalls.push(message);
+      return false;
+    };
+    window.__printCalls = calls;
+    window.__confirmCalls = confirmCalls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [{
+      sticker: '8460024',
+      merk: 'HP',
+      model: 'EliteBook 645 G9',
+      grade: 'A',
+      score: 0,
+      result: { eindgrade: 'A', score: 0, problems: [] },
+      user_id: 'tim',
+      user_naam: 'Tim',
+      batchNummer: '50375'
+    }];
+    rebuildHistoryIndexes();
+  `, app);
+
+  await app.selectLaptop('8460024');
+
+  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 0);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /geannuleerd/);
+});
+
+test('kleine leveranciersmelding verschijnt inline bij het passende grading-onderdeel', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: '5460898',
+      merk: 'HP',
+      model: 'EliteBook 840 G8',
+      processor: 'i5-1145G7',
+      ram: '16GB',
+      ssd: '512GB',
+      display: '14"',
+      serial: '5CG1276L4P',
+      leverancier_class: 'Class C',
+      meldingen: 'Used touchpad',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+  `, app);
+
+  await app.selectLaptop('5460898');
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+
+  vm.runInContext(`startGrading('beginner'); render();`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+
+  const touchpadIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'touchpad')`, app);
+  for (let index = 0; index < touchpadIndex; index++) {
+    await app.handleAction('next_q', { dataset: {} });
+  }
+
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+  assert.match(app.__appElement.innerHTML, /component-notice-inline/);
+  assert.match(app.__appElement.innerHTML, /Touchpad.*Used touchpad/s);
+});
+
+test('belangrijke schermmelding verschijnt pas als popup bij LCD grading', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: '5460899',
+      merk: 'HP',
+      model: 'EliteBook 840 G8',
+      processor: 'i5-1145G7',
+      ram: '16GB',
+      ssd: '512GB',
+      display: '14"',
+      serial: '5CG1276L5P',
+      leverancier_class: 'Class C',
+      meldingen: 'Dent on corner(s),Major wear mark/scratch on screen,Used case,Used touchpad',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+  `, app);
+
+  await app.selectLaptop('5460899');
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+
+  vm.runInContext(`startGrading('beginner'); render();`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+
+  const lcdIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'lcd')`, app);
+  for (let index = 0; index < lcdIndex; index++) {
+    await app.handleAction('next_q', { dataset: {} });
+  }
+
+  assert.match(app.__appElement.innerHTML, /supplier-notice-modal/);
+  assert.match(app.__appElement.innerHTML, /LCD &amp; Glass.*Major wear mark\/scratch on screen/s);
+
+  await app.handleAction('confirm_supplier_notice', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.supplierNotice', app), null);
+});
+
+test('expertmodus toont zware leveranciersmelding als popup en lichte melding inline', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: '5460900',
+      merk: 'HP',
+      model: 'EliteBook 840 G8',
+      processor: 'i5-1145G7',
+      ram: '16GB',
+      ssd: '512GB',
+      display: '14"',
+      serial: '5CG1276L6P',
+      leverancier_class: 'Class C',
+      meldingen: 'Major wear mark/scratch on screen,Used touchpad',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+  `, app);
+
+  await app.selectLaptop('5460900');
+  vm.runInContext(`startGrading('expert'); render();`, app);
+
+  assert.match(app.__appElement.innerHTML, /supplier-notice-modal/);
+  assert.match(app.__appElement.innerHTML, /LCD &amp; Glass = Major wear mark\/scratch on screen/);
+  assert.match(app.__appElement.innerHTML, /expert-supplier-inline/);
+  assert.match(app.__appElement.innerHTML, /Touchpad = Used touchpad/);
+
+  await app.handleAction('confirm_supplier_notice', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.supplierNotice', app), null);
+  assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
+  assert.match(app.__appElement.innerHTML, /Touchpad = Used touchpad/);
+});
+
 test('beheerder kan een verkeerde batch verwijderen', () => {
   const app = loadAppSandbox();
 
@@ -624,6 +912,41 @@ test('leveranciersrij wordt genormaliseerd naar laptopdata', () => {
   assert.equal(laptop.ssd, '512GB');
   assert.equal(laptop.display, 'touch 14"');
   assert.equal(laptop.labelGpu, 'NVIDIA RTX 3050');
+});
+
+test('Aronto laptoplijst wordt herkend en PC sheet wordt genegeerd', () => {
+  const app = loadAppSandbox();
+  const laptop = app.importedRowToLaptop({
+    ID: '26L-047-0014',
+    Naam: 'Latitude 5511',
+    Klasse: 'Consumer',
+    'Processor Model': 'Intel Core i5',
+    'Processor Generatie': '10e Generatie',
+    Schermgrootte: '15 inch',
+    Touchscreen: 'Nee',
+    Videokaart: 'Nee',
+    Werkgeheugen: '16GB',
+    Opslag: '256GB',
+    Grade: 'C',
+  }, '2026047 Envalior Wout import.xlsx:Laptop');
+
+  assert.equal(laptop.sticker, '26L-047-0014');
+  assert.equal(laptop.merk, 'Dell');
+  assert.equal(laptop.model, 'Latitude 5511');
+  assert.equal(laptop.processor, 'Intel Core i5 10e Generatie');
+  assert.equal(laptop.ram, '16GB');
+  assert.equal(laptop.ssd, '256GB');
+  assert.equal(laptop.display, '15"');
+  assert.equal(laptop.leverancier_class, 'C');
+
+  const parsedPcSheet = app.parseSupplierRows([
+    ['ID', 'Naam', 'Formfactor', 'Klasse', 'Processor Model', 'Processor Generatie', 'Werkgeheugen', 'Opslag', 'Grade'],
+    ['26P-047-0005', 'OptiPlex 7060', 'Desktop', 'Business', 'Core i5', '8e Generatie', '16GB', '256GB', 'A'],
+  ], '2026047 Envalior Wout import.xlsx:PC');
+
+  assert.equal(parsedPcSheet.totalRows, 0);
+  assert.equal(parsedPcSheet.laptops.length, 0);
+  assert.equal(parsedPcSheet.monitors.length, 0);
 });
 
 test('gemengde leveranciersrijen scheiden laptops en monitoren', () => {
@@ -1409,6 +1732,63 @@ test('analyse vergelijkt leverancier-grading met ReMarkt-grading per batch', () 
   assert.match(app.__appElement.innerHTML, /Export Report/);
 });
 
+test('leverancierexport bevat ook niet gescande laptops uit de batch', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [{
+      sticker: '8460024',
+      batchId: 'batch_50375',
+      batchNummer: '50375',
+      merk: 'HP',
+      model: 'EliteBook 645 G9',
+      grade: 'A',
+      score: 0,
+      leverancier_class: 'Class A',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      result: { problems: [] }
+    }];
+    rebuildHistoryIndexes();
+  `, app);
+
+  const exportRows = vm.runInContext("getSupplierComparisonExportRows('batch_50375')", app);
+  const gradedRow = exportRows.find(row => row.Barcode === '8460024');
+  const openRow = exportRows.find(row => row.Barcode === '7268073');
+
+  assert.equal(exportRows.filter(row => row.Barcode === '8460024').length, 1);
+  assert.equal(gradedRow.Status, 'Matched');
+  assert.equal(openRow.Status, 'Not scanned');
+  assert.equal(openRow['Supplier grade'], 'C');
+  assert.equal(openRow['ReMarkt grade'], '-');
+  assert.match(openRow['Supplier notes'], /Behuizingsschade/);
+});
+
+test('analyse houdt nieuwe batches apart bij gelijke zichtbare batchnaam', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.history = [
+      { sticker: 'BATCH-A-1', batchId: 'batch_50737_first', batchNummer: '50737', merk: 'Dell', model: 'Latitude', grade: 'A', score: 0, leverancier_class: 'Class B', user_id: 'tim', user_naam: 'Tim', result: { problems: [] } },
+      { sticker: 'BATCH-B-1', batchId: 'batch_50737_second', batchNummer: '50737', merk: 'HP', model: 'EliteBook', grade: 'C', score: 25, leverancier_class: 'Class B', user_id: 'tim', user_naam: 'Tim', result: { problems: [] } },
+    ];
+  `, app);
+
+  const stats = vm.runInContext('getSupplierComparisonStats(STATE.history)', app);
+  assert.equal(stats.batches.length, 2);
+  assert.equal(stats.batches.find(batch => batch.batchKey === 'batch_50737_first').improved, 1);
+  assert.equal(stats.batches.find(batch => batch.batchKey === 'batch_50737_second').downgraded, 1);
+
+  const firstExport = vm.runInContext("getSupplierComparisonExportRows('batch_50737_first')", app);
+  const secondExport = vm.runInContext("getSupplierComparisonExportRows('batch_50737_second')", app);
+  assert.equal(firstExport.length, 1);
+  assert.equal(secondExport.length, 1);
+  assert.equal(firstExport[0].Barcode, 'BATCH-A-1');
+  assert.equal(secondExport[0].Barcode, 'BATCH-B-1');
+});
+
 test('probleem-label zet X-keuze en defect-trigger als reparatie op sticker', () => {
   const app = loadAppSandbox();
   const laptop = {
@@ -1425,8 +1805,9 @@ test('probleem-label zet X-keuze en defect-trigger als reparatie op sticker', ()
   const xRows = app.getLabelRows(laptop, xResult, 'problems');
 
   assert.equal(xResult.eindgrade, 'D');
-  assert.match(xRows[1], /Repair \/ X/);
-  assert.match(xRows[2], /LCD.*Repair/i);
+  assert.equal(xRows[0], 'REPARATIE');
+  assert.doesNotMatch(xRows.join('|'), /GRADE/i);
+  assert.match(xRows[1], /Geen reparatieomschrijving/i);
 
   const triggerChoices = allChoices(app, 'A');
   const triggerResult = app.calculateGrade(triggerChoices, { touchpad_kapot: true });
@@ -1434,11 +1815,122 @@ test('probleem-label zet X-keuze en defect-trigger als reparatie op sticker', ()
   const triggerRows = app.getLabelRows(laptop, triggerResult, 'problems');
 
   assert.equal(triggerResult.eindgrade, 'D');
-  assert.match(triggerRows[1], /Repair \/ X/);
-  assert.match(triggerRows[2], /Touchpad not working/i);
+  assert.equal(triggerRows[0], 'REPARATIE');
+  assert.doesNotMatch(triggerRows.join('|'), /GRADE/i);
+  assert.match(triggerRows[1], /TP not working|Touchpad not working/i);
 });
 
-test('scharnier X opent keuzevraag in beginner en expert', () => {
+test('reparatielabel neemt missing key mee maar negeert safety marking', () => {
+  const app = loadAppSandbox();
+  const laptop = {
+    merk: 'Dell',
+    model: 'Latitude 7420',
+    sticker: 'REP-KEY',
+    meldingen: 'Safety marking',
+  };
+  const result = {
+    eindgrade: 'D',
+    problems: ['Missing key'],
+    forceProblemLabel: true,
+  };
+  const rows = app.getLabelRows(laptop, result, 'problems');
+
+  assert.equal(rows[0], 'REPARATIE');
+  assert.match(rows.join('|'), /Missing key/);
+  assert.doesNotMatch(rows.join('|'), /Safety marking/i);
+  assert.doesNotMatch(rows.join('|'), /GRADE/i);
+});
+
+test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'lcd');
+    applyComponentChoice('lcd', 'D', false);
+  `, app);
+
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /LCD X Reden/);
+  assert.match(app.__appElement.innerHTML, /Pixel line/);
+  assert.match(app.__appElement.innerHTML, /Cracked screen/);
+
+  vm.runInContext(`
+    resolvePendingDecision(0);
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.forceProblemLabel', app), true);
+  assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /LCD pixel line/);
+
+  const rows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
+  assert.equal(rows[0], 'REPARATIE');
+  assert.match(rows.join('|'), /LCD pixel line/);
+  assert.doesNotMatch(rows.join('|'), /GRADE/i);
+});
+
+test('nieuwe detailkeuzes voor schermrand bovenkap en zijkant sturen score scherper', () => {
+  const app = loadAppSandbox();
+
+  assert.equal(app.getChoiceDecision('bezel', 'B').options[0].impact, 'a-minus');
+  assert.equal(app.getChoiceDecision('bezel', 'B').options[1].impact, 'b-minus');
+  assert.equal(app.getChoiceDecision('bezel', 'C').options[0].impact, 'b-minus');
+  assert.equal(app.getChoiceDecision('bezel', 'C').options[1].impact, 'c');
+  assert.notEqual(app.getChoiceDecision('bezel', 'B').options[1].image, app.getChoiceDecision('bezel', 'C').options[0].image);
+
+  assert.equal(app.getChoiceDecision('bovenkap', 'B').options[0].impact, 'a-minus');
+  assert.equal(app.getChoiceDecision('bovenkap', 'B').options[1].impact, 'b');
+  assert.equal(app.getChoiceDecision('bovenkap', 'B').options[2].impact, 'b');
+  assert.equal(app.getChoiceDecision('bovenkap', 'C').options[0].impact, 'b-minus');
+  assert.equal(app.getChoiceDecision('bovenkap', 'C').options[1].impact, 'c');
+  assert.equal(app.getChoiceDecision('bovenkap', 'C').options[2].impact, 'c');
+
+  const repairableSide = app.getChoiceDecision('randen', 'C').options[0];
+  const nonRepairableSide = app.getChoiceDecision('randen', 'C').options[1];
+  assert.equal(repairableSide.impact, 'a');
+  assert.match(repairableSide.repairIssue, /Zijkant open\/verbogen rechtmaken/);
+  assert.match(repairableSide.image, /randen-open-verbogen-herstelbaar-dell-ai\.jpg$/);
+  assert.equal(nonRepairableSide.impact, 'c');
+  assert.match(nonRepairableSide.image, /randen-open-verbogen-niet-herstelbaar-dell-ai\.jpg$/);
+  assert.equal(vm.runInContext("IMPACT_PROFILES['b-minus'].minGrade", app), 'B');
+});
+
+test('herstelbare zijkant geeft A-impact en reparatielabel', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    printLabelFor = async function(laptop, result, type) {
+      calls.push({ type, grade: result.eindgrade, problems: result.problems.slice() });
+      return true;
+    };
+    window.__printCalls = calls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.randen = 'C';
+    STATE.currentGrading.impactOverrides.randen = 'a';
+    STATE.currentGrading.repairIssues.randen = 'Zijkant open/verbogen rechtmaken';
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /Zijkant open\/verbogen rechtmaken/);
+
+  await app.confirmSaveWithAutomaticLabels();
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 2);
+  assert.equal(vm.runInContext('window.__printCalls[1].type', app), 'problems');
+});
+
+test('scharnier X opent eerst detailmenu en daarna redenkeuze', () => {
   const app = loadAppSandbox();
 
   vm.runInContext(`
@@ -1448,11 +1940,15 @@ test('scharnier X opent keuzevraag in beginner en expert', () => {
     applyComponentChoice('scharnieren', 'D', true);
   `, app);
 
-  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Hinge X Detail/);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Scharnier X Detail/);
   assert.match(app.__appElement.innerHTML, /decision-inline/);
-  assert.match(app.__appElement.innerHTML, /Functional/);
-  assert.match(app.__appElement.innerHTML, /Not Functional/);
+  assert.match(app.__appElement.innerHTML, /Functioneel/);
+  assert.match(app.__appElement.innerHTML, /Niet functioneel/);
   assert.match(app.__appElement.innerHTML, /assets\/dell-grading-fast\/scharnier/);
+
+  vm.runInContext(`resolvePendingDecision(1);`, app);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Scharnier X Reden/);
+  assert.match(app.__appElement.innerHTML, /Scharnier werkt niet/);
 
   vm.runInContext(`
     STATE.pendingDecision = null;
@@ -1460,7 +1956,39 @@ test('scharnier X opent keuzevraag in beginner en expert', () => {
     applyComponentChoice('scharnieren', 'D', false);
   `, app);
 
-  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Hinge X Detail/);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Scharnier X Detail/);
+});
+
+test('keyboard X behoudt detailmenu en vraagt reparatiereden na defectkeuze', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'keyboard');
+    applyComponentChoice('keyboard', 'D', false);
+  `, app);
+
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Keyboard X Detail/);
+  assert.match(app.__appElement.innerHTML, /Toetsen ontbreken/);
+  assert.match(app.__appElement.innerHTML, /Keyboard ontbreekt \/ defect/);
+  assert.match(app.__appElement.innerHTML, /keyboard-many-missing-keys-ai\.jpg/);
+
+  vm.runInContext(`resolvePendingDecision(0);`, app);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Toetsenbord X Reden/);
+  assert.match(app.__appElement.innerHTML, /Missing key/);
+
+  vm.runInContext(`resolvePendingDecision(1);`, app);
+  assert.equal(vm.runInContext('STATE.currentGrading.repairIssues.keyboard', app), 'Meerdere toetsen ontbreken');
+
+  vm.runInContext(`
+    applyComponentChoice('keyboard', 'D', false);
+    resolvePendingDecision(1);
+  `, app);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Toetsenbord X Reden/);
+  assert.match(app.__appElement.innerHTML, /Toets werkt niet/);
+  assert.match(app.__appElement.innerHTML, /Keyboard defect/);
 });
 
 test('keuze-afbeeldingen zijn gecentreerd voor tabletweergave', () => {
@@ -1553,7 +2081,6 @@ test('gradingbeelden gebruiken snelle tablet-assets', () => {
   assert.ok(paths.every(assetPath => assetPath.startsWith('assets/dell-grading-fast/')));
   assert.ok(paths.every(assetPath => assetPath.endsWith('.jpg')));
   assert.ok(paths.every(assetPath => !assetPath.includes('wide-ai')));
-  assert.ok(paths.some(assetPath => assetPath.endsWith('keyboard-many-missing-keys-ai.jpg')));
   assert.ok(paths.some(assetPath => assetPath.endsWith('touchpad-cracked-ai.jpg')));
   assert.ok(paths.some(assetPath => assetPath.endsWith('scharnier-loshangend-ai.jpg')));
   paths.forEach(assetPath => {
@@ -1600,6 +2127,24 @@ test('keuze-afbeelding kan vergroot worden zonder keuze te maken', async () => {
 
   await app.handleAction('close_image_preview', {});
   assert.equal(vm.runInContext('STATE.imagePreview', app), null);
+});
+
+test('detailkeuze-menu heeft loep zonder score-uitleg in tekst', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'randen');
+    applyComponentChoice('randen', 'C', false);
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /decision-zoom-action/);
+  assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
+  assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-dell-ai\.jpg/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /telt als/i);
+  assert.doesNotMatch(app.__appElement.innerHTML, /blijft C/i);
 });
 
 test('alleen het vergrootglas opent afbeelding, de foto zelf blijft keuze', () => {
@@ -1678,7 +2223,51 @@ test('volledige expert-workflow slaat grading op en markeert laptop klaar', () =
   assert.equal(vm.runInContext('STATE.history[0].grade', app), 'A');
   assert.equal(vm.runInContext('STATE.history[0].leverancier_class', app), 'Class A');
   assert.equal(vm.runInContext("GRADED_STICKERS.has('8460024')", app), true);
-  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+});
+
+test('expertmodus kiest direct een grade en print automatisch', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    printLabelFor = async function(laptop, result, type) {
+      calls.push({ sticker: laptop.sticker, grade: result.eindgrade, type });
+      return true;
+    };
+    window.__printCalls = calls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('expert');
+  `, app);
+
+  vm.runInContext(`render();`, app);
+  assert.match(app.__appElement.innerHTML, /data-expert-final-grade="A"/);
+  assert.match(app.__appElement.innerHTML, /data-expert-final-grade="D"/);
+
+  await app.confirmExpertFinalGrade('B');
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('STATE.history[0].grade', app), 'B');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+});
+
+test('terug vanuit expertmodus gaat naar apparaat graden scan', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('7771198');
+    startGrading('expert');
+  `, app);
+
+  await app.handleAction('back_scan', { dataset: {} });
+
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.equal(vm.runInContext('STATE.currentGrading', app), null);
+  assert.equal(vm.runInContext('STATE.supplierNotice', app), null);
 });
 
 test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', async () => {
@@ -1712,7 +2301,7 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
     });
-    STATE.currentGrading.keuzes.lcd = 'D';
+    STATE.currentGrading.triggers.pixel_lcd = true;
     finishGrading();
   `, app);
 
@@ -1720,7 +2309,7 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
 
   assert.equal(vm.runInContext('STATE.history.length', app), 1);
   assert.equal(vm.runInContext('STATE.history[0].grade', app), 'D');
-  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);
   assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 2);

@@ -37,6 +37,22 @@ function findSupplierClassForHistoryItem(item) {
   return laptop && laptop.leverancier_class ? laptop.leverancier_class : '';
 }
 
+function getSupplierComparisonBatchMeta(item) {
+  if (!item) return null;
+  const batchId = sanitizeExternalText(item.batchId, 100);
+  const batchNummer = sanitizeExternalText(item.batchNummer, 100);
+  return BATCHES.find(batch => batch && batchId && batch.id === batchId)
+    || BATCHES.find(batch => batch && batchNummer && batch.nummer === batchNummer)
+    || null;
+}
+
+function getSupplierComparisonBatchKey(item) {
+  if (!item) return '-';
+  return sanitizeExternalText(item.batchId, 100)
+    || sanitizeExternalText(item.batchNummer, 100)
+    || '-';
+}
+
 function getComparisonStatus(delta) {
   if (delta > 0) return { key: 'improved', label: 'Improved' };
   if (delta < 0) return { key: 'downgraded', label: 'Lower' };
@@ -51,10 +67,16 @@ function getSupplierComparisonRows(items) {
     if (!supplierGrade || !remarktGrade) return null;
     const delta = gradeValue(remarktGrade) - gradeValue(supplierGrade);
     const status = getComparisonStatus(delta);
+    const batchMeta = getSupplierComparisonBatchMeta(item);
+    const batchNummer = item.batchNummer || (batchMeta && batchMeta.nummer) || '-';
     return {
       item,
       sticker: item.sticker || '',
-      batchNummer: item.batchNummer || '-',
+      batchId: item.batchId || (batchMeta && batchMeta.id) || '',
+      batchKey: getSupplierComparisonBatchKey(item),
+      batchNummer,
+      batchSupplier: (batchMeta && batchMeta.leverancier) || item.leverancier || '',
+      batchImportedAt: (batchMeta && batchMeta.geimporteerd) || item.geimporteerd || '',
       merk: item.merk || '',
       model: item.model || '',
       supplierRaw,
@@ -87,9 +109,12 @@ function getSupplierComparisonStats(items) {
   const rows = getSupplierComparisonRows(items);
   const byBatch = new Map();
   rows.forEach(row => {
-    const key = row.batchNummer || '-';
+    const key = row.batchKey || row.batchNummer || '-';
     const batch = byBatch.get(key) || {
+      batchKey: key,
       batchNummer: key,
+      batchSupplier: '',
+      batchImportedAt: '',
       total: 0,
       improved: 0,
       same: 0,
@@ -99,6 +124,9 @@ function getSupplierComparisonStats(items) {
       remarktCounts: { A: 0, B: 0, C: 0, D: 0 },
       rows: [],
     };
+    batch.batchNummer = row.batchNummer || batch.batchNummer;
+    batch.batchSupplier = batch.batchSupplier || row.batchSupplier || '';
+    batch.batchImportedAt = batch.batchImportedAt || row.batchImportedAt || '';
     batch.total++;
     batch[row.statusKey]++;
     batch.netDelta += row.delta;
@@ -178,14 +206,17 @@ function renderSupplierComparisonPanel(items) {
             <tbody>
               ${batches.map(batch => `
                 <tr class="${batch.netDelta < 0 ? 'is-negative' : batch.netDelta > 0 ? 'is-positive' : ''}">
-                  <td><strong>${escapeHtml(batch.batchNummer)}</strong></td>
+                  <td>
+                    <strong>${escapeHtml(batch.batchNummer)}</strong>
+                    ${batch.batchSupplier || batch.batchImportedAt ? `<span class="comparison-batch-meta">${escapeHtml([batch.batchSupplier, batch.batchImportedAt].filter(Boolean).join(' · '))}</span>` : ''}
+                  </td>
                   <td>${batch.total}</td>
                   <td>${batch.improved} <span>${batch.improvedPercent}%</span></td>
                   <td>${batch.same} <span>${batch.samePercent}%</span></td>
                   <td>${batch.downgraded} <span>${batch.downgradedPercent}%</span></td>
                   <td><strong>${formatSignedNumber(batch.netDelta)}</strong></td>
                   <td><div class="transition-list">${renderTransitionChips(batch.transitions)}</div></td>
-                  <td><button class="btn btn-secondary btn-small" data-action="export_supplier_comparison" data-export-batch="${escapeHtml(batch.batchNummer)}">Export</button></td>
+                  <td><button class="btn btn-secondary btn-small" data-action="export_supplier_comparison" data-export-batch="${escapeHtml(batch.batchKey)}">Export</button></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -201,10 +232,14 @@ function renderSupplierComparisonPanel(items) {
 function getSupplierComparisonExportRows(batchNummer = 'all') {
   const isAdmin = isAdminUser();
   const items = isAdmin ? STATE.history : STATE.history.filter(h => h.user_id === STATE.currentUser.id);
-  return getSupplierComparisonRows(items)
-    .filter(row => batchNummer === 'all' || row.batchNummer === batchNummer)
+  const comparisonRows = getSupplierComparisonRows(items)
+    .filter(row => batchNummer === 'all' || row.batchKey === batchNummer || row.batchNummer === batchNummer);
+  const exportedStickers = new Set(comparisonRows.map(row => normalizeStickerCode(row.sticker || '')));
+  const rows = comparisonRows
     .map(row => ({
       Batch: row.batchNummer,
+      'Batch ID': row.batchKey,
+      Supplier: row.batchSupplier,
       Barcode: row.sticker,
       Brand: row.merk,
       Model: row.model,
@@ -217,6 +252,37 @@ function getSupplierComparisonExportRows(batchNummer = 'all') {
       'Supplier notes': row.supplierNotes,
       'ReMarkt findings': row.problems,
     }));
+
+  BATCHES.forEach(batch => {
+    if (!batch || (batchNummer !== 'all' && batch.id !== batchNummer && batch.nummer !== batchNummer)) return;
+    (batch.laptops || []).forEach(laptop => {
+      const stickerKey = normalizeStickerCode(laptop && laptop.sticker);
+      if (!laptop || !stickerKey || exportedStickers.has(stickerKey)) return;
+      if (getLatestHistoryForSticker(laptop.sticker)) return;
+      const supplierGrade = normalizeSupplierGrade(laptop.leverancier_class);
+      if (!supplierGrade) return;
+      exportedStickers.add(stickerKey);
+      const labelOnly = isLaptopLabelPrinted(laptop.sticker);
+      rows.push({
+        Batch: laptop.batchNummer || batch.nummer || '-',
+        'Batch ID': laptop.batchId || batch.id || '',
+        Supplier: batch.leverancier || '',
+        Barcode: laptop.sticker || '',
+        Brand: laptop.merk || '',
+        Model: laptop.model || '',
+        'Supplier grade': displayGrade(supplierGrade),
+        'ReMarkt grade': '-',
+        Delta: '',
+        Status: labelOnly ? 'Label printed, not graded' : 'Not scanned',
+        'ReMarkt score': '',
+        'Graded by': '',
+        'Supplier notes': laptop.meldingen || '',
+        'ReMarkt findings': '',
+      });
+    });
+  });
+
+  return rows;
 }
 
 function downloadBlob(filename, mimeType, content) {
@@ -292,148 +358,759 @@ function renderAnalyticsRows(entries, emptyText) {
   `).join('')}</div>`;
 }
 
-function renderAnalytics() {
-  const data = getDashboardData();
-  const { isAdmin, items, counts, avg, openCount, completedCount, allLaptops, maxGradeCount, batchRows } = data;
-  const total = items.length;
-  const defectRate = safePercent(counts.D, total);
-  const aRate = safePercent(counts.A, total);
-  const byUser = new Map();
-  const byBatch = new Map();
-  const byComponent = new Map();
-  const byProblem = new Map();
+const ANALYTICS_FILTER_DEFAULTS = {
+  employee: 'all',
+  productType: 'all',
+  brand: 'all',
+  grade: 'all',
+  dateRange: 'all',
+  status: 'all',
+  query: '',
+};
 
-  items.forEach(item => {
-    const userKey = item.user_naam || item.user_id || 'Unknown';
-    const user = byUser.get(userKey) || { count: 0, sec: 0, defects: 0 };
-    user.count++;
-    user.sec += Number(item.duurSec || 0);
-    if (item.grade === 'D') user.defects++;
-    byUser.set(userKey, user);
+const ANALYTICS_GRADE_COLORS = {
+  A: '#F6C400',
+  B: '#1473E6',
+  C: '#EF3E86',
+  D: '#E12B35',
+};
 
-    const batchKey = item.batchNummer || '-';
-    const batch = byBatch.get(batchKey) || { count: 0, A: 0, B: 0, C: 0, D: 0 };
-    batch.count++;
-    if (batch[item.grade] !== undefined) batch[item.grade]++;
-    byBatch.set(batchKey, batch);
+const ANALYTICS_STATUS_LABELS = {
+  all: 'Alle statussen',
+  graded: 'Gegraded',
+  repair: 'Reparatie / X',
+  open: 'Wacht op grading',
+  label: 'Alleen label geprint',
+};
 
-    (item.result && item.result.detailRows ? item.result.detailRows : []).forEach(row => {
-      if (!row || row.keuze === '-' || Number(row.punten || 0) <= 0) return;
-      const component = byComponent.get(row.naam) || { count: 0, points: 0 };
-      component.count++;
-      component.points += Number(row.punten || 0);
-      byComponent.set(row.naam, component);
-    });
+function getAnalyticsFilters() {
+  if (!STATE.analyticsFilters || typeof STATE.analyticsFilters !== 'object') {
+    STATE.analyticsFilters = { ...ANALYTICS_FILTER_DEFAULTS };
+  }
+  STATE.analyticsFilters = { ...ANALYTICS_FILTER_DEFAULTS, ...STATE.analyticsFilters };
+  return STATE.analyticsFilters;
+}
 
-    (item.result && item.result.problems ? item.result.problems : []).forEach(problem => {
-      byProblem.set(problem, (byProblem.get(problem) || 0) + 1);
+function setAnalyticsFilter(key, value) {
+  if (!Object.prototype.hasOwnProperty.call(ANALYTICS_FILTER_DEFAULTS, key)) return;
+  const filters = getAnalyticsFilters();
+  filters[key] = sanitizeExternalText(value, key === 'query' ? 160 : 80) || ANALYTICS_FILTER_DEFAULTS[key];
+}
+
+function resetAnalyticsFilters() {
+  STATE.analyticsFilters = { ...ANALYTICS_FILTER_DEFAULTS };
+}
+
+function analyticsText(value) {
+  return sanitizeExternalText(value, 180);
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString('nl-NL');
+}
+
+function formatSeconds(value) {
+  const seconds = Math.round(Number(value || 0));
+  if (!seconds) return '-';
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${String(remainder).padStart(2, '0')}s`;
+}
+
+function getAnalyticsDate(value, fallbackTime) {
+  const direct = Date.parse(value || '');
+  if (Number.isFinite(direct)) return new Date(direct);
+  const today = new Date();
+  const time = String(fallbackTime || '').match(/^(\d{1,2}):(\d{2})/);
+  if (time) {
+    today.setHours(Number(time[1]), Number(time[2]), 0, 0);
+    return today;
+  }
+  return today;
+}
+
+function isSameLocalDay(a, b) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function isWithinAnalyticsRange(date, range) {
+  if (range === 'all') return true;
+  const now = new Date();
+  if (range === 'today') return isSameLocalDay(date, now);
+  const maxAgeDays = range === 'week' ? 7 : range === 'month' ? 30 : 0;
+  if (!maxAgeDays) return true;
+  const start = new Date(now);
+  start.setDate(start.getDate() - (maxAgeDays - 1));
+  start.setHours(0, 0, 0, 0);
+  return date >= start && date <= now;
+}
+
+function getAnalyticsDateLabel(date) {
+  return date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' });
+}
+
+function parseBatteryPercent(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const match = raw.match(/(\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  let number = Number(match[1].replace(',', '.'));
+  if (!Number.isFinite(number)) return null;
+  if (number > 0 && number <= 1) number *= 100;
+  if (number < 0 || number > 100) return null;
+  return Math.round(number);
+}
+
+function getHistoryProblems(item) {
+  const problems = item && item.result && Array.isArray(item.result.problems) ? item.result.problems : [];
+  return problems.map(problem => analyticsText(problem)).filter(Boolean);
+}
+
+function getHistoryDetailRows(item) {
+  return item && item.result && Array.isArray(item.result.detailRows) ? item.result.detailRows : [];
+}
+
+function getAnalyticsSearchText(item) {
+  return [
+    item.productType, item.status, item.sticker, item.brand, item.model, item.serial, item.batch,
+    item.employeeName, item.grade, item.supplierGrade, item.supplierNotes, item.videoInputs,
+    ...(item.problems || []),
+  ].join(' ').toLowerCase();
+}
+
+function createAnalyticsItem(source, overrides) {
+  const item = {
+    source,
+    productType: 'laptop',
+    status: 'graded',
+    statusLabel: 'Gegraded',
+    sticker: '',
+    brand: '',
+    model: '',
+    serial: '',
+    batch: '',
+    supplier: '',
+    supplierGrade: '',
+    supplierNotes: '',
+    grade: '',
+    employeeId: '',
+    employeeName: '',
+    durationSec: 0,
+    score: 0,
+    batteryPercent: null,
+    videoInputs: '',
+    problems: [],
+    detailRows: [],
+    rawItem: null,
+    date: new Date(),
+  };
+  Object.assign(item, overrides);
+  item.searchText = getAnalyticsSearchText(item);
+  return item;
+}
+
+function buildAnalyticsItems(isAdmin) {
+  const currentUserId = STATE.currentUser ? STATE.currentUser.id : '';
+  const visibleToUser = item => isAdmin || !item.user_id || item.user_id === currentUserId;
+  const historyStickerKeys = new Set();
+  const items = [];
+
+  (STATE.history || []).filter(visibleToUser).forEach(historyItem => {
+    const stickerKey = normalizeStickerCode(historyItem.sticker || '');
+    if (stickerKey) historyStickerKeys.add(stickerKey);
+    const problems = getHistoryProblems(historyItem);
+    const grade = normalizeSupplierGrade(historyItem.grade);
+    items.push(createAnalyticsItem('history', {
+      productType: 'laptop',
+      status: grade === 'D' || problems.length ? 'repair' : 'graded',
+      statusLabel: grade === 'D' || problems.length ? 'Reparatie / X' : 'Gegraded',
+      sticker: analyticsText(historyItem.sticker),
+      brand: analyticsText(historyItem.merk),
+      model: analyticsText(historyItem.model),
+      serial: analyticsText(historyItem.serial),
+      batch: analyticsText(historyItem.batchNummer),
+      supplierGrade: displayGrade(normalizeSupplierGrade(findSupplierClassForHistoryItem(historyItem))),
+      supplierNotes: analyticsText(historyItem.leverancier_meldingen || historyItem.meldingen),
+      grade,
+      employeeId: analyticsText(historyItem.user_id),
+      employeeName: analyticsText(historyItem.user_naam || historyItem.user_id || 'Onbekend'),
+      durationSec: Number(historyItem.duurSec || 0),
+      score: Number(historyItem.score || 0),
+      batteryPercent: parseBatteryPercent(historyItem.battery),
+      problems,
+      detailRows: getHistoryDetailRows(historyItem),
+      rawItem: historyItem,
+      date: getAnalyticsDate(historyItem.savedAt || historyItem.createdAt || historyItem.completedAt || historyItem.printedAt, historyItem.tijd),
+    }));
+  });
+
+  (STATE.labelPrints || []).filter(visibleToUser).forEach(print => {
+    const stickerKey = normalizeStickerCode(print.sticker || '');
+    if (stickerKey && historyStickerKeys.has(stickerKey)) return;
+    items.push(createAnalyticsItem('label', {
+      productType: 'laptop',
+      status: 'label',
+      statusLabel: 'Alleen label geprint',
+      sticker: analyticsText(print.sticker),
+      brand: analyticsText(print.merk),
+      model: analyticsText(print.model),
+      batch: analyticsText(print.batchNummer),
+      employeeId: analyticsText(print.user_id),
+      employeeName: analyticsText(print.user_naam || print.user_id || 'Onbekend'),
+      date: getAnalyticsDate(print.printedAt),
+    }));
+  });
+
+  (STATE.monitorLabelPrints || []).filter(visibleToUser).forEach(print => {
+    const grade = normalizeMonitorGrade(print.grade);
+    items.push(createAnalyticsItem('monitor-label', {
+      productType: 'monitor',
+      status: grade === 'D' ? 'repair' : 'graded',
+      statusLabel: grade === 'D' ? 'Reparatie / X' : 'Gegraded',
+      sticker: analyticsText(print.sticker),
+      brand: analyticsText(print.merk),
+      model: analyticsText(print.model || print.deviceName),
+      serial: analyticsText(print.serial),
+      batch: analyticsText(print.batchNummer),
+      grade,
+      videoInputs: analyticsText(print.videoInputs),
+      employeeId: analyticsText(print.user_id),
+      employeeName: analyticsText(print.user_naam || print.user_id || 'Onbekend'),
+      date: getAnalyticsDate(print.printedAt),
+    }));
+  });
+
+  BATCHES.forEach(batch => {
+    (batch.laptops || []).forEach(laptop => {
+      if (isLaptopGraded(laptop.sticker) || isLaptopLabelPrinted(laptop.sticker)) return;
+      items.push(createAnalyticsItem('open-batch', {
+        productType: 'laptop',
+        status: 'open',
+        statusLabel: 'Wacht op grading',
+        sticker: analyticsText(laptop.sticker),
+        brand: analyticsText(laptop.merk),
+        model: analyticsText(laptop.model),
+        serial: analyticsText(laptop.serial),
+        batch: analyticsText(laptop.batchNummer || batch.nummer),
+        supplier: analyticsText(batch.leverancier),
+        supplierGrade: displayGrade(normalizeSupplierGrade(laptop.leverancier_class)),
+        supplierNotes: analyticsText(laptop.meldingen),
+        batteryPercent: parseBatteryPercent(laptop.battery),
+        date: getAnalyticsDate(batch.createdAt || batch.geimporteerd),
+      }));
     });
   });
 
-  const userRows = Array.from(byUser.entries())
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 6)
-    .map(([name, stats]) => ({
-      title: name,
-      sub: `${stats.count} grading${stats.count === 1 ? '' : 's'} · ${Math.round(stats.sec / stats.count)} sec. avg.`,
-      value: `${safePercent(stats.defects, stats.count)}% X`,
-    }));
-  const batchAnalyticsRows = Array.from(byBatch.entries())
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 6)
-    .map(([batch, stats]) => ({
-      title: `Batch ${batch}`,
-      sub: `${stats.count} grading${stats.count === 1 ? '' : 's'} · A ${stats.A}, B ${stats.B}, C ${stats.C}, X ${stats.D}`,
-      value: `${safePercent(stats.A, stats.count)}% A`,
-    }));
-  const componentRows = Array.from(byComponent.entries())
-    .sort((a, b) => b[1].points - a[1].points)
-    .slice(0, 6)
-    .map(([name, stats]) => ({
-      title: name,
-      sub: `${stats.count} score impact${stats.count === 1 ? '' : 's'}`,
-      value: `${stats.points}p`,
-    }));
-  const problemRows = Array.from(byProblem.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([problem, count]) => ({
-      title: problem,
-      sub: 'repair label',
-      value: `${count}x`,
-    }));
-  const recentRows = items.slice(-5).reverse().map(item => ({
-    title: `${item.merk || '-'} ${item.model || ''}`.trim(),
-    sub: `${item.sticker || '-'} · ${item.user_naam || '-'} · batch ${item.batchNummer || '-'}`,
-    value: item.grade === 'D' ? 'X' : item.grade || '-',
-  }));
+  MONITOR_BATCHES.forEach(batch => {
+    (batch.monitors || []).forEach(monitor => {
+      if (isMonitorLabelPrinted(monitor.sticker)) return;
+      items.push(createAnalyticsItem('open-monitor-batch', {
+        productType: 'monitor',
+        status: 'open',
+        statusLabel: 'Wacht op grading',
+        sticker: analyticsText(monitor.sticker),
+        brand: analyticsText(monitor.merk),
+        model: analyticsText(monitor.model || monitor.deviceName),
+        serial: analyticsText(monitor.serial),
+        batch: analyticsText(monitor.batchNummer || batch.nummer),
+        supplier: analyticsText(batch.leverancier),
+        supplierGrade: displayGrade(normalizeMonitorGrade(monitor.leverancier_class)),
+        supplierNotes: analyticsText(monitor.deviceErrors || monitor.meldingen),
+        videoInputs: analyticsText(monitor.videoInputs),
+        date: getAnalyticsDate(batch.createdAt || batch.geimporteerd),
+      }));
+    });
+  });
+
+  return items;
+}
+
+function filterAnalyticsItems(items, filters) {
+  const query = String(filters.query || '').trim().toLowerCase();
+  return items.filter(item => {
+    if (filters.productType !== 'all' && item.productType !== filters.productType) return false;
+    if (filters.employee !== 'all' && item.employeeId !== filters.employee && item.employeeName !== filters.employee) return false;
+    if (filters.brand !== 'all' && item.brand !== filters.brand) return false;
+    if (filters.grade !== 'all' && displayGrade(item.grade) !== filters.grade) return false;
+    if (filters.status !== 'all' && item.status !== filters.status) return false;
+    if (!isWithinAnalyticsRange(item.date, filters.dateRange)) return false;
+    if (query && !item.searchText.includes(query)) return false;
+    return true;
+  });
+}
+
+function getUniqueAnalyticsOptions(items, field) {
+  return Array.from(new Set(items.map(item => item[field]).filter(Boolean)))
+    .sort((a, b) => String(a).localeCompare(String(b), 'nl-NL', { sensitivity: 'base' }));
+}
+
+function renderAnalyticsSelect(name, label, selected, options) {
+  return `
+    <label class="analytics-filter">
+      <span>${escapeHtml(label)}</span>
+      <select data-analytics-filter="${escapeHtml(name)}">
+        ${options.map(option => `
+          <option value="${escapeHtml(option.value)}" ${String(selected) === String(option.value) ? 'selected' : ''}>${escapeHtml(option.label)}</option>
+        `).join('')}
+      </select>
+    </label>
+  `;
+}
+
+function renderAnalyticsFilters(filters, allItems) {
+  const employeeOptions = [{ value: 'all', label: 'Alle medewerkers' }]
+    .concat(getUniqueAnalyticsOptions(allItems, 'employeeName').map(name => ({ value: name, label: name })));
+  const brandOptions = [{ value: 'all', label: 'Alle merken' }]
+    .concat(getUniqueAnalyticsOptions(allItems, 'brand').map(brand => ({ value: brand, label: brand })));
 
   return `
-    <div class="screen analytics-screen">
+    <div class="analytics-filter-bar">
+      <div class="analytics-search-wrap">
+        <span>Zoeken</span>
+        <input id="analyticsSearch" type="search" placeholder="Barcode, batch, merk, model, melding..." value="${escapeHtml(filters.query || '')}">
+      </div>
+      ${renderAnalyticsSelect('dateRange', 'Periode', filters.dateRange, [
+        { value: 'all', label: 'Alle data' },
+        { value: 'today', label: 'Vandaag' },
+        { value: 'week', label: 'Laatste 7 dagen' },
+        { value: 'month', label: 'Laatste 30 dagen' },
+      ])}
+      ${renderAnalyticsSelect('productType', 'Product', filters.productType, [
+        { value: 'all', label: 'Alles' },
+        { value: 'laptop', label: 'Laptops' },
+        { value: 'monitor', label: 'Monitoren' },
+      ])}
+      ${renderAnalyticsSelect('employee', 'Medewerker', filters.employee, employeeOptions)}
+      ${renderAnalyticsSelect('brand', 'Merk', filters.brand, brandOptions)}
+      ${renderAnalyticsSelect('grade', 'Grade', filters.grade, [
+        { value: 'all', label: 'Alle grades' },
+        { value: 'A', label: 'A' },
+        { value: 'B', label: 'B' },
+        { value: 'C', label: 'C' },
+        { value: 'X', label: 'X' },
+      ])}
+      ${renderAnalyticsSelect('status', 'Status', filters.status, Object.keys(ANALYTICS_STATUS_LABELS).map(key => ({
+        value: key,
+        label: ANALYTICS_STATUS_LABELS[key],
+      })))}
+      <button class="btn btn-secondary analytics-reset" data-action="analytics_filters_reset" type="button">Reset</button>
+    </div>
+  `;
+}
+
+function getAnalyticsCounts(items) {
+  const counts = { A: 0, B: 0, C: 0, D: 0 };
+  items.forEach(item => {
+    const grade = normalizeSupplierGrade(item.grade);
+    if (counts[grade] !== undefined) counts[grade]++;
+  });
+  return counts;
+}
+
+function countAnalyticsStatus(items, status) {
+  return items.filter(item => item.status === status).length;
+}
+
+function getAverageAnalyticsTime(items) {
+  const timed = items.filter(item => item.durationSec > 0);
+  if (!timed.length) return 0;
+  return Math.round(timed.reduce((sum, item) => sum + item.durationSec, 0) / timed.length);
+}
+
+function getAverageBattery(items) {
+  const values = items.map(item => item.batteryPercent).filter(value => Number.isFinite(value));
+  if (!values.length) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function hasMissingAccessorySignal(item) {
+  return /(missing|ontbreekt|geen|adapter|charger|lader|rubber|feet|voeding|accessor)/i.test(`${item.supplierNotes || ''} ${(item.problems || []).join(' ')}`);
+}
+
+function buildCountRows(items, keyFn, labelFn = value => value, limit = 8) {
+  const rows = new Map();
+  items.forEach(item => {
+    const key = keyFn(item);
+    if (!key) return;
+    rows.set(key, (rows.get(key) || 0) + 1);
+  });
+  return Array.from(rows.entries())
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'nl-NL'))
+    .slice(0, limit)
+    .map(([key, count]) => ({ label: labelFn(key), value: count }));
+}
+
+function renderKpiCard(card) {
+  return `
+    <div class="analytics-kpi-card ${card.tone || ''}">
+      <span class="analytics-kpi-label">${escapeHtml(card.label)}</span>
+      <strong>${escapeHtml(card.value)}</strong>
+      <small>${escapeHtml(card.sub || '')}</small>
+    </div>
+  `;
+}
+
+function renderAnalyticsPanel(title, subtitle, body, extraClass = '') {
+  return `
+    <section class="analytics-panel ${extraClass}">
+      <div class="analytics-panel-title-row">
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}
+        </div>
+      </div>
+      ${body}
+    </section>
+  `;
+}
+
+function renderGradeDonut(counts) {
+  const total = counts.A + counts.B + counts.C + counts.D;
+  let start = 0;
+  const segments = ['A', 'B', 'C', 'D'].map(grade => {
+    const percent = total ? (counts[grade] / total) * 100 : 0;
+    const segment = `${ANALYTICS_GRADE_COLORS[grade]} ${start}% ${start + percent}%`;
+    start += percent;
+    return segment;
+  }).join(', ');
+  const background = total ? `conic-gradient(${segments})` : '#E5E5E0';
+  return `
+    <div class="analytics-grade-summary">
+      <div class="analytics-donut" style="background:${background};">
+        <div><strong>${formatNumber(total)}</strong><span>graded</span></div>
+      </div>
+      <div class="analytics-grade-legend">
+        ${['A','B','C','D'].map(grade => `
+          <div class="analytics-grade-line">
+            <span class="grade-dot ${grade}"></span>
+            <strong>${displayGrade(grade)}</strong>
+            <span>${formatNumber(counts[grade])}</span>
+            <em>${safePercent(counts[grade], total)}%</em>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderBarList(rows, emptyText, valueSuffix = '') {
+  if (!rows.length) return `<div class="empty-analytics">${escapeHtml(emptyText)}</div>`;
+  const max = Math.max(...rows.map(row => row.value), 1);
+  return `
+    <div class="analytics-bar-list">
+      ${rows.map(row => `
+        <div class="analytics-bar-row">
+          <div class="analytics-bar-label"><strong>${escapeHtml(row.label)}</strong>${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ''}</div>
+          <div class="analytics-bar-track"><div style="width:${Math.max(3, (row.value / max) * 100)}%;"></div></div>
+          <div class="analytics-bar-value">${escapeHtml(formatNumber(row.value))}${escapeHtml(valueSuffix)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function buildTrendBuckets(items, days = 7) {
+  const buckets = [];
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  for (let offset = days - 1; offset >= 0; offset--) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - offset);
+    buckets.push({ date, label: getAnalyticsDateLabel(date), value: 0, repair: 0 });
+  }
+  items.filter(item => item.status === 'graded' || item.status === 'repair').forEach(item => {
+    const bucket = buckets.find(entry => isSameLocalDay(entry.date, item.date));
+    if (!bucket) return;
+    bucket.value++;
+    if (item.status === 'repair') bucket.repair++;
+  });
+  return buckets;
+}
+
+function renderTrendChart(buckets) {
+  const max = Math.max(...buckets.map(bucket => bucket.value), 1);
+  return `
+    <div class="analytics-trend">
+      ${buckets.map(bucket => `
+        <div class="analytics-trend-day">
+          <div class="analytics-trend-stack" title="${escapeHtml(bucket.label)}: ${bucket.value}">
+            <span class="repair" style="height:${(bucket.repair / max) * 100}%;"></span>
+            <strong style="height:${Math.max(4, ((bucket.value - bucket.repair) / max) * 100)}%;"></strong>
+          </div>
+          <small>${escapeHtml(bucket.label)}</small>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function buildEmployeeRows(items) {
+  const users = new Map();
+  items.filter(item => item.employeeName && (item.status === 'graded' || item.status === 'repair' || item.status === 'label')).forEach(item => {
+    const row = users.get(item.employeeName) || { name: item.employeeName, count: 0, repair: 0, sec: 0, timed: 0, labels: 0 };
+    row.count++;
+    if (item.status === 'repair') row.repair++;
+    if (item.status === 'label') row.labels++;
+    if (item.durationSec > 0) {
+      row.sec += item.durationSec;
+      row.timed++;
+    }
+    users.set(item.employeeName, row);
+  });
+  return Array.from(users.values())
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'nl-NL'))
+    .slice(0, 7);
+}
+
+function renderEmployeeTable(rows) {
+  if (!rows.length) return '<div class="empty-analytics">Nog geen medewerkerdata beschikbaar.</div>';
+  return `
+    <div class="analytics-table-wrap">
+      <table class="analytics-table">
+        <thead>
+          <tr><th>Medewerker</th><th>Output</th><th>Gem. tijd</th><th>X-rate</th></tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr>
+              <td><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} labelprints` : 'grading'}</span></td>
+              <td>${formatNumber(row.count)}</td>
+              <td>${formatSeconds(row.timed ? row.sec / row.timed : 0)}</td>
+              <td>${safePercent(row.repair, row.count)}%</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildBatchProgressRows(productFilter) {
+  const rows = [];
+  if (productFilter === 'all' || productFilter === 'laptop') {
+    BATCHES.forEach(batch => {
+      const total = (batch.laptops || []).length;
+      const open = openLaptopCount(batch);
+      const done = Math.max(total - open, 0);
+      rows.push({
+        label: `Laptop batch ${batch.nummer || '-'}`,
+        meta: [batch.leverancier, batch.geimporteerd].filter(Boolean).join(' · '),
+        value: safePercent(done, total),
+        done,
+        open,
+        total,
+      });
+    });
+  }
+  if (productFilter === 'all' || productFilter === 'monitor') {
+    MONITOR_BATCHES.forEach(batch => {
+      const total = (batch.monitors || []).length;
+      const open = (batch.monitors || []).filter(monitor => !isMonitorLabelPrinted(monitor.sticker)).length;
+      const done = Math.max(total - open, 0);
+      rows.push({
+        label: `Monitor batch ${batch.nummer || '-'}`,
+        meta: [batch.leverancier, batch.geimporteerd].filter(Boolean).join(' · '),
+        value: safePercent(done, total),
+        done,
+        open,
+        total,
+      });
+    });
+  }
+  return rows.sort((a, b) => b.total - a.total);
+}
+
+function renderBatchProgress(rows) {
+  if (!rows.length) return '<div class="empty-analytics">Geen actieve batches gevonden.</div>';
+  return `
+    <div class="analytics-batch-list">
+      ${rows.slice(0, 8).map(row => `
+        <div class="analytics-batch-row">
+          <div>
+            <strong>${escapeHtml(row.label)}</strong>
+            <span>${escapeHtml(row.meta || 'Actieve batch')}</span>
+          </div>
+          <div class="analytics-batch-progress">
+            <div><span style="width:${row.value}%;"></span></div>
+            <small>${row.done}/${row.total} klaar · ${row.open} open</small>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function buildAnalyticsProblemRows(items) {
+  const rows = new Map();
+  items.forEach(item => {
+    (item.problems || []).forEach(problem => rows.set(problem, (rows.get(problem) || 0) + 1));
+    if (!item.problems.length && item.status === 'repair') rows.set('X / reparatie', (rows.get('X / reparatie') || 0) + 1);
+  });
+  return Array.from(rows.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'nl-NL'))
+    .slice(0, 8)
+    .map(([label, value]) => ({ label, value }));
+}
+
+function buildComponentRows(items) {
+  const components = new Map();
+  items.forEach(item => {
+    if (item.source !== 'history') return;
+    (item.detailRows || []).forEach(row => {
+      if (!row || row.keuze === '-' || Number(row.punten || 0) <= 0) return;
+      const current = components.get(row.naam) || { count: 0, points: 0 };
+      current.count++;
+      current.points += Number(row.punten || 0);
+      components.set(row.naam, current);
+    });
+  });
+  return Array.from(components.entries())
+    .sort((a, b) => b[1].points - a[1].points)
+    .slice(0, 8)
+    .map(([label, stats]) => ({ label, value: stats.points, meta: `${stats.count}x geraakt` }));
+}
+
+function buildHeatmapRows(items) {
+  const days = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
+  const periods = [
+    { key: 'morning', label: '08-12', from: 8, to: 12 },
+    { key: 'midday', label: '12-15', from: 12, to: 15 },
+    { key: 'afternoon', label: '15-18', from: 15, to: 18 },
+    { key: 'evening', label: '18+', from: 18, to: 24 },
+  ];
+  const matrix = days.map(day => ({ day, values: periods.map(period => ({ ...period, value: 0 })) }));
+  items.filter(item => item.status === 'graded' || item.status === 'repair' || item.status === 'label').forEach(item => {
+    const jsDay = item.date.getDay();
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+    const hour = item.date.getHours();
+    const periodIndex = periods.findIndex(period => hour >= period.from && hour < period.to);
+    if (matrix[dayIndex] && periodIndex >= 0) matrix[dayIndex].values[periodIndex].value++;
+  });
+  return matrix;
+}
+
+function renderHeatmap(matrix) {
+  const max = Math.max(...matrix.flatMap(row => row.values.map(cell => cell.value)), 1);
+  return `
+    <div class="analytics-heatmap">
+      <div></div>
+      ${matrix[0].values.map(cell => `<span>${escapeHtml(cell.label)}</span>`).join('')}
+      ${matrix.map(row => `
+        <strong>${escapeHtml(row.day)}</strong>
+        ${row.values.map(cell => `
+          <div class="analytics-heat-cell" style="--heat:${cell.value / max};" title="${escapeHtml(row.day)} ${escapeHtml(cell.label)}: ${cell.value}">
+            ${cell.value ? formatNumber(cell.value) : ''}
+          </div>
+        `).join('')}
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderRecentActivity(items) {
+  const recent = items.filter(item => item.status !== 'open')
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 8);
+  if (!recent.length) return '<div class="empty-analytics">Nog geen recente activiteit gevonden.</div>';
+  return `
+    <div class="analytics-activity-feed">
+      ${recent.map(item => `
+        <div class="analytics-activity-item">
+          <span class="activity-dot ${item.grade || 'label'}"></span>
+          <div>
+            <strong>${escapeHtml([item.brand, item.model].filter(Boolean).join(' ') || item.sticker || 'Onbekend apparaat')}</strong>
+            <small>${escapeHtml(item.employeeName || '-')} · ${escapeHtml(item.statusLabel)} · batch ${escapeHtml(item.batch || '-')}</small>
+          </div>
+          <em>${escapeHtml(displayGrade(item.grade) || (item.status === 'label' ? 'Label' : '-'))}</em>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderAnalytics() {
+  const isAdmin = isAdminUser();
+  const filters = getAnalyticsFilters();
+  const allItems = buildAnalyticsItems(isAdmin);
+  const filteredItems = filterAnalyticsItems(allItems, filters);
+  const completedItems = filteredItems.filter(item => item.status === 'graded' || item.status === 'repair');
+  const activeWorkItems = filteredItems.filter(item => item.status !== 'label');
+  const counts = getAnalyticsCounts(completedItems);
+  const totalCompleted = completedItems.length;
+  const openCount = countAnalyticsStatus(filteredItems, 'open');
+  const repairCount = countAnalyticsStatus(filteredItems, 'repair');
+  const labelOnlyCount = countAnalyticsStatus(filteredItems, 'label');
+  const laptopVolume = filteredItems.filter(item => item.productType === 'laptop' && item.status !== 'open').length;
+  const monitorVolume = filteredItems.filter(item => item.productType === 'monitor' && item.status !== 'open').length;
+  const avgTime = getAverageAnalyticsTime(completedItems);
+  const avgBattery = getAverageBattery(filteredItems);
+  const todayCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
+  const weekCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
+  const missingAccessories = filteredItems.filter(hasMissingAccessorySignal).length;
+  const completionRate = safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
+  const brandRows = buildCountRows(filteredItems, item => item.brand, value => value, 7);
+  const modelRows = buildCountRows(filteredItems, item => [item.brand, item.model].filter(Boolean).join(' '), value => value, 7);
+  const productRows = [
+    { label: 'Laptops', value: laptopVolume },
+    { label: 'Monitoren', value: monitorVolume },
+  ];
+  const problemRows = buildAnalyticsProblemRows(completedItems);
+  const componentRows = buildComponentRows(completedItems);
+  const employeeRows = buildEmployeeRows(filteredItems);
+  const batchRows = buildBatchProgressRows(filters.productType);
+  const trendBuckets = buildTrendBuckets(filteredItems, 7);
+  const heatmapRows = buildHeatmapRows(filteredItems);
+  const supplierComparisonItems = filteredItems
+    .filter(item => item.rawItem)
+    .map(item => item.rawItem);
+  const rangeLabel = filters.dateRange === 'today' ? 'vandaag'
+    : filters.dateRange === 'week' ? 'laatste 7 dagen'
+      : filters.dateRange === 'month' ? 'laatste 30 dagen'
+        : 'alle data';
+
+  return `
+    <div class="screen analytics-screen analytics-pro-screen">
       <div class="analytics-hero">
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Insights Dashboard</div>
-          <h1>Grading Insights</h1>
-          <p>Track quality, speed, batches and parts with the highest impact on final grade.</p>
+          <h1>Operations Analytics</h1>
+          <p>Realtime overzicht van grading-output, batchvoortgang, reparatiestroom, kwaliteitssignalen en medewerkerprestaties.</p>
+        </div>
+        <div class="analytics-hero-actions">
+          <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
+          <button class="btn btn-primary" data-action="export_supplier_comparison" data-export-batch="all" type="button">Export Report</button>
         </div>
       </div>
       ${renderDashboardTabs('analytics')}
+      ${renderAnalyticsFilters(filters, allItems)}
 
-      <div class="ops-status-grid">
-        <div class="ops-stat warning"><strong>${total}</strong><span>${isAdmin ? 'total gradings' : 'your gradings'}</span></div>
-        <div class="ops-stat"><strong>${avg || '-'}</strong><span>avg. seconds per device</span></div>
-        <div class="ops-stat"><strong>${defectRate}%</strong><span>X / repair rate</span></div>
-        <div class="ops-stat"><strong>${openCount}</strong><span>open devices · ${completedCount}/${allLaptops.length} done</span></div>
+      <div class="analytics-kpi-grid">
+        ${renderKpiCard({ label: 'Gegraded totaal', value: formatNumber(totalCompleted), sub: `${todayCompleted} vandaag · ${weekCompleted} deze week`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Wacht op grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+        ${renderKpiCard({ label: 'Reparatie / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} apparaten naar repair`, tone: repairCount ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Gemiddelde gradingtijd', value: formatSeconds(avgTime), sub: `op basis van ${formatNumber(totalCompleted)} gradings` })}
+        ${renderKpiCard({ label: 'Labelprints', value: formatNumber(labelOnlyCount + totalCompleted), sub: `${labelOnlyCount} nog niet gegraded` })}
+        ${renderKpiCard({ label: 'Gem. accu gezondheid', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: `${rangeLabel}` })}
+        ${renderKpiCard({ label: 'Accessoire signalen', value: formatNumber(missingAccessories), sub: 'missing adapter, rubber feet, lader' })}
+        ${renderKpiCard({ label: 'Productmix', value: `${formatNumber(laptopVolume)} / ${formatNumber(monitorVolume)}`, sub: 'laptops / monitoren' })}
       </div>
 
       <div class="analytics-grid">
-        <div class="analytics-panel">
-          <h3>Grade Mix</h3>
-          <div class="grade-mini-bars">
-            ${['A','B','C','D'].map(grade => `
-              <div class="grade-mini-bar">
-                <strong>${grade === 'D' ? 'X' : grade}</strong>
-                <div class="grade-mini-track"><div class="grade-mini-fill ${grade}" style="width: ${(counts[grade] / maxGradeCount) * 100}%;"></div></div>
-                <span>${counts[grade]} · ${safePercent(counts[grade], total)}%</span>
-              </div>
-            `).join('')}
-          </div>
-          <div class="simple-stat-row">
-            <div class="simple-stat"><strong>${aRate}%</strong><span>A share</span></div>
-            <div class="simple-stat"><strong>${counts.C + counts.D}</strong><span>C/X total</span></div>
-            <div class="simple-stat"><strong>${total ? Math.round(items.reduce((sum, item) => sum + Number(item.score || 0), 0) / total) : '-'}</strong><span>avg. score</span></div>
-          </div>
-        </div>
-
-        <div class="analytics-panel">
-          <h3>Operators</h3>
-          ${renderAnalyticsRows(userRows, 'No operator stats available yet.')}
-        </div>
-
-        <div class="analytics-panel">
-          <h3>Batches</h3>
-          ${renderAnalyticsRows(batchAnalyticsRows, 'No batch stats available yet.')}
-        </div>
-
-        <div class="analytics-panel">
-          <h3>Part Impact</h3>
-          ${renderAnalyticsRows(componentRows, 'No part impact available yet.')}
-        </div>
-
-        <div class="analytics-panel analytics-wide">
-          <h3>Repair Signals</h3>
-          ${renderAnalyticsRows(problemRows, 'No repair signals saved yet.')}
-        </div>
-
-        ${renderSupplierComparisonPanel(items)}
-
-        <div class="analytics-panel analytics-wide">
-          <h3>History</h3>
-          ${renderAnalyticsRows(recentRows, 'No gradings saved yet.')}
-          <div class="analytics-actions">
-            <button class="btn btn-primary" data-action="history">Open Full History</button>
-          </div>
-        </div>
+        ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
+        ${renderAnalyticsPanel('Throughput trend', 'Output en repair-flow per dag.', renderTrendChart(trendBuckets))}
+        ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
+        ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
+        ${renderAnalyticsPanel('Repair bottlenecks', 'Meest voorkomende repair- en kwaliteitsredenen.', renderBarList(problemRows, 'Nog geen repair-signalen binnen deze filters.'))}
+        ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
+        ${renderAnalyticsPanel('Top brands', 'Merken met de meeste intake of output.', renderBarList(brandRows, 'Nog geen merken beschikbaar.'))}
+        ${renderAnalyticsPanel('Top models', 'Modellen die het vaakst door de workflow komen.', renderBarList(modelRows, 'Nog geen modellen beschikbaar.'))}
+        ${renderAnalyticsPanel('Monitor vs laptop volume', 'Directe vergelijking van productgroepen.', renderBarList(productRows, 'Nog geen productvolume beschikbaar.'))}
+        ${renderAnalyticsPanel('Productivity heatmap', 'Wanneer het meeste werk door de app loopt.', renderHeatmap(heatmapRows))}
+        ${renderSupplierComparisonPanel(supplierComparisonItems)}
+        ${renderAnalyticsPanel('Recent activity', 'Laatste gradings en labelprints binnen de filters.', renderRecentActivity(filteredItems), 'analytics-wide')}
       </div>
     </div>
   `;

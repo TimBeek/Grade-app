@@ -43,6 +43,21 @@ function labelValue(value, fallback = '-') {
   return clean || fallback;
 }
 
+function formatBatteryForLabel(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return '';
+  if (/%$/.test(clean)) return clean;
+  const normalized = clean.replace(',', '.');
+  const number = Number(normalized);
+  if (Number.isFinite(number)) {
+    if (number > 0 && number <= 1) return `${Math.round(number * 100)}%`;
+    if (number > 1 && number <= 100) return `${Math.round(number)}%`;
+  }
+  const decimalMatch = normalized.match(/\b0\.(\d{1,3})\b/);
+  if (decimalMatch) return `${Math.round(Number(`0.${decimalMatch[1]}`) * 100)}%`;
+  return clean;
+}
+
 function compactProblemText(text) {
   return String(text || '')
     .replace(/\s*\([^)]*\)/g, '')
@@ -60,34 +75,39 @@ function compactProblemText(text) {
     .trim();
 }
 
+function isRepairLabelIssue(issue) {
+  const text = String(issue || '').toLowerCase();
+  if (!text) return false;
+  if (/\bsafety\s*marking(s)?\b|\bveiligheidsmarkering(en)?\b/i.test(text)) return false;
+  return /(defect|faulty|cracked|broken|gebroken|gebarsten|barst|no power|does not power|geen beeld|dead battery|missing battery|battery missing|ontbreekt|pixel line|dead pixel|dead pixels|flicker|flikker|schermflikkering|toets werkt niet|key not working|keyboard .*faulty|keyboard missing|touchpad werkt niet|touchpad not working|scharnier kapot|scharnier werkt niet|hinge .*not functional|not functional|niet functioneel|los|scherpe rand|safety risk|veiligheidsrisico|herstel|herstellen|rechtmaken|niet herstelbaar|verbogen)/i.test(text);
+}
+
 function getRepairIssues(laptop, result) {
   result = result || {};
-  const repairWords = /(defect|faulty|cracked|broken|dead battery|missing battery|battery missing|toets werkt niet|touchpad werkt niet|pixel|flikker|scharnier kapot|safety|veiligheidsrisico|niet functioneel|ontbreekt)/i;
   const resultIssues = (result.problems || []).filter(Boolean);
-  const supplierIssues = splitSupplierIssues(laptop).filter(issue => repairWords.test(issue));
-  return Array.from(new Set(resultIssues.concat(supplierIssues))).map(compactProblemText);
+  const repairResultIssues = result.forceProblemLabel ? resultIssues : resultIssues.filter(isRepairLabelIssue);
+  const supplierIssues = splitSupplierIssues(laptop).filter(isRepairLabelIssue);
+  return Array.from(new Set(repairResultIssues.concat(supplierIssues))).map(compactProblemText);
 }
 
 function getProblemLabelRows(laptop, result) {
   result = result || {};
-  const grade = result.eindgrade === 'D' ? 'X' : result.eindgrade;
   const repairIssues = getRepairIssues(laptop, result);
   const isRepair = needsProblemLabel(laptop, result);
-  const status = isRepair ? `Repair${grade ? ' / ' + grade : ''}` : `Grade ${grade}`;
-  const problems = repairIssues.length ? repairIssues : [isRepair ? 'Check repair' : 'No repair needed'];
+  const problems = repairIssues.length ? repairIssues : [isRepair ? 'Controle reparatie' : 'Geen reparatieomschrijving'];
 
   return [
-    `${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim(),
-    `Barcode ${labelValue(laptop.sticker)} / ${status}`,
+    'REPARATIE',
     problems[0] || '',
-    problems.slice(1, 3).join(' / ')
+    problems.slice(1, 3).join(' / '),
+    ''
   ];
 }
 
 function getSpecsLabelRows(laptop, result, options = {}) {
   const grade = result && result.eindgrade === 'D' ? 'X' : result && result.eindgrade;
   const touch = isTouchscreenLaptop(laptop) ? 'Ja' : 'Nee';
-  const battery = labelValue(laptop.battery, '');
+  const battery = formatBatteryForLabel(laptop.battery);
   const gpu = labelValue(laptop.labelGpu || getNoteworthyGpu(laptop.gpu), '');
   const row4Parts = [];
   if (battery) row4Parts.push(`Accu ${battery}`);
@@ -138,8 +158,7 @@ function getLabelRows(laptop, result, type = 'specs', options = {}) {
 
 function needsProblemLabel(laptop, result) {
   result = result || {};
-  const grade = result.eindgrade === 'D' ? 'X' : result.eindgrade;
-  return grade === 'X' || getRepairIssues(laptop, result).length > 0;
+  return Boolean(result.forceProblemLabel) || getRepairIssues(laptop, result).length > 0;
 }
 
 function getDymoLabelConfig() {

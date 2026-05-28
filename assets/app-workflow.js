@@ -59,12 +59,14 @@ function bindRenderedControlHandlers() {
     render();
   });
 
-  bindClick('[data-sticker]', button => {
-    selectLaptop(button.dataset.sticker);
-  });
+  bindClick('[data-sticker]', button => selectLaptop(button.dataset.sticker));
 
   bindClick('[data-sticker-label]', button => {
     return scanAndPrintStickerLabel(button.dataset.stickerLabel, { source: 'list' });
+  });
+
+  bindClick('[data-reprint-laptop]', button => {
+    return reprintCompletedLaptopLabels(button.dataset.reprintLaptop, { source: 'list' });
   });
 
   bindClick('[data-monitor-select]', button => {
@@ -118,6 +120,10 @@ function bindRenderedControlHandlers() {
     updateExpertTriggerUI(tid, STATE.currentGrading.triggers[tid]);
     queueExpertScoreUpdate();
   });
+
+  bindClick('[data-expert-final-grade]', button => {
+    return confirmExpertFinalGrade(button.dataset.expertFinalGrade);
+  });
 }
 
 function handleDelegatedPointerDown(e) {
@@ -138,6 +144,13 @@ async function handleDelegatedClick(e) {
 
   const decisionButton = e.target.closest('[data-decision-option]');
   if (decisionButton) {
+    const previewTarget = e.target.closest('[data-image-preview]');
+    if (previewTarget) {
+      e.preventDefault();
+      e.stopPropagation();
+      openImagePreviewFromElement(previewTarget);
+      return;
+    }
     resolvePendingDecision(Number(decisionButton.dataset.decisionOption));
     return;
   }
@@ -170,13 +183,19 @@ async function handleDelegatedClick(e) {
 
   const stickerButton = e.target.closest('[data-sticker]');
   if (stickerButton) {
-    selectLaptop(stickerButton.dataset.sticker);
+    await selectLaptop(stickerButton.dataset.sticker);
     return;
   }
 
   const stickerLabelButton = e.target.closest('[data-sticker-label]');
   if (stickerLabelButton) {
     await scanAndPrintStickerLabel(stickerLabelButton.dataset.stickerLabel, { source: 'list' });
+    return;
+  }
+
+  const reprintLaptopButton = e.target.closest('[data-reprint-laptop]');
+  if (reprintLaptopButton) {
+    await reprintCompletedLaptopLabels(reprintLaptopButton.dataset.reprintLaptop, { source: 'list' });
     return;
   }
 
@@ -235,6 +254,13 @@ async function handleDelegatedClick(e) {
     STATE.currentGrading.triggers[tid] = !STATE.currentGrading.triggers[tid];
     updateExpertTriggerUI(tid, STATE.currentGrading.triggers[tid]);
     queueExpertScoreUpdate();
+    return;
+  }
+
+  const expertFinalButton = e.target.closest('[data-expert-final-grade]');
+  if (expertFinalButton) {
+    if (!canGradeUser()) return;
+    await confirmExpertFinalGrade(expertFinalButton.dataset.expertFinalGrade);
   }
 }
 
@@ -274,6 +300,12 @@ function setMonitorManualPortCount(button) {
 }
 
 async function handleDelegatedChange(e) {
+  if (e.target.matches('[data-analytics-filter]')) {
+    setAnalyticsFilter(e.target.dataset.analyticsFilter, e.target.value);
+    render();
+    return;
+  }
+
   if (e.target.matches('[data-trigger]')) {
     STATE.currentGrading.triggers[e.target.dataset.trigger] = e.target.checked;
     return;
@@ -327,6 +359,11 @@ function syncModeSelectForRole(role, modeSelect) {
 }
 
 function handleDelegatedInput(e) {
+  if (e.target.id === 'analyticsSearch') {
+    scheduleAnalyticsSearch(e.target.value);
+    return;
+  }
+
   if (e.target.id === 'mm_merk' || e.target.id === 'mm_series' || e.target.id === 'mm_model') {
     if (e.target.id === 'mm_series' && e.target.dataset) e.target.dataset.autoFilled = 'false';
     syncMonitorManualDatabaseAssist();
@@ -460,7 +497,11 @@ function handleDelegatedKeydown(e) {
           render();
         });
       } else {
-        selectLaptop(sticker);
+        Promise.resolve(selectLaptop(sticker)).catch(error => {
+          reportAppError('Scan failed', error);
+          setAppMessage('Scan failed. Try again.');
+          render();
+        });
       }
       return;
     }
@@ -486,7 +527,19 @@ function handleDelegatedKeydown(e) {
     return;
   }
 
-  if (['a', 'b', 'c', 'd', 'x'].includes(key) && (STATE.currentScreen === 'grading_beginner' || STATE.currentScreen === 'grading_expert')) {
+  if (['a', 'b', 'c', 'd', 'x'].includes(key) && STATE.currentScreen === 'grading_expert') {
+    if (!canGradeUser()) return;
+    const letter = key === 'x' ? 'D' : key.toUpperCase();
+    e.preventDefault();
+    Promise.resolve(confirmExpertFinalGrade(letter)).catch(error => {
+      reportAppError('Expert grade failed', error);
+      setAppMessage('Expert grade failed. Try again.');
+      render();
+    });
+    return;
+  }
+
+  if (['a', 'b', 'c', 'd', 'x'].includes(key) && STATE.currentScreen === 'grading_beginner') {
     if (!canGradeUser()) return;
     const letter = key === 'x' ? 'D' : key.toUpperCase();
     e.preventDefault();
@@ -572,6 +625,20 @@ function scheduleHistorySearch(value) {
   }, 180);
 }
 
+let analyticsSearchTimer = null;
+function scheduleAnalyticsSearch(value) {
+  clearTimeout(analyticsSearchTimer);
+  setAnalyticsFilter('query', value);
+  analyticsSearchTimer = setTimeout(() => {
+    render();
+    const input = document.getElementById('analyticsSearch');
+    if (input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  }, 160);
+}
+
 function updateExpertChoiceUI(componentId, letter) {
   document.querySelectorAll(`[data-expert-keuze][data-ond="${componentId}"]`).forEach(button => {
     button.classList.toggle('active', button.dataset.letter === letter);
@@ -599,7 +666,9 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
   if (!STATE.currentGrading) return;
   STATE.currentGrading.keuzes[componentId] = letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
+  STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
   delete STATE.currentGrading.impactOverrides[componentId];
+  delete STATE.currentGrading.repairIssues[componentId];
   STATE.currentGrading.gradeReviewDone = false;
   STATE.currentGrading.finalGradeOverride = null;
 
@@ -650,9 +719,24 @@ function resolvePendingDecision(optionIndex) {
 
   STATE.currentGrading.keuzes[decision.componentId] = decision.letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
+  STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
   STATE.currentGrading.impactOverrides[decision.componentId] = option.impact;
+  if (option.repairIssue) STATE.currentGrading.repairIssues[decision.componentId] = option.repairIssue;
+  else delete STATE.currentGrading.repairIssues[decision.componentId];
   STATE.currentGrading.gradeReviewDone = false;
   STATE.currentGrading.finalGradeOverride = null;
+  if (option.nextDecision) {
+    STATE.pendingDecision = {
+      componentId: decision.componentId,
+      letter: decision.letter,
+      autoAdvance: decision.autoAdvance,
+      title: option.nextDecision.title,
+      text: option.nextDecision.text,
+      options: option.nextDecision.options,
+    };
+    render();
+    return;
+  }
   STATE.pendingDecision = null;
   advanceAfterChoice(decision.autoAdvance);
   render();
@@ -664,6 +748,7 @@ function cancelPendingDecision() {
     if (decision.type !== 'grade-review') {
       delete STATE.currentGrading.keuzes[decision.componentId];
       if (STATE.currentGrading.impactOverrides) delete STATE.currentGrading.impactOverrides[decision.componentId];
+      if (STATE.currentGrading.repairIssues) delete STATE.currentGrading.repairIssues[decision.componentId];
     }
   }
   STATE.pendingDecision = null;
@@ -673,6 +758,7 @@ function advanceAfterChoice(autoAdvance) {
   if (!autoAdvance || !STATE.currentGrading) return;
   if (STATE.currentGrading.huidigeIndex < getGradingOnderdelen().length - 1) {
     STATE.currentGrading.huidigeIndex++;
+    updateSupplierNoticeForCurrentStep();
   } else {
     finishGrading();
   }
@@ -680,6 +766,7 @@ function advanceAfterChoice(autoAdvance) {
 
 const STICKER_ALLOWED_ACTIONS = new Set([
   'dismiss_message',
+  'confirm_supplier_notice',
   'toggle_language',
   'toggle_theme',
   'close_image_preview',
@@ -698,6 +785,7 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'back_scan',
   'login_password',
   'print_supplier_specs_label',
+  'reprint_completed_laptop',
 ]);
 
 function guardStickerAction(action) {
@@ -719,6 +807,9 @@ async function handleAction(action, el) {
     case 'dismiss_message':
       setAppMessage(null);
       break;
+    case 'confirm_supplier_notice':
+      confirmSupplierNotice();
+      break;
     case 'toggle_theme':
       setThemePreference(el.dataset.themeValue);
       break;
@@ -739,6 +830,7 @@ async function handleAction(action, el) {
       STATE.currentMonitor = null;
       STATE.currentGrading = null;
       STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
       STATE.imagePreview = null;
       break;
     case 'home':
@@ -748,6 +840,7 @@ async function handleAction(action, el) {
       STATE.currentMonitor = null;
       STATE.currentGrading = null;
       STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
       STATE.imagePreview = null;
       break;
     case 'home_workflow':
@@ -757,6 +850,7 @@ async function handleAction(action, el) {
       STATE.currentMonitor = null;
       STATE.currentGrading = null;
       STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
       break;
     case 'home_monitor_workflow':
       STATE.currentScreen = 'home';
@@ -765,12 +859,14 @@ async function handleAction(action, el) {
       STATE.currentMonitor = null;
       STATE.currentGrading = null;
       STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
       break;
     case 'sticker_scan':
       STATE.currentScreen = 'sticker_scan';
       STATE.currentMonitor = null;
       STATE.manualError = '';
       STATE.scanSearch = '';
+      STATE.supplierNotice = null;
       break;
     case 'monitor_label_scan':
       STATE.currentScreen = 'monitor_label_scan';
@@ -897,6 +993,9 @@ async function handleAction(action, el) {
       }
       STATE.currentScreen = 'analytics';
       break;
+    case 'analytics_filters_reset':
+      resetAnalyticsFilters();
+      break;
     case 'export_supplier_comparison':
       await exportSupplierComparison(el.dataset.exportBatch || 'all');
       return;
@@ -977,7 +1076,16 @@ async function handleAction(action, el) {
       await submitMonitorManualEntry();
       return;
     case 'back_scan':
-      STATE.currentScreen = isStickerUser() ? 'sticker_scan' : STATE.currentLaptop && STATE.currentLaptop.herkomst ? 'manual' : 'scan';
+      const backFromScreen = STATE.currentScreen;
+      const isManualLaptop = STATE.currentLaptop && STATE.currentLaptop.batchNummer === 'Manual';
+      STATE.currentScreen = isStickerUser()
+        ? 'sticker_scan'
+        : backFromScreen === 'laptop_info' && isManualLaptop
+          ? 'manual'
+          : 'scan';
+      STATE.currentGrading = null;
+      STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
       break;
     case 'start_beginner':
       if (!canGradeUser()) {
@@ -1016,11 +1124,15 @@ async function handleAction(action, el) {
       startTestGrading('expert');
       break;
     case 'prev_q':
-      STATE.currentGrading.huidigeIndex--;
+      STATE.supplierNotice = null;
+      STATE.currentGrading.huidigeIndex = Math.max(0, STATE.currentGrading.huidigeIndex - 1);
+      updateSupplierNoticeForCurrentStep();
       break;
     case 'next_q':
+      STATE.supplierNotice = null;
       if (STATE.currentGrading.huidigeIndex < getGradingOnderdelen().length - 1) {
         STATE.currentGrading.huidigeIndex++;
+        updateSupplierNoticeForCurrentStep();
       } else {
         finishGrading();
       }
@@ -1028,6 +1140,9 @@ async function handleAction(action, el) {
     case 'confirm_expert':
       finishGrading();
       break;
+    case 'confirm_expert_repair':
+      await completeExpertRepairGrade();
+      return;
     case 'print_specs_label':
       await printCurrentLabel('specs');
       return;
@@ -1146,7 +1261,71 @@ async function submitMonitorManualEntry() {
   return true;
 }
 
-function selectLaptop(sticker) {
+function getCurrentGradingComponent() {
+  if (!STATE.currentGrading) return null;
+  return getGradingOnderdelen()[STATE.currentGrading.huidigeIndex] || null;
+}
+
+function buildSupplierNoticeForComponent(component, laptop = STATE.currentLaptop) {
+  if (!component || !laptop || !normalizeText(laptop.meldingen)) return null;
+  const issues = getSupplierPopupIssues(component.id, laptop);
+  if (!issues.length) return null;
+  const notes = issues.join(', ');
+  return {
+    sticker: laptop.sticker,
+    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Apparaat',
+    componentId: component.id,
+    componentName: component.naam,
+    issues,
+    notes,
+    noticeKey: `${component.id}:${notes}`,
+  };
+}
+
+function buildSupplierNoticeForExpert(laptop = STATE.currentLaptop) {
+  if (!laptop || !normalizeText(laptop.meldingen)) return null;
+  const notes = [];
+  getGradingOnderdelen().forEach(component => {
+    getSupplierPopupIssues(component.id, laptop).forEach(issue => {
+      notes.push(`${component.naam} = ${issue}`);
+    });
+  });
+  const issues = Array.from(new Set(notes));
+  if (!issues.length) return null;
+  return {
+    sticker: laptop.sticker,
+    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Apparaat',
+    componentId: 'expert',
+    componentName: '',
+    issues,
+    notes: issues.join(', '),
+    noticeKey: `expert:${issues.join('|')}`,
+  };
+}
+
+function updateSupplierNoticeForCurrentStep() {
+  if (!STATE.currentGrading || STATE.pendingDecision || STATE.supplierNotice) return;
+  const notice = STATE.currentScreen === 'grading_beginner'
+    ? buildSupplierNoticeForComponent(getCurrentGradingComponent())
+    : STATE.currentScreen === 'grading_expert'
+      ? buildSupplierNoticeForExpert()
+      : null;
+  if (!notice) return;
+  const seen = STATE.currentGrading.supplierNoticesSeen || {};
+  if (seen[notice.noticeKey]) return;
+  STATE.supplierNotice = notice;
+}
+
+function confirmSupplierNotice() {
+  const notice = STATE.supplierNotice;
+  if (notice && STATE.currentGrading && notice.noticeKey) {
+    STATE.currentGrading.supplierNoticesSeen = STATE.currentGrading.supplierNoticesSeen || {};
+    STATE.currentGrading.supplierNoticesSeen[notice.noticeKey] = true;
+  }
+  STATE.supplierNotice = null;
+}
+
+async function selectLaptop(sticker) {
   const cleanSticker = String(sticker || '').trim();
   const l = getLaptopBySticker(sticker);
   if (!l) {
@@ -1154,21 +1333,123 @@ function selectLaptop(sticker) {
     render();
     return;
   }
-  if (isLaptopGraded(l.sticker)) {
-    setAppMessage(`Barcode ${cleanSticker || l.sticker} is already graded in this session.`);
-    render();
-    return;
-  }
-  if (isLaptopLabelPrinted(l.sticker)) {
-    setAppMessage(`Barcode ${cleanSticker || l.sticker} already has a specs label and is complete in the digital workflow.`);
-    render();
+  if (isLaptopGraded(l.sticker) || isLaptopLabelPrinted(l.sticker)) {
+    await reprintCompletedLaptopLabels(l.sticker, { source: 'scan', confirmBeforePrint: true });
     return;
   }
   STATE.currentLaptop = l;
   STATE.currentScreen = 'laptop_info';
   STATE.scanSearch = '';
+  STATE.supplierNotice = null;
   setAppMessage(null);
   render();
+}
+
+function buildLaptopFromHistoryOrBatch(sticker, historyItem = null) {
+  const batchLaptop = getLaptopBySticker(sticker);
+  const source = historyItem || batchLaptop || {};
+  return {
+    ...(batchLaptop || {}),
+    sticker: source.sticker || sticker,
+    merk: source.merk || (batchLaptop && batchLaptop.merk) || '',
+    model: source.model || (batchLaptop && batchLaptop.model) || '',
+    serial: source.serial || (batchLaptop && batchLaptop.serial) || '',
+    processor: source.processor || (batchLaptop && batchLaptop.processor) || '',
+    ram: source.ram || (batchLaptop && batchLaptop.ram) || '',
+    ssd: source.ssd || (batchLaptop && batchLaptop.ssd) || '',
+    display: source.display || (batchLaptop && batchLaptop.display) || '',
+    battery: source.battery || (batchLaptop && batchLaptop.battery) || '',
+    gpu: source.gpu || (batchLaptop && batchLaptop.gpu) || '',
+    labelGpu: source.labelGpu || (batchLaptop && batchLaptop.labelGpu) || '',
+    leverancier_class: source.leverancier_class || (batchLaptop && batchLaptop.leverancier_class) || '',
+    meldingen: source.leverancier_meldingen || source.meldingen || (batchLaptop && batchLaptop.meldingen) || '',
+    batchId: source.batchId || (batchLaptop && batchLaptop.batchId) || '',
+    batchNummer: source.batchNummer || (batchLaptop && batchLaptop.batchNummer) || '',
+  };
+}
+
+function getHistoryResultForReprint(historyItem) {
+  if (!historyItem) return { eindgrade: '', problems: [] };
+  const result = historyItem.result ? { ...historyItem.result } : {};
+  result.eindgrade = result.eindgrade || historyItem.grade || '';
+  result.score = result.score ?? historyItem.score ?? 0;
+  result.problems = Array.isArray(result.problems) ? result.problems : [];
+  return result;
+}
+
+function confirmCompletedLaptopReprint(laptop) {
+  if (typeof confirm !== 'function') return true;
+  const sticker = laptop && laptop.sticker ? laptop.sticker : '-';
+  const device = `${laptop && laptop.merk ? laptop.merk : ''} ${laptop && laptop.model ? laptop.model : ''}`.trim();
+  return confirm(
+    `Deze laptop is al gescand en gegradeerd.\n\n` +
+    `Barcode: ${sticker}${device ? `\nApparaat: ${device}` : ''}\n\n` +
+    `Weet je zeker dat je het label opnieuw wilt printen?`
+  );
+}
+
+async function reprintCompletedLaptopLabels(sticker, options = {}) {
+  const cleanSticker = String(sticker || '').trim();
+  if (!cleanSticker) {
+    setAppMessage('Scan or select a completed barcode first.');
+    render();
+    return false;
+  }
+  const historyItem = getLatestHistoryForSticker(cleanSticker);
+  const labelPrint = getLatestLabelPrintForSticker(cleanSticker);
+  if (!historyItem && !labelPrint && !getLaptopBySticker(cleanSticker)) {
+    setAppMessage(`Barcode ${cleanSticker} not found for reprint.`);
+    render();
+    return false;
+  }
+
+  const laptop = buildLaptopFromHistoryOrBatch(cleanSticker, historyItem || labelPrint);
+  const result = historyItem ? getHistoryResultForReprint(historyItem) : { eindgrade: '', problems: [] };
+  if (options.confirmBeforePrint && !confirmCompletedLaptopReprint(laptop)) {
+    STATE.currentLaptop = null;
+    STATE.currentGrading = null;
+    STATE.pendingDecision = null;
+    STATE.supplierNotice = null;
+    STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
+    setAppMessage(`Opnieuw printen voor ${laptop.sticker || cleanSticker} geannuleerd.`);
+    render();
+    return false;
+  }
+  const printTypes = ['specs'];
+  if (needsProblemLabel(laptop, result)) printTypes.push('problems');
+  const preparedWindows = {};
+  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+    printTypes.forEach(type => {
+      preparedWindows[type] = createPreparedPrintWindow(type);
+    });
+  }
+
+  for (const type of printTypes) {
+    const printed = await printLabelFor(laptop, result, type, {
+      hideGrade: !historyItem && type === 'specs',
+      preparedWindow: preparedWindows[type],
+      suppressMessage: true,
+    });
+    if (!printed) {
+      setAppMessage(`Reprint for barcode ${cleanSticker} failed. Try again.`);
+      render();
+      return false;
+    }
+  }
+
+  logAudit('reprint_laptop_label', 'laptop', laptop.sticker || cleanSticker, {
+    source: options.source || '',
+    labels: printTypes,
+    grade: result.eindgrade || '',
+  });
+  STATE.currentLaptop = null;
+  STATE.currentGrading = null;
+  STATE.pendingDecision = null;
+  STATE.supplierNotice = null;
+  STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
+  setAppMessage(`${printTypes.length > 1 ? 'Specs and repair labels' : 'Specs label'} reprinted for ${laptop.sticker || cleanSticker}.`, 'success');
+  render();
+  return true;
 }
 
 async function scanAndPrintStickerLabel(sticker, options = {}) {
@@ -1193,17 +1474,11 @@ async function scanAndPrintStickerLabel(sticker, options = {}) {
   STATE.scanSearch = '';
 
   if (isLaptopGraded(laptop.sticker)) {
-    setAppMessage(`Barcode ${cleanSticker} is already graded and no longer in Labeling.`);
-    STATE.currentLaptop = null;
-    render();
-    return false;
+    return reprintCompletedLaptopLabels(laptop.sticker, { source: 'label-scan', confirmBeforePrint: true });
   }
 
   if (isLaptopLabelPrinted(laptop.sticker)) {
-    setAppMessage(`Specs label with blank grade line was already printed for barcode ${cleanSticker}.`);
-    STATE.currentLaptop = null;
-    render();
-    return false;
+    return reprintCompletedLaptopLabels(laptop.sticker, { source: 'label-scan', confirmBeforePrint: true });
   }
 
   const supplierResult = { eindgrade: '', problems: [] };
@@ -1234,8 +1509,8 @@ async function scanAndPrintStickerLabel(sticker, options = {}) {
   await saveSharedDemoState();
   STATE.currentLaptop = null;
   setAppMessage(printTypes.length > 1
-    ? `Specs label with blank grade line and repair label printed for ${laptop.sticker}. Device completed.`
-    : `Specs label with blank grade line printed for ${laptop.sticker}. Device completed.`,
+    ? `Specs label with blank grade line and repair label printed for ${laptop.sticker}. Device is complete in the digital workflow.`
+    : `Specs label with blank grade line printed for ${laptop.sticker}. Device is complete in the digital workflow.`,
     'success');
   render();
   return true;
@@ -1471,13 +1746,81 @@ function startGrading(modus) {
     keuzes: {},
     triggers: {},
     impactOverrides: {},
+    repairIssues: {},
     gradeReviewDone: false,
     finalGradeOverride: null,
     gestart: Date.now(),
     testOnly: Boolean(STATE.currentLaptop && STATE.currentLaptop.testOnly),
     result: null,
+    supplierNoticesSeen: {},
   };
   STATE.currentScreen = modus === 'beginner' ? 'grading_beginner' : 'grading_expert';
+  STATE.supplierNotice = null;
+  updateSupplierNoticeForCurrentStep();
+}
+
+function buildExpertDirectResult(grade, repairText = '') {
+  const normalized = grade === 'X' ? 'D' : String(grade || '').toUpperCase();
+  const scores = { A: 0, B: 10, C: 30, D: 999 };
+  const labels = { A: 'Premium', B: 'Good', C: 'Heavy Use', D: 'Repair / X' };
+  const isRepair = normalized === 'D';
+  return {
+    score: scores[normalized] ?? 0,
+    eindgrade: normalized,
+    plafond: null,
+    plafondReden: isRepair ? 'Expert marked device as repair / X' : null,
+    redenen: [{
+      type: isRepair ? 'bad' : normalized === 'A' ? 'good' : 'warn',
+      text: isRepair
+        ? `Expert repair reason: ${repairText}`
+        : `Expert selected grade ${normalized} (${labels[normalized]})`,
+    }],
+    detailRows: [{
+      naam: 'Expert grade',
+      gewicht: 1,
+      keuze: normalized,
+      impact: labels[normalized],
+      punten: scores[normalized] ?? 0,
+    }],
+    problems: isRepair ? [repairText] : [],
+    forceProblemLabel: isRepair,
+    rulesVersion: GRADING_RULES_VERSION,
+  };
+}
+
+async function confirmExpertFinalGrade(grade) {
+  if (!STATE.currentGrading || STATE.currentGrading.modus !== 'expert') return false;
+  const normalized = grade === 'X' ? 'D' : String(grade || '').toUpperCase();
+  if (!['A', 'B', 'C', 'D'].includes(normalized)) return false;
+  STATE.currentGrading.expertFinalGrade = normalized;
+  STATE.currentGrading.gradeReviewDone = true;
+  STATE.currentGrading.finalGradeOverride = normalized;
+  setAppMessage(null);
+  if (normalized === 'D') {
+    render();
+    return true;
+  }
+  STATE.currentGrading.result = buildExpertDirectResult(normalized);
+  STATE.currentGrading.bevestigd = Date.now();
+  await confirmSaveWithAutomaticLabels();
+  return true;
+}
+
+async function completeExpertRepairGrade() {
+  if (!STATE.currentGrading || STATE.currentGrading.modus !== 'expert') return false;
+  const repairText = normalizeText(document.getElementById('expertRepairText') && document.getElementById('expertRepairText').value);
+  if (!repairText) {
+    setAppMessage('Vul eerst de reparatie of beschadiging in voor X.');
+    render();
+    return false;
+  }
+  STATE.currentGrading.expertRepairText = repairText;
+  STATE.currentGrading.expertFinalGrade = 'D';
+  STATE.currentGrading.finalGradeOverride = 'D';
+  STATE.currentGrading.result = buildExpertDirectResult('D', repairText);
+  STATE.currentGrading.bevestigd = Date.now();
+  await confirmSaveWithAutomaticLabels();
+  return true;
 }
 
 function finishGrading() {
@@ -1490,7 +1833,23 @@ function finishGrading() {
   }
   STATE.currentGrading.result = calculateGrade(STATE.currentGrading.keuzes, STATE.currentGrading.triggers, STATE.currentGrading.impactOverrides);
   STATE.currentGrading.result.rulesVersion = GRADING_RULES_VERSION;
-  STATE.currentGrading.result.problems = buildProblemRows(STATE.currentGrading.keuzes, STATE.currentGrading.triggers, STATE.currentGrading.impactOverrides);
+  const repairEntries = Object.entries(STATE.currentGrading.repairIssues || {}).filter(([, issue]) => Boolean(issue));
+  const repairComponentNames = new Set(repairEntries.map(([componentId]) => {
+    const component = getGradingOnderdelen().find(ond => ond.id === componentId);
+    return component && component.naam;
+  }).filter(Boolean));
+  const genericRepairProblems = new Set(Array.from(repairComponentNames).map(name => `${name}: repair / not sellable`));
+  STATE.currentGrading.result.problems = buildProblemRows(
+    STATE.currentGrading.keuzes,
+    STATE.currentGrading.triggers,
+    STATE.currentGrading.impactOverrides
+  ).filter(problem => !genericRepairProblems.has(problem));
+  if (repairEntries.length) {
+    repairEntries.forEach(([, issue]) => {
+      if (!STATE.currentGrading.result.problems.includes(issue)) STATE.currentGrading.result.problems.push(issue);
+    });
+    STATE.currentGrading.result.forceProblemLabel = true;
+  }
   const borderlineReview = !STATE.currentGrading.gradeReviewDone ? getBorderlineAReview(STATE.currentGrading.result) : null;
   if (borderlineReview) {
     STATE.pendingDecision = borderlineReview;
@@ -1543,7 +1902,10 @@ function saveGrading() {
     keuzes: g.keuzes,
     triggers: g.triggers,
     impactOverrides: g.impactOverrides,
+    repairIssues: g.repairIssues || {},
     finalGradeOverride: g.finalGradeOverride,
+    expertFinalGrade: g.expertFinalGrade || '',
+    expertRepairText: g.expertRepairText || '',
     result: g.result,
   };
   STATE.history.push(historyItem);
@@ -1555,8 +1917,10 @@ function saveGrading() {
   STATE.currentLaptop = null;
   STATE.currentGrading = null;
   STATE.pendingDecision = null;
-  STATE.currentScreen = 'home';
+  STATE.supplierNotice = null;
+  STATE.currentScreen = 'scan';
   STATE.homeTab = 'workflow';
+  STATE.scanSearch = '';
 }
 
 async function confirmSaveWithAutomaticLabels() {
@@ -1571,9 +1935,11 @@ async function confirmSaveWithAutomaticLabels() {
   const printTypes = ['specs'];
   if (needsProblemLabel(l, g.result)) printTypes.push('problems');
   const preparedWindows = {};
-  printTypes.forEach(type => {
-    preparedWindows[type] = createPreparedPrintWindow(type);
-  });
+  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+    printTypes.forEach(type => {
+      preparedWindows[type] = createPreparedPrintWindow(type);
+    });
+  }
 
   for (const type of printTypes) {
     const printed = await printLabelFor(l, g.result, type, {

@@ -5,13 +5,31 @@
 const preloadedVisualAssets = new Set();
 
 function renderComponentNotice(ond) {
-  const supplierIssues = getSupplierIssues(ond.id);
+  const supplierIssues = getSupplierInlineIssues(ond.id);
   const touchscreenNote = ond.id === 'lcd' && isTouchscreenLaptop();
   if (!supplierIssues.length && !touchscreenNote) return '';
   return `
-    <div class="component-notice">
-      ${supplierIssues.length ? `<strong>Supplier note</strong>${supplierIssues.map(escapeHtml).join(', ')}` : ''}
-      ${touchscreenNote ? `<strong>${supplierIssues.length ? '<br>' : ''}Touchscreen</strong>This laptop has touch glass. Check scratches, pressure marks and touch response carefully.` : ''}
+    <div class="component-notice component-notice-inline">
+      ${supplierIssues.length ? `<strong>Leveranciersmelding</strong><ul>${supplierIssues.map(issue => `<li>${escapeHtml(ond.naam)} = ${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}
+      ${touchscreenNote ? `<strong>${supplierIssues.length ? 'Touchscreen' : 'Touchscreen'}</strong>This laptop has touch glass. Check scratches, pressure marks and touch response carefully.` : ''}
+    </div>
+  `;
+}
+
+function renderExpertSupplierInlineNotice(laptop = STATE.currentLaptop) {
+  if (!laptop || !normalizeText(laptop.meldingen)) return '';
+  const rows = [];
+  getGradingOnderdelen().forEach(ond => {
+    getSupplierInlineIssues(ond.id, laptop).forEach(issue => {
+      rows.push(`${ond.naam} = ${issue}`);
+    });
+  });
+  const uniqueRows = Array.from(new Set(rows));
+  if (!uniqueRows.length) return '';
+  return `
+    <div class="component-notice component-notice-inline expert-supplier-inline">
+      <strong>Leveranciersmelding</strong>
+      <ul>${uniqueRows.map(row => `<li>${escapeHtml(row)}</li>`).join('')}</ul>
     </div>
   `;
 }
@@ -36,6 +54,7 @@ function render() {
     html = renderTopbar();
     html += renderAppMessage();
     if (STATE.pendingDecision) html += renderDecisionModal(STATE.pendingDecision);
+    if (STATE.supplierNotice) html += renderSupplierNoticeModal(STATE.supplierNotice);
     if (STATE.imagePreview) html += renderImagePreviewModal(STATE.imagePreview);
     if (STATE.currentScreen === 'home') html += renderHome();
     else if (STATE.currentScreen === 'sticker_scan') html += renderStickerScan();
@@ -63,6 +82,28 @@ function render() {
     perf.mark('remarkt-render-end');
     perf.measure('remarkt-render', 'remarkt-render-start', 'remarkt-render-end');
   }
+}
+
+function renderSupplierNoticeModal(notice) {
+  const notes = Array.isArray(notice.issues) && notice.issues.length
+    ? notice.issues
+    : splitSupplierIssues({ meldingen: notice.notes || '' });
+  const componentName = notice.componentName || '';
+  return `
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Leveranciersmelding">
+      <div class="supplier-notice-modal">
+        <div class="supplier-notice-kicker">Leveranciersmelding</div>
+        <h3>${componentName ? escapeHtml(componentName) + ': ' : ''}controleer deze melding</h3>
+        <p>${escapeHtml(notice.device || 'Dit apparaat')} heeft een leveranciersmelding${componentName ? ' voor dit onderdeel' : ''}. Bevestig dat je dit hebt gelezen voordat je hier de ReMarkt keuze maakt.</p>
+        <div class="supplier-notice-box">
+          ${notes.length ? `<ul>${notes.map(note => `<li>${componentName ? `<strong>${escapeHtml(componentName)}</strong> = ` : ''}${escapeHtml(note)}</li>`).join('')}</ul>` : escapeHtml(notice.notes || '-')}
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" data-action="confirm_supplier_notice" type="button">Gelezen, doorgaan</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderImagePreviewModal(preview) {
@@ -204,10 +245,18 @@ function renderDecisionModal(decision) {
         <div class="decision-options">
           ${decision.options.map((option, index) => `
             <button class="decision-option ${option.image ? 'has-image' : ''}" data-decision-option="${index}" type="button">
-              ${option.image ? `<img src="${escapeHtml(option.image)}" alt="${escapeHtml(option.label)} voorbeeld" loading="eager" decoding="async" fetchpriority="high" width="640" height="426">` : ''}
+              ${option.image ? `
+                <span class="decision-image-wrap">
+                  <img src="${escapeHtml(option.image)}" alt="${escapeHtml(option.label)} voorbeeld" loading="eager" decoding="async" fetchpriority="high" width="640" height="426">
+                  <span class="decision-zoom-action" data-image-preview="true" data-preview-src="${escapeHtml(option.image)}" data-preview-label="${escapeHtml(option.label)}" role="button" aria-label="Zoom afbeelding" title="Zoom afbeelding" onpointerdown="openImagePreviewFromElement(this); return false;" ontouchstart="openImagePreviewFromElement(this); return false;" onclick="openImagePreviewFromElement(this); return false;">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="M15 15l5 5"></path></svg>
+                    <span>Zoom</span>
+                  </span>
+                </span>
+              ` : ''}
               <span class="decision-option-copy">
                 <strong>${escapeHtml(option.label)}</strong>
-                <span>${escapeHtml(option.detail)}</span>
+                ${option.detail ? `<span>${escapeHtml(option.detail)}</span>` : ''}
               </span>
             </button>
           `).join('')}
@@ -1310,8 +1359,10 @@ function renderExplain() {
 function renderStickerScan() {
   const allLaptops = getAllLaptops();
   const availableLaptops = getStickerOpenLaptops();
+  const completedLaptops = getCompletedLaptops();
   const query = STATE.scanSearch || '';
   const filteredLaptops = availableLaptops.filter(l => laptopMatchesScanQuery(l, query));
+  const filteredCompleted = completedLaptops.filter(l => laptopMatchesScanQuery(l, query)).slice(0, 30);
   const completedCount = Math.max(allLaptops.length - availableLaptops.length, 0);
   const isAdmin = isAdminUser();
   return `
@@ -1355,6 +1406,29 @@ function renderStickerScan() {
             </div>
           `;
         }).join('') || `<div class="scan-empty">No devices match this search.</div>` : `<p class="card-sub">All devices in these batches are labeled or already graded.</p>`}
+      </div>
+
+      <div class="card">
+        <h3>Opnieuw Printen</h3>
+        <p class="card-sub" style="margin-bottom: 14px;">Zoek of scan een afgerond apparaat om het label nogmaals te printen.</p>
+        ${filteredCompleted.length ? `
+          <div class="batch-list">
+            ${filteredCompleted.map(l => {
+              const historyItem = getLatestHistoryForSticker(l.sticker);
+              return `
+                <div class="batch-row">
+                  <button class="batch-select" data-reprint-laptop="${escapeHtml(l.sticker)}">
+                    <div class="batch-info">
+                      <div class="batch-num">${escapeHtml(l.merk)} ${escapeHtml(l.model)}</div>
+                      <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${historyItem ? `grade ${escapeHtml(displayGrade(normalizeSupplierGrade(historyItem.grade)))}` : 'blank grade'} · batch ${escapeHtml(l.batchNummer || '-')}</div>
+                    </div>
+                  </button>
+                  <span class="badge badge-active">Herprint</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `<p class="card-sub">Nog geen afgeronde apparaten gevonden${query ? ' voor deze zoekopdracht' : ''}.</p>`}
       </div>
     </div>
   `;
@@ -1421,8 +1495,10 @@ function renderMonitorLabelScan() {
 function renderScan() {
   const allLaptops = getAllLaptops();
   const availableLaptops = getOpenLaptops();
+  const completedLaptops = getCompletedLaptops();
   const query = STATE.scanSearch || '';
   const filteredLaptops = availableLaptops.filter(l => laptopMatchesScanQuery(l, query));
+  const filteredCompleted = completedLaptops.filter(l => laptopMatchesScanQuery(l, query)).slice(0, 30);
   const gradedCount = allLaptops.length - availableLaptops.length;
   const isAdmin = isAdminUser();
   const labelOnly = isStickerUser();
@@ -1467,6 +1543,30 @@ function renderScan() {
             </div>
           `;
         }).join('') || `<div class="scan-empty">No open devices match this search.</div>` : `<p class="card-sub">All devices in these batches are graded or labeled in this session.</p>`}
+      </div>
+
+      <div class="card">
+        <h3>Afgerond / Herprint</h3>
+        <p class="card-sub" style="margin-bottom: 14px;">Als een label fout is geprint, scan dezelfde barcode opnieuw of kies hieronder opnieuw printen.</p>
+        ${filteredCompleted.length ? `
+          <div class="batch-list">
+            ${filteredCompleted.map(l => {
+              const historyItem = getLatestHistoryForSticker(l.sticker);
+              const grade = historyItem ? displayGrade(normalizeSupplierGrade(historyItem.grade)) : 'Blank';
+              return `
+                <div class="batch-row">
+                  <button class="batch-select" data-reprint-laptop="${escapeHtml(l.sticker)}">
+                    <div class="batch-info">
+                      <div class="batch-num">${escapeHtml(l.merk)} ${escapeHtml(l.model)}</div>
+                      <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · grade ${escapeHtml(grade)} · batch ${escapeHtml(l.batchNummer || '-')}</div>
+                    </div>
+                  </button>
+                  <span class="badge badge-active">Herprint</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `<p class="card-sub">Nog geen afgeronde apparaten gevonden${query ? ' voor deze zoekopdracht' : ''}.</p>`}
       </div>
     </div>
   `;
@@ -1968,43 +2068,60 @@ function renderGradingBeginner() {
 
 function renderGradingExpert() {
   const g = STATE.currentGrading;
-  const onderdelen = getGradingOnderdelen();
-  
+  const l = STATE.currentLaptop || {};
+  const selectedGrade = g && g.expertFinalGrade;
+  const gradeOptions = [
+    { grade: 'A', label: 'A-grade', detail: 'Zeer nette staat. Label print direct.' },
+    { grade: 'B', label: 'B-grade', detail: 'Gebruikssporen, volledig functioneel. Label print direct.' },
+    { grade: 'C', label: 'C-grade', detail: 'Duidelijke gebruikssporen, technisch in orde. Label print direct.' },
+    { grade: 'D', label: 'X / Repair', detail: 'Reparatie, defect of niet direct verkoopbaar. Omschrijving verplicht.' },
+  ];
+
   return `
-    <div class="screen" style="max-width: 1100px;">
-      <div class="expert-grid">
-        <div class="expert-rows">
-          ${onderdelen.map(ond => `
-            <div class="expert-row">
-              <div class="expert-row-top">
-                <span class="expert-name">${ond.naam}</span>
-                <span class="expert-weight">${Object.entries(GRADING_IMPACTS[ond.id] || {}).map(([letter, impact]) => `${letter === 'D' ? 'X' : letter}=${IMPACT_PROFILES[impact].label}`).join(' · ')}</span>
-              </div>
-              ${renderComponentNotice(ond)}
-              <div class="expert-choices">
-                ${['A','B','C','D'].map(L => `
-                  <button class="expert-btn ${L} ${g.keuzes[ond.id] === L ? 'active' : ''}" 
-                          data-expert-keuze data-ond="${ond.id}" data-letter="${L}">
-                    ${L === 'D' ? '×' : L}
-                  </button>
-                `).join('')}
-              </div>
-              ${ond.triggers && ond.triggers.length ? `
-                <div class="expert-detail-bar">
-                  ${ond.triggers.map(t => `
-                    <button class="detail-pill ${impactPillClass(t.impact)} ${g.triggers[t.id] ? 'active' : ''}" 
-                            data-expert-trigger data-tid="${t.id}">
-                      ${t.label} ${impactLabel(t.impact, true)}
-                    </button>
-                  `).join('')}
-                </div>
-              ` : ''}
-            </div>
-          `).join('')}
+    <div class="screen expert-direct-screen" style="max-width: 980px;">
+      <div class="expert-direct-head">
+        <div>
+          <div class="ops-kicker">Expert modus</div>
+          <h1>Kies de definitieve grade</h1>
+          <p>Voor ervaren graders: kies A, B, C of X. Bij A/B/C print de app direct het specs-label en gaat daarna terug naar Apparaat graden.</p>
         </div>
-        
-        ${renderExpertScorePanel(g, onderdelen)}
+        <button class="btn btn-secondary" data-action="back_scan" type="button">Terug</button>
       </div>
+
+      <div class="laptop-card">
+        <div class="laptop-title">${escapeHtml(l.merk)} ${escapeHtml(l.model)}</div>
+        <div class="laptop-sub">Barcode ${escapeHtml(l.sticker)}${l.serial ? ' · S/N ' + escapeHtml(l.serial) : ''}${l.batchNummer ? ' · batch ' + escapeHtml(l.batchNummer) : ''}</div>
+        <div class="specs-grid">
+          <div class="spec-item"><span class="spec-label">Processor</span><span class="spec-value">${escapeHtml(l.processor || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">RAM</span><span class="spec-value">${escapeHtml(l.ram || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Storage</span><span class="spec-value">${escapeHtml(l.ssd || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Display</span><span class="spec-value">${escapeHtml(l.display || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Accu</span><span class="spec-value">${escapeHtml(formatBatteryForLabel(l.battery) || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Leverancier</span><span class="spec-value">${escapeHtml(l.leverancier_class || '—')}</span></div>
+        </div>
+      </div>
+      ${renderExpertSupplierInlineNotice(l)}
+
+      <div class="expert-direct-grade-grid">
+        ${gradeOptions.map(option => `
+          <button class="monitor-grade-button expert-grade-button grade-${option.grade}" data-expert-final-grade="${option.grade}" type="button">
+            <span class="monitor-grade-letter">${option.grade === 'D' ? 'X' : option.grade}</span>
+            <span class="monitor-grade-copy"><strong>${escapeHtml(option.label)}</strong><span>${escapeHtml(option.detail)}</span></span>
+            <em>${option.grade === 'D' ? 'Omschrijving invullen' : 'Print label'}</em>
+          </button>
+        `).join('')}
+      </div>
+
+      ${selectedGrade === 'D' ? `
+        <div class="expert-repair-panel">
+          <label class="form-label" for="expertRepairText">Reparatie / beschadiging voor reparatielabel *</label>
+          <textarea class="form-input expert-repair-text" id="expertRepairText" rows="3" placeholder="Bijv. defect keyboard, LCD pixel line, touchpad werkt niet...">${escapeHtml(g.expertRepairText || '')}</textarea>
+          <div class="nav-buttons" style="border-top:0; padding-top:12px;">
+            <span class="card-sub">Bij X print de app een specs-label en een reparatielabel met deze omschrijving.</span>
+            <button class="btn btn-primary" data-action="confirm_expert_repair" type="button">Bevestig X & print labels</button>
+          </div>
+        </div>
+      ` : ''}
     </div>
   `;
 }
