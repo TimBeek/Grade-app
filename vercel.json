@@ -12,6 +12,14 @@
       "headers": [{ "key": "Cache-Control", "value": "no-store" }]
     },
     {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+    },
+    {
       "source": "/assets/(.*).(png|jpg|jpeg|webp|gif|ico|svg)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
     }
