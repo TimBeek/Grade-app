@@ -407,8 +407,9 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
       : compact
         ? [11.2, 7.8, 7.8, 6.8]
         : [13, 8.8, 8.8, 7.5]);
-  // Reserve a column on the right for the large grade badge on monitor labels.
-  const monitorRowWidth = showGradeBadge ? 1980 : 2770;
+  // Reserve a tidy column on the right for the grade (caption + value) on
+  // monitor labels, with the spec rows kept in a clean left column.
+  const monitorRowWidth = showGradeBadge ? 1900 : 2770;
   const bounds = isMonitorLabel
     ? [
       { x: 170, y: 90, width: monitorRowWidth, height: 410 },
@@ -425,7 +426,8 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
     .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
     .join('');
   const gradeObject = showGradeBadge
-    ? dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2230, y: 90, width: 710, height: 1140 }, 46, true, 'Center')
+    ? dymoTextObject('GRADE_CAPTION', 'GRADE', { x: 2120, y: 150, width: 820, height: 210 }, 7.6, true, 'Center')
+      + dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2120, y: 360, width: 820, height: 790 }, 39, true, 'Center')
     : '';
 
   return `<?xml version="1.0" encoding="utf-8"?>
@@ -490,7 +492,7 @@ function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PRO
     .map((row, index) => row ? `<div class="label-row row-${index + 1}">${escapeHtml(row)}</div>` : '')
     .join('');
   const labelHtml = showGradeBadge
-    ? `<div class="monitor-label-text">${rowsHtml}</div><div class="monitor-grade-badge">${escapeHtml(gradeBadge)}</div>`
+    ? `<div class="monitor-label-text">${rowsHtml}</div><div class="monitor-grade-box"><span class="monitor-grade-caption">GRADE</span><span class="monitor-grade-value">${escapeHtml(gradeBadge)}</span></div>`
     : rowsHtml;
 
   return {
@@ -606,24 +608,37 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
         .monitor-label.monitor-has-grade {
           display: grid;
           grid-template-rows: none;
-          grid-template-columns: minmax(0, 1fr) auto;
-          align-items: center;
-          column-gap: 1.4mm;
+          grid-template-columns: minmax(0, 1fr) 13mm;
+          align-items: stretch;
+          column-gap: 0;
         }
         .monitor-label.monitor-has-grade .monitor-label-text {
           min-width: 0;
           display: grid;
           grid-template-rows: 8mm 6.7mm 6.7mm;
           align-content: center;
+          padding-right: 1.4mm;
         }
         .monitor-label.monitor-has-grade.tight .monitor-label-text { grid-template-rows: repeat(3, 7.05mm); }
-        .monitor-grade-badge {
+        .monitor-grade-box {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 0.3mm;
+          border-left: 0.4mm solid #000;
+          padding-left: 0.6mm;
+        }
+        .monitor-grade-caption {
+          font-size: 5.4pt;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          line-height: 1;
+        }
+        .monitor-grade-value {
           font-weight: 900;
-          font-size: 32pt;
-          line-height: 0.9;
-          text-align: center;
-          min-width: 11mm;
-          padding-right: 0.6mm;
+          font-size: 26pt;
+          line-height: 0.85;
           letter-spacing: -0.02em;
         }
         .receipt-mode {
