@@ -74,6 +74,20 @@ Niet committen:
 - `data/backups/`
 - losse `.log` en `.tmp` bestanden
 
+## Serverless API en database (Vercel KV)
+
+Naast de losse browserscripts is er een serverless API voor hosting op Vercel:
+
+- `api/_lib/state-core.mjs` — pure, dependency-vrije state-logica (normaliseren, mergen, gzip-envelope, statistieken). Gedeeld door de serverless functions én de lokale dev-server.
+- `api/_lib/state.mjs` — KV-opslaglaag (Vercel KV / Upstash Redis) met gzip + chunked read/write op key `remarkt:state:*`.
+- `api/_lib/http.mjs` — body-reader voor de functions.
+- `api/demo-state.mjs` — `GET`/`POST` van de gedeelde state (gzip-envelope).
+- `api/stats.mjs` — dashboard-KPIs rechtstreeks uit de database (`/api/stats`).
+- `api/health.mjs` — health + counts.
+- `scripts/migrate-to-kv.mjs` — eenmalige import van `data/remarkt-demo-state.json` naar KV.
+
+De front-end (`assets/app-state.js`) wisselt de state uit als gzip-envelope, zodat het ~6,5 MB document (±0,4 MB gecomprimeerd) ruim binnen de serverless body-limieten blijft. Het dashboard (`analytics-history.js`) toont via `/api/stats` een “Live uit database”-strip. Zie `docs/VERCEL-DEPLOY.md`.
+
 ## Productierichting
 
-Voor dagelijks commercieel gebruik blijft de belangrijkste technische stap een echte backend met database. De huidige demo-server schrijft state atomisch weg en bewaart backups, maar is geen vervanging voor transacties, server-side rollen en conflictcontrole bij meerdere medewerkers.
+De Vercel KV-opslag is een echte gedeelde database en vervangt de bestand-server voor productie. De API doet read-merge-write met key-gebaseerde de-duplicatie. Voor harde transactionele garanties en server-side rollen bij zeer intensief gelijktijdig gebruik blijft een transactionele DB (bijv. Postgres) de volgende stap.

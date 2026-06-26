@@ -1031,6 +1031,53 @@ function renderRecentActivity(items) {
   `;
 }
 
+// Fetches the authoritative, database-computed KPIs from /api/stats and fills
+// the strip in the analytics hero. Falls back silently when offline or when
+// running from file:// (no shared backend).
+async function refreshAnalyticsServerStats() {
+  const container = document.getElementById('analytics-server-stats');
+  if (!container) return;
+  if (typeof canUseSharedDemoState === 'function' && !canUseSharedDemoState()) {
+    container.setAttribute('data-state', 'offline');
+    container.innerHTML = '<span class="analytics-server-stats-label">Lokale modus · database-cijfers niet beschikbaar</span>';
+    return;
+  }
+  try {
+    const response = await fetch('/api/stats', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const stats = await response.json();
+    const totals = (stats && stats.totals) || {};
+    const updated = stats && stats.updatedAt ? new Date(stats.updatedAt) : null;
+    const updatedLabel = updated && !Number.isNaN(updated.getTime())
+      ? updated.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+      : '-';
+    const cells = [
+      { label: 'Gegraded (DB)', value: formatNumber(totals.graded || 0) },
+      { label: 'Repair-rate', value: `${totals.repairRatePct != null ? totals.repairRatePct : 0}%` },
+      { label: 'Laptops voorraad', value: formatNumber(totals.laptopsInVoorraad || 0) },
+      { label: 'Monitoren voorraad', value: formatNumber(totals.monitorsInVoorraad || 0) },
+      { label: 'Gebruikers', value: formatNumber(totals.users || 0) },
+      { label: 'Laatste update', value: escapeHtml(updatedLabel) },
+    ];
+    container.setAttribute('data-state', 'ready');
+    container.innerHTML = `
+      <span class="analytics-server-stats-label">Live uit database</span>
+      <div class="analytics-server-stats-cells">
+        ${cells.map(cell => `
+          <div class="analytics-server-stat">
+            <span class="analytics-server-stat-value">${cell.value}</span>
+            <span class="analytics-server-stat-label">${cell.label}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (error) {
+    container.setAttribute('data-state', 'error');
+    container.innerHTML = '<span class="analytics-server-stats-label">Database-cijfers konden niet worden geladen</span>';
+    if (typeof reportAppWarning === 'function') reportAppWarning('Dashboard-statistieken konden niet worden geladen', error);
+  }
+}
+
 function renderAnalytics() {
   const isAdmin = isAdminUser();
   const filters = getAnalyticsFilters();
@@ -1085,6 +1132,9 @@ function renderAnalytics() {
         </div>
       </div>
       ${renderDashboardTabs('analytics')}
+      <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
+        <span class="analytics-server-stats-label">Live cijfers uit database laden…</span>
+      </div>
       ${renderAnalyticsFilters(filters, allItems)}
 
       <div class="analytics-kpi-grid">

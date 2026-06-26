@@ -7,11 +7,13 @@ const preloadedVisualAssets = new Set();
 function renderComponentNotice(ond) {
   const supplierIssues = getSupplierInlineIssues(ond.id);
   const touchscreenNote = ond.id === 'lcd' && isTouchscreenLaptop();
-  if (!supplierIssues.length && !touchscreenNote) return '';
+  const touchControl = ond.id === 'lcd' ? renderTouchOverrideControls(STATE.currentLaptop, 'question') : '';
+  if (!supplierIssues.length && !touchscreenNote && !touchControl) return '';
   return `
     <div class="component-notice component-notice-inline">
       ${supplierIssues.length ? `<strong>Leveranciersmelding</strong><ul>${supplierIssues.map(issue => `<li>${escapeHtml(ond.naam)} = ${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}
       ${touchscreenNote ? `<strong>${supplierIssues.length ? 'Touchscreen' : 'Touchscreen'}</strong>This laptop has touch glass. Check scratches, pressure marks and touch response carefully.` : ''}
+      ${touchControl}
     </div>
   `;
 }
@@ -30,6 +32,38 @@ function renderExpertSupplierInlineNotice(laptop = STATE.currentLaptop) {
     <div class="component-notice component-notice-inline expert-supplier-inline">
       <strong>Leveranciersmelding</strong>
       <ul>${uniqueRows.map(row => `<li>${escapeHtml(row)}</li>`).join('')}</ul>
+    </div>
+  `;
+}
+
+function renderSupplierDReasonList(laptop) {
+  const issues = splitSupplierIssues(laptop);
+  if (!issues.length) {
+    return '<div class="repair-alert-reasons">Geen specifieke reden uit de leverancierslijst gevonden.</div>';
+  }
+  return `
+    <div class="repair-alert-reasons">
+      <span>Reden uit leverancierslijst</span>
+      <ul>${issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>
+    </div>
+  `;
+}
+
+function renderTouchOverrideControls(laptop, context = 'info') {
+  if (!laptop) return '';
+  const override = normalizeTouchOverride(laptop.touchOverride);
+  const effectiveTouch = isTouchscreenLaptop(laptop);
+  const contextClass = context === 'question' ? ' touch-override-panel-compact' : '';
+  return `
+    <div class="touch-override-panel${contextClass}">
+      <div class="touch-override-copy">
+        <span class="touch-override-title">Touchstatus</span>
+        <span class="touch-override-status">${effectiveTouch ? 'Touch: ja' : 'Touch: nee'} · ${override ? 'handmatig aangepast' : 'volgens lijst'}</span>
+      </div>
+      <div class="touch-override-actions" role="group" aria-label="Touchstatus corrigeren">
+        <button class="touch-option ${effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="yes" type="button">Touch ja</button>
+        <button class="touch-option ${!effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="no" type="button">Touch nee</button>
+      </div>
     </div>
   `;
 }
@@ -56,7 +90,8 @@ function render() {
     if (STATE.pendingDecision) html += renderDecisionModal(STATE.pendingDecision);
     if (STATE.supplierNotice) html += renderSupplierNoticeModal(STATE.supplierNotice);
     if (STATE.imagePreview) html += renderImagePreviewModal(STATE.imagePreview);
-    if (STATE.currentScreen === 'home') html += renderHome();
+    if (STATE.currentScreen === 'password_change') html += renderPasswordChange();
+    else if (STATE.currentScreen === 'home') html += renderHome();
     else if (STATE.currentScreen === 'sticker_scan') html += renderStickerScan();
     else if (STATE.currentScreen === 'monitor_label_scan') html += renderMonitorLabelScan();
     else if (STATE.currentScreen === 'monitor_manual') html += renderMonitorManualEntry();
@@ -78,6 +113,9 @@ function render() {
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
   attachListeners();
   scheduleScreenWarmup();
+  if (STATE.currentScreen === 'analytics' && typeof refreshAnalyticsServerStats === 'function') {
+    refreshAnalyticsServerStats();
+  }
   if (perf && perf.mark && perf.measure) {
     perf.mark('remarkt-render-end');
     perf.measure('remarkt-render', 'remarkt-render-start', 'remarkt-render-end');
@@ -143,6 +181,26 @@ function renderLogin() {
           <input type="password" class="form-input" id="loginPassword" placeholder="Password" autocomplete="current-password">
           <button class="btn btn-primary" data-action="login_password">Sign in</button>
           <div class="field-help">Demo passwords are hashed in browser code; this is not production security.</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPasswordChange() {
+  const userName = STATE.currentUser && STATE.currentUser.naam ? STATE.currentUser.naam : 'je account';
+  return `
+    <div class="screen" style="max-width: 560px;">
+      <div class="login-card">
+        <h1>Nieuw wachtwoord</h1>
+        <p>${escapeHtml(userName)}, kies een eigen wachtwoord voordat je verdergaat.</p>
+        <div class="login-fields">
+          <label class="form-label" for="newOwnPassword">Nieuw wachtwoord</label>
+          <input type="password" class="form-input" id="newOwnPassword" placeholder="Minimaal 8 tekens" autocomplete="new-password">
+          <label class="form-label" for="confirmOwnPassword">Herhaal wachtwoord</label>
+          <input type="password" class="form-input" id="confirmOwnPassword" placeholder="Nogmaals hetzelfde wachtwoord" autocomplete="new-password">
+          <button class="btn btn-primary" data-action="change_own_password">Wachtwoord opslaan</button>
+          <div class="field-help">Na het opslaan blijft dit wachtwoord bewaard voor de volgende live tunnels.</div>
         </div>
       </div>
     </div>
@@ -571,6 +629,7 @@ function renderMonitorGradeChoiceModal(monitor) {
   const canChangeIdentity = Array.isArray(monitor.identityOptions) && monitor.identityOptions.length > 1;
   const supplierNotice = getMonitorDeviceErrorNotice(monitor);
   const portVisuals = renderMonitorPortVisuals(monitor.videoInputs);
+  const isPrinting = STATE.monitorPrintInProgress === true;
   return `
     <div class="monitor-grade-overlay image-preview-overlay" role="dialog" aria-modal="true" aria-label="Monitor grade kiezen" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1300;background:rgba(23,23,23,0.72);display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;overscroll-behavior:contain;">
       <div class="monitor-grade-modal image-preview-modal" style="display:block;width:920px;max-width:calc(100% - 32px);max-height:calc(100vh - 32px);margin:0;background:#fff;border:1px solid #E9E9E9;border-top:6px solid #E30613;border-radius:10px;box-shadow:0 24px 80px rgba(0,0,0,0.34);overflow:visible;">
@@ -581,9 +640,9 @@ function renderMonitorGradeChoiceModal(monitor) {
             <p>Barcode ${escapeHtml(monitor.sticker)}</p>
           </div>
           <div class="monitor-grade-actions">
-            ${canChangeIdentity ? `<button class="btn btn-secondary" data-action="monitor_identity_reset" type="button">Andere naam kiezen</button>` : ''}
-            <button class="btn btn-secondary" data-action="monitor_manual_from_current" type="button">Gegevens corrigeren</button>
-            <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button">Andere monitor</button>
+            ${canChangeIdentity ? `<button class="btn btn-secondary" data-action="monitor_identity_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Andere naam kiezen</button>` : ''}
+            <button class="btn btn-secondary" data-action="monitor_manual_from_current" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Gegevens corrigeren</button>
+            <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Andere monitor</button>
           </div>
         </div>
         <div class="monitor-grade-overview">
@@ -616,11 +675,11 @@ function renderMonitorGradeChoiceModal(monitor) {
         ` : ''}
         <div class="monitor-grade-section-head">
           <strong>Kies definitieve ReMarkt grade</strong>
-          <span>Na de keuze wordt het monitorlabel direct geprint.</span>
+          <span>${isPrinting ? 'Monitorlabel wordt geprint en live opgeslagen.' : 'Na de keuze wordt het monitorlabel direct geprint.'}</span>
         </div>
         <div class="monitor-grade-rule-grid">
           ${getMonitorGradeOptions().map(option => `
-            <button class="monitor-grade-button grade-${option.grade}" data-monitor-print-grade="${option.grade}" type="button" aria-label="${escapeHtml(`${option.label}: ${option.detail}`)}">
+            <button class="monitor-grade-button grade-${option.grade}" data-monitor-print-grade="${option.grade}" type="button" aria-label="${escapeHtml(`${option.label}: ${option.detail}`)}" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>
               <span class="monitor-grade-letter">${option.grade === 'D' ? 'X' : option.grade}</span>
               <span class="monitor-grade-copy"><strong>${escapeHtml(option.label)}</strong></span>
               <span class="monitor-grade-info" data-monitor-grade-info="${option.grade}" role="button" aria-expanded="${STATE.monitorGradeInfoOpen === option.grade ? 'true' : 'false'}" aria-label="${escapeHtml(`${option.title}: ${option.detail}`)}">i</span>
@@ -628,11 +687,11 @@ function renderMonitorGradeChoiceModal(monitor) {
                 <strong>${escapeHtml(option.title)}</strong>
                 <span>${escapeHtml(option.detail)}</span>
               </span>
-              <em>Print label</em>
+              <em>${isPrinting && STATE.monitorSelectedGrade === option.grade ? 'Bezig...' : 'Print label'}</em>
             </button>
           `).join('')}
         </div>
-        <p class="monitor-grade-print-note">Na het kiezen van de grade print de app automatisch het monitorlabel.</p>
+        <p class="monitor-grade-print-note">${isPrinting ? 'Even wachten tot het printvenster en live opslaan klaar zijn.' : 'Na het kiezen van de grade print de app automatisch het monitorlabel.'}</p>
       </div>
     </div>
   `;
@@ -1861,7 +1920,8 @@ function renderAccounts() {
     <div class="screen" style="max-width: 1100px;">
       <div class="card">
         <h3>User Management</h3>
-        <p class="card-sub">Create users, reset passwords and assign access. Demo accounts are stored locally; production should use SSO and backend roles.</p>
+        <p class="card-sub">Nieuwe gebruikers krijgen het startwachtwoord en moeten bij de eerste login direct een eigen wachtwoord kiezen.</p>
+        <div class="instruction-strip">Startwachtwoord: <strong>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></div>
       </div>
 
       <div class="account-grid">
@@ -1893,10 +1953,6 @@ function renderAccounts() {
               </select>
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="newUserPassword" placeholder="New password">
-          </div>
           <button class="btn btn-primary" data-action="create_user">Create User</button>
         </div>
 
@@ -1907,7 +1963,7 @@ function renderAccounts() {
               <div class="account-row">
                 <div>
                   <strong>${escapeHtml(u.naam)}</strong>
-                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(displayUserRole(u.rol))} · ${escapeHtml(displayUserPreference(u.voorkeur))}</div>
+                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(displayUserRole(u.rol))} · ${escapeHtml(displayUserPreference(u.voorkeur))} · ${u.mustChangePassword ? 'moet wachtwoord instellen' : 'eigen wachtwoord actief'}</div>
                 </div>
                 <div class="form-row">
                   <select class="small-select" data-account-role="${escapeHtml(u.id)}">
@@ -1920,8 +1976,8 @@ function renderAccounts() {
                   </select>
                 </div>
                 <div class="account-actions">
-                  <input type="password" class="form-input" style="max-width: 220px;" data-account-password="${escapeHtml(u.id)}" placeholder="New password">
                   <button class="btn btn-secondary" data-action="update_user" data-user-id="${escapeHtml(u.id)}">Save</button>
+                  <button class="btn btn-secondary" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}">Reset password</button>
                   <button class="batch-remove" data-action="delete_user" data-user-id="${escapeHtml(u.id)}" ${u.id === STATE.currentUser.id ? 'disabled' : ''}>Delete</button>
                 </div>
               </div>
@@ -1949,6 +2005,7 @@ function renderLaptopInfo() {
         <div class="repair-alert">
           <strong>Supplier marked this device as Class D</strong>
           Send this device to repair before adding it to sellable stock.
+          ${renderSupplierDReasonList(l)}
           <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
             <button class="btn btn-secondary" data-action="print_supplier_specs_label">Print specs label</button>
             <button class="btn btn-secondary" data-action="print_supplier_problem_label">Print repair label</button>
@@ -2168,6 +2225,11 @@ function renderResult() {
   const r = g.result;
   const l = STATE.currentLaptop;
   const grade = r.eindgrade;
+  const extraLabelButton = r.repairLabelType === 'production'
+    ? 'Print Productie'
+    : r.repairLabelType === 'reject'
+      ? 'Print Niet verkoopbaar'
+      : 'Print Repair';
   const testOnly = g.testOnly || (l && l.testOnly);
   const labels = {
     A: { naam: 'Premium', desc: `Impact score ${r.score} - near new` },
@@ -2223,6 +2285,9 @@ function renderResult() {
       ${testOnly ? '' : `<div class="label-note">
         Label: ${getLabelRows(l, r).filter(Boolean).map(escapeHtml).join(' · ')}
       </div>`}
+      ${r.gradeAfterRepair ? `<div class="label-note">
+        Specs-label toont de grade na reparatie. Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
+      </div>` : ''}
       
       <div class="nav-buttons">
         <button class="btn btn-secondary" data-action="adjust">← Adjust</button>
@@ -2232,7 +2297,7 @@ function renderResult() {
             <button class="btn btn-primary" data-action="finish_test">Done</button>
           ` : `
             <button class="btn btn-secondary" data-action="print_specs_label">Print Specs</button>
-            <button class="btn btn-secondary" data-action="print_problem_label">Print Repair</button>
+            <button class="btn btn-secondary" data-action="print_problem_label">${extraLabelButton}</button>
             <button class="btn btn-primary" data-action="confirm_save">Confirm & Print</button>
           `}
         </div>

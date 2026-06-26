@@ -1,0 +1,13 @@
+# Keep the Vercel deploy lean: only ship the app shell, assets, and api/.
+feid/
+data/
+logs/
+screenshots/
+test-results/
+tmp/
+tests/
+node_modules/
+*.docx
+*.log
+*.tmp
+Highland Games*

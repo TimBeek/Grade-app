@@ -1,0 +1,19 @@
+{
+  "name": "remarkt-grading-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ReMarkt Grading App - laptop/monitor grading workflow met Vercel KV opslag en dashboard.",
+  "scripts": {
+    "dev": "node tools/remarkt-static-server.mjs",
+    "start": "node tools/remarkt-static-server.mjs",
+    "test": "node --test tests/grading-engine-smoke.test.js",
+    "migrate:kv": "node scripts/migrate-to-kv.mjs",
+    "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

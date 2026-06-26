@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { fromBody, toEnvelope, computeStats } from "../api/_lib/state-core.mjs";
 
 const root = process.cwd();
 const port = Number(process.env.PORT || 8080);
@@ -9,6 +10,7 @@ const appShellFile = fs.existsSync(path.join(root, "index.html"))
   : "remarkt-grading-app.html";
 const dataDir = path.join(root, "data");
 const demoStatePath = path.join(dataDir, "remarkt-demo-state.json");
+const userStorePath = path.join(dataDir, "remarkt-users.json");
 const backupDir = path.join(dataDir, "backups");
 const maxBackups = 10;
 
@@ -69,10 +71,11 @@ function readJsonBody(request) {
 }
 
 async function readDemoState() {
+  let state;
   try {
-    return JSON.parse(await fs.promises.readFile(demoStatePath, "utf8"));
+    state = JSON.parse(await fs.promises.readFile(demoStatePath, "utf8"));
   } catch {
-    return {
+    state = {
       version: 1,
       users: [],
       batches: [],
@@ -88,6 +91,7 @@ async function readDemoState() {
       updatedAt: null,
     };
   }
+  return withStoredUsers(state);
 }
 
 function uniqueStrings(values) {
@@ -108,15 +112,97 @@ function normalizeStickerCode(value) {
   return compact;
 }
 
+function userKey(user) {
+  return user && user.id ? String(user.id).trim().toLowerCase() : "";
+}
+
+function normalizeUserRows(users) {
+  return (Array.isArray(users) ? users : [])
+    .filter(user => user && typeof user === "object" && userKey(user) && user.passwordHash)
+    .map(user => ({
+      id: String(user.id || "").trim().toLowerCase(),
+      naam: String(user.naam || user.id || "").trim(),
+      rol: String(user.rol || "Grader").trim(),
+      initialen: String(user.initialen || "").trim(),
+      voorkeur: String(user.voorkeur || "").trim(),
+      passwordHash: String(user.passwordHash || ""),
+      mustChangePassword: user.mustChangePassword === true,
+      passwordUpdatedAt: String(user.passwordUpdatedAt || "").trim(),
+    }));
+}
+
+function normalizeUserMutation(value) {
+  if (!value || typeof value !== "object") return null;
+  const action = String(value.action || "").trim().toLowerCase();
+  const id = String(value.id || "").trim().toLowerCase();
+  if (!["create", "update", "delete"].includes(action) || !id) return null;
+  return { action, id };
+}
+
+function timestampValue(value) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function normalizeUserStorePayload(payload) {
+  const users = normalizeUserRows(Array.isArray(payload) ? payload : payload && payload.users);
+  const userSyncAt = String(payload && payload.userSyncAt || "").trim();
+  return {
+    userSync: users.length ? "user-management" : "",
+    userSyncAt: userSyncAt || null,
+    users,
+  };
+}
+
+async function readUserStore() {
+  try {
+    return normalizeUserStorePayload(JSON.parse(await fs.promises.readFile(userStorePath, "utf8")));
+  } catch {
+    return { userSync: "", userSyncAt: null, users: [] };
+  }
+}
+
+async function withStoredUsers(state) {
+  const stored = await readUserStore();
+  if (!stored.users.length) return state;
+  const stateUserTime = timestampValue(state && state.userSyncAt);
+  const storedUserTime = timestampValue(stored.userSyncAt);
+  if (Array.isArray(state.users) && state.users.length && stateUserTime > storedUserTime) return state;
+  return {
+    ...state,
+    userSync: "user-management",
+    userSyncAt: stored.userSyncAt || state.userSyncAt || state.updatedAt || null,
+    users: stored.users,
+  };
+}
+
+async function writeUserStoreFromState(state) {
+  const users = normalizeUserRows(state && state.users);
+  if (!users.length) return;
+  await fs.promises.mkdir(dataDir, { recursive: true });
+  const payload = {
+    userSync: "user-management",
+    userSyncAt: state.userSyncAt || state.updatedAt || new Date().toISOString(),
+    users,
+  };
+  const tempPath = `${userStorePath}.${process.pid}.tmp`;
+  await fs.promises.writeFile(tempPath, JSON.stringify(payload, null, 2), "utf8");
+  await fs.promises.rename(tempPath, userStorePath);
+}
+
 function normalizeDemoState(state) {
   if (!state || typeof state !== "object" || Array.isArray(state)) {
     throw new Error("State must be an object");
   }
   const version = Number(state.version);
+  const userSyncAt = String(state.userSyncAt || "").trim();
 
   return {
     version: Number.isFinite(version) ? version : 1,
-    users: Array.isArray(state.users) ? state.users : [],
+    userSync: state.userSync === "user-management" ? "user-management" : "",
+    userSyncAt: userSyncAt || null,
+    userMutation: normalizeUserMutation(state.userMutation),
+    users: normalizeUserRows(state.users),
     batches: Array.isArray(state.batches) ? state.batches : [],
     monitorBatches: Array.isArray(state.monitorBatches) ? state.monitorBatches : [],
     history: Array.isArray(state.history) ? state.history : [],
@@ -127,6 +213,10 @@ function normalizeDemoState(state) {
     deletedLaptopStickers: uniqueStrings(state.deletedLaptopStickers).map(normalizeStickerCode),
     deletedMonitorBatchIds: uniqueStrings(state.deletedMonitorBatchIds),
     deletedMonitorStickers: uniqueStrings(state.deletedMonitorStickers).map(normalizeStickerCode),
+    restoreDeletedBatchIds: uniqueStrings(state.restoreDeletedBatchIds),
+    restoreDeletedLaptopStickers: uniqueStrings(state.restoreDeletedLaptopStickers).map(normalizeStickerCode),
+    restoreDeletedMonitorBatchIds: uniqueStrings(state.restoreDeletedMonitorBatchIds),
+    restoreDeletedMonitorStickers: uniqueStrings(state.restoreDeletedMonitorStickers).map(normalizeStickerCode),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -145,6 +235,46 @@ function keyedMerge(existingRows, incomingRows, keyFn) {
   }
 
   return Array.from(merged.values());
+}
+
+function mergeUserRows(existingUsers, incomingUsers, mutation) {
+  const existing = new Map();
+  const incoming = new Map();
+
+  for (const user of normalizeUserRows(existingUsers)) {
+    existing.set(userKey(user), user);
+  }
+  for (const user of normalizeUserRows(incomingUsers)) {
+    incoming.set(userKey(user), user);
+  }
+
+  if (!existing.size) return Array.from(incoming.values());
+  if (!incoming.size) return Array.from(existing.values());
+
+  if (mutation && mutation.action === "delete") {
+    existing.delete(mutation.id);
+    return Array.from(existing.values());
+  }
+
+  if (mutation && ["create", "update"].includes(mutation.action)) {
+    const changedUser = incoming.get(mutation.id);
+    if (changedUser) existing.set(mutation.id, changedUser);
+    return Array.from(existing.values());
+  }
+
+  for (const [id, user] of incoming.entries()) {
+    if (!existing.has(id)) existing.set(id, user);
+  }
+  return Array.from(existing.values());
+}
+
+function hasTrustedUserUpdate(state) {
+  return Boolean(
+    state &&
+    state.userSync === "user-management" &&
+    Array.isArray(state.users) &&
+    state.users.length
+  );
 }
 
 function batchKey(batch) {
@@ -243,26 +373,33 @@ function applyDeletionMarkersToMonitorBatches(batches, deletedBatchIds, deletedM
 function mergeDemoState(existingState, incomingState) {
   const existing = normalizeDemoState(existingState || {});
   const incoming = normalizeDemoState(incomingState);
-  const incomingBatchKeys = batchKeys(incoming.batches);
-  const incomingLaptopStickers = laptopStickersFromBatches(incoming.batches);
-  const incomingMonitorBatchKeys = batchKeys(incoming.monitorBatches);
-  const incomingMonitorStickers = monitorStickersFromBatches(incoming.monitorBatches);
-  const deletedBatchIds = withoutValues([...existing.deletedBatchIds, ...incoming.deletedBatchIds], incomingBatchKeys);
+  const trustedUserUpdate = hasTrustedUserUpdate(incomingState);
+  const deletedBatchIds = withoutValues(
+    [...existing.deletedBatchIds, ...incoming.deletedBatchIds],
+    incoming.restoreDeletedBatchIds
+  );
   const deletedLaptopStickers = withoutValues([
     ...existing.deletedLaptopStickers,
     ...incoming.deletedLaptopStickers,
-  ].map(normalizeStickerCode), incomingLaptopStickers);
-  const deletedMonitorBatchIds = withoutValues([...existing.deletedMonitorBatchIds, ...incoming.deletedMonitorBatchIds], incomingMonitorBatchKeys);
+  ].map(normalizeStickerCode), incoming.restoreDeletedLaptopStickers);
+  const deletedMonitorBatchIds = withoutValues(
+    [...existing.deletedMonitorBatchIds, ...incoming.deletedMonitorBatchIds],
+    incoming.restoreDeletedMonitorBatchIds
+  );
   const deletedMonitorStickers = withoutValues([
     ...existing.deletedMonitorStickers,
     ...incoming.deletedMonitorStickers,
-  ].map(normalizeStickerCode), incomingMonitorStickers);
+  ].map(normalizeStickerCode), incoming.restoreDeletedMonitorStickers);
   const batches = keyedMerge(existing.batches, incoming.batches, batchKey);
   const monitorBatches = keyedMerge(existing.monitorBatches, incoming.monitorBatches, batchKey);
 
   return {
     version: Math.max(existing.version || 1, incoming.version || 1),
-    users: keyedMerge(existing.users, incoming.users, user => user && user.id ? String(user.id) : ""),
+    userSync: trustedUserUpdate ? "user-management" : existing.userSync,
+    userSyncAt: trustedUserUpdate ? incoming.userSyncAt : existing.userSyncAt,
+    users: trustedUserUpdate
+      ? mergeUserRows(existing.users, incoming.users, incoming.userMutation)
+      : existing.users,
     batches: applyDeletionMarkersToBatches(batches, deletedBatchIds, deletedLaptopStickers),
     monitorBatches: applyDeletionMarkersToMonitorBatches(monitorBatches, deletedMonitorBatchIds, deletedMonitorStickers),
     history: keyedMerge(existing.history, incoming.history, historyKey),
@@ -307,19 +444,22 @@ async function writeDemoState(state) {
   const tempPath = `${demoStatePath}.${process.pid}.tmp`;
   await fs.promises.writeFile(tempPath, JSON.stringify(normalized, null, 2), "utf8");
   await fs.promises.rename(tempPath, demoStatePath);
+  await writeUserStoreFromState(normalized);
   return normalized;
 }
 
 async function handleDemoStateApi(request, response) {
   if (request.method === "GET") {
     const state = await readDemoState();
-    sendJson(response, 200, state);
+    // Mirror the Vercel API: return a gzip envelope by default, plain on ?raw=1.
+    const raw = /[?&]raw=1\b/.test(request.url || "");
+    sendJson(response, 200, raw ? state : toEnvelope(state));
     return true;
   }
 
   if (request.method === "POST") {
     try {
-      const state = await readJsonBody(request);
+      const state = fromBody(await readJsonBody(request));
       const saved = await writeDemoState(state);
       sendJson(response, 200, { ok: true, updatedAt: saved.updatedAt });
     } catch (error) {
@@ -365,6 +505,12 @@ http
 
       if (requestedPath === "/api/health") {
         await handleHealthApi(response);
+        return;
+      }
+
+      if (requestedPath === "/api/stats") {
+        const state = await readDemoState();
+        sendJson(response, 200, computeStats(state));
         return;
       }
 

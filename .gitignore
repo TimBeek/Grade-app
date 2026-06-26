@@ -2,5 +2,16 @@ logs/
 screenshots/
 test-results/
 tmp/
+data/
 *.log
 *.tmp
+feid/node_modules/
+feid/client/dist/
+feid/server/storage/
+
+# Node + Vercel
+node_modules/
+.vercel
+.env
+.env.local
+.env.*.local

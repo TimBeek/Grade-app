@@ -25,6 +25,7 @@ const STATE = {
   scanSearch: '',
   monitorScanSearch: '',
   monitorSelectedGrade: null,
+  monitorPrintInProgress: false,
   monitorGradeInfoOpen: null,
   manualError: '',
   monitorManualContext: null,
@@ -49,6 +50,7 @@ function reportAppError(...args) {
 }
 
 const DEMO_AUTH_SALT = 'remarkt-demo:';
+const FIRST_LOGIN_PASSWORD = 'ReMarkt2026!';
 const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20260520-monitor-db';
 const DEMO_STORAGE_KEYS = {
   users: 'remarktDemoUsersV2',
@@ -66,6 +68,31 @@ const USERS = [
 ];
 const DEFAULT_USERS = USERS.map(user => ({ ...user }));
 
+function consumeLoginResetRequest() {
+  if (typeof window === 'undefined' || !window.location) return false;
+  const search = String(window.location.search || '');
+  if (!/(?:[?&])resetLogin=1(?:&|$)/.test(search)) return false;
+  try {
+    localStorage.removeItem(DEMO_STORAGE_KEYS.users);
+    localStorage.removeItem(DEMO_STORAGE_KEYS.session);
+  } catch {
+    // Local storage can be blocked; the normal live refresh will still run on login.
+  }
+  try {
+    if (window.history && typeof window.history.replaceState === 'function') {
+      const cleanSearch = search
+        .replace(/([?&])resetLogin=1(&)?/, (match, prefix, suffix) => (prefix === '?' && suffix ? '?' : prefix === '?' ? '' : suffix ? prefix : ''))
+        .replace(/[?&]$/, '');
+      const cleanUrl = `${window.location.pathname || '/'}${cleanSearch}${window.location.hash || ''}`;
+      window.history.replaceState(null, '', cleanUrl || '/');
+    }
+  } catch {
+    // URL cleanup is nice to have only.
+  }
+  return true;
+}
+
+consumeLoginResetRequest();
 loadUsers();
 loadSessionUser();
 loadThemePreference();
@@ -235,9 +262,30 @@ function getSupplierInlineIssues(componentId, laptop = STATE.currentLaptop) {
     .filter(issue => !isSupplierPopupIssue(issue, componentId));
 }
 
-function isTouchscreenLaptop(laptop = STATE.currentLaptop) {
+function normalizeTouchOverride(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (['yes', 'ja', 'true', '1', 'touch', 'touchscreen'].includes(text)) return 'yes';
+  if (['no', 'nee', 'false', '0', 'non-touch', 'non_touch', 'notouch', 'no touch', 'geen touch'].includes(text)) return 'no';
+  return '';
+}
+
+function setLaptopTouchOverride(laptop, value) {
+  if (!laptop) return '';
+  const override = normalizeTouchOverride(value);
+  if (override) laptop.touchOverride = override;
+  else delete laptop.touchOverride;
+  return override;
+}
+
+function isTouchscreenFromDisplay(laptop = STATE.currentLaptop) {
   const display = (laptop && laptop.display ? laptop.display : '').toLowerCase();
   return display.includes('touch');
+}
+
+function isTouchscreenLaptop(laptop = STATE.currentLaptop) {
+  const override = normalizeTouchOverride(laptop && laptop.touchOverride);
+  if (override) return override === 'yes';
+  return isTouchscreenFromDisplay(laptop);
 }
 
 function isLaptopGraded(sticker) {
@@ -300,7 +348,10 @@ function displayUserPreference(value) {
 function getAllowedUserPreferences(role) {
   const normalized = normalizeUserRole(role);
   if (normalized === 'Stickeraar') return [{ value: 'label', label: 'Labels only' }];
-  if (normalized === 'Grader') return [{ value: 'beginner', label: 'Guided' }];
+  if (normalized === 'Grader') return [
+    { value: 'beginner', label: 'Guided' },
+    { value: 'expert', label: 'Expert' },
+  ];
   return [
     { value: 'expert', label: 'Expert' },
     { value: 'beginner', label: 'Guided' },
@@ -321,7 +372,8 @@ function canGradeUser(user = STATE.currentUser) {
 }
 
 function canUseExpertMode(user = STATE.currentUser) {
-  return normalizeUserRole(user && user.rol) === 'Manager';
+  const role = normalizeUserRole(user && user.rol);
+  return role === 'Manager' || (role === 'Grader' && user && user.voorkeur === 'expert');
 }
 
 function canUseSupportUser(user = STATE.currentUser) {
@@ -414,7 +466,7 @@ function loadSessionUser() {
     }
 
     STATE.currentUser = user;
-    STATE.currentScreen = 'home';
+    STATE.currentScreen = user.mustChangePassword ? 'password_change' : 'home';
     STATE.homeTab = 'workflow';
   } catch (err) {
     reportAppWarning('Session could not be loaded', err);
@@ -476,6 +528,8 @@ function normalizeStoredUser(user) {
     initialen: sanitizeExternalText(user.initialen || initialsFromName(user.naam), 4),
     voorkeur: normalizeUserPreference(user.voorkeur, user.rol),
     passwordHash: String(user.passwordHash),
+    mustChangePassword: user.mustChangePassword === true,
+    passwordUpdatedAt: sanitizeExternalText(user.passwordUpdatedAt, 40),
   };
 }
 
@@ -487,6 +541,8 @@ function serializeUser(user) {
     initialen: user.initialen,
     voorkeur: user.voorkeur,
     passwordHash: user.passwordHash,
+    mustChangePassword: user.mustChangePassword === true,
+    passwordUpdatedAt: user.passwordUpdatedAt || '',
   };
 }
 
@@ -1199,6 +1255,8 @@ function normalizeLabelPrint(item) {
     sticker: sanitizeExternalText(item.sticker, 64).replace(/[^\w.-]/g, ''),
     merk: sanitizeExternalText(item.merk, 80),
     model: sanitizeExternalText(item.model, 160),
+    display: sanitizeExternalText(item.display, 80),
+    touchOverride: normalizeTouchOverride(item.touchOverride),
     batchId: sanitizeExternalText(item.batchId, 100),
     batchNummer: sanitizeExternalText(item.batchNummer, 100),
     user_id: sanitizeExternalText(item.user_id, 80),
@@ -1292,6 +1350,8 @@ function recordStickerLabelPrint(laptop) {
     sticker,
     merk: laptop.merk,
     model: laptop.model,
+    display: laptop.display,
+    touchOverride: laptop.touchOverride,
     batchId: laptop.batchId,
     batchNummer: laptop.batchNummer,
     user_id: STATE.currentUser ? STATE.currentUser.id : '',
@@ -1371,6 +1431,66 @@ function canUseSharedDemoState() {
   return typeof fetch === 'function' && window.location && /^https?:$/.test(window.location.protocol);
 }
 
+// The shared state is exchanged with the API as a gzip envelope
+// `{ gzip: "<base64>" }` so the ~6.5MB document stays well under serverless
+// body limits. Browsers without CompressionStream fall back to plain JSON.
+const SHARED_DEMO_STATE_SUPPORTS_GZIP =
+  typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function gzipTextToBase64(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  return arrayBufferToBase64(await new Response(stream).arrayBuffer());
+}
+
+async function base64GzipToJson(base64) {
+  const bytes = base64ToUint8Array(base64);
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return JSON.parse(await new Response(stream).text());
+}
+
+function sharedDemoStateGetUrl() {
+  // Without DecompressionStream we cannot read the gzip envelope, so ask the
+  // API for the plain state instead.
+  return SHARED_DEMO_STATE_SUPPORTS_GZIP
+    ? SHARED_DEMO_STATE_URL
+    : `${SHARED_DEMO_STATE_URL}?raw=1`;
+}
+
+async function decodeSharedDemoStatePayload(payload) {
+  if (payload && typeof payload === 'object' && typeof payload.gzip === 'string') {
+    return base64GzipToJson(payload.gzip);
+  }
+  return payload;
+}
+
+async function encodeSharedDemoStateBody(snapshot) {
+  const json = JSON.stringify(snapshot);
+  if (!SHARED_DEMO_STATE_SUPPORTS_GZIP) return json;
+  try {
+    return JSON.stringify({ gzip: await gzipTextToBase64(json) });
+  } catch (error) {
+    reportAppWarning('Gedeelde demo-opslag kon niet worden gecomprimeerd', error);
+    return json;
+  }
+}
+
 function normalizeSharedLaptop(laptop) {
   if (!laptop || !laptop.sticker) return null;
   return {
@@ -1381,6 +1501,7 @@ function normalizeSharedLaptop(laptop) {
     ram: sanitizeExternalText(laptop.ram, 40),
     ssd: sanitizeExternalText(laptop.ssd, 80),
     display: sanitizeExternalText(laptop.display, 80),
+    touchOverride: normalizeTouchOverride(laptop.touchOverride),
     serial: sanitizeExternalText(laptop.serial, 80),
     leverancier_class: sanitizeExternalText(laptop.leverancier_class, 40),
     meldingen: sanitizeExternalText(laptop.meldingen, 1000),
@@ -1464,10 +1585,25 @@ function normalizeSharedMonitorBatch(batch) {
   };
 }
 
-function getSharedDemoSnapshot() {
+function getSharedDemoSnapshot(options = {}) {
+  const includeUsers = options.includeUsers === true;
+  const userMutation = includeUsers && options.userMutation ? {
+    action: sanitizeExternalText(options.userMutation.action, 40),
+    id: sanitizeExternalText(options.userMutation.id, 80),
+  } : null;
+  const restoreDeletedBatchIds = normalizeDeletedBatchIds(options.restoreDeletedBatchIds);
+  const restoreDeletedLaptopStickers = normalizeDeletedLaptopStickers(options.restoreDeletedLaptopStickers);
+  const restoreDeletedMonitorBatchIds = normalizeDeletedMonitorBatchIds(options.restoreDeletedMonitorBatchIds);
+  const restoreDeletedMonitorStickers = normalizeDeletedMonitorStickers(options.restoreDeletedMonitorStickers);
+  const now = new Date().toISOString();
   return {
     version: 1,
-    users: USERS.map(serializeUser),
+    ...(includeUsers ? {
+      users: USERS.map(serializeUser),
+      userSync: 'user-management',
+      userSyncAt: now,
+      ...(userMutation && userMutation.action && userMutation.id ? { userMutation } : {}),
+    } : {}),
     batches: applyDeletionMarkersToBatches(BATCHES).map(normalizeSharedBatch).filter(Boolean),
     monitorBatches: applyDeletionMarkersToMonitorBatches(MONITOR_BATCHES).map(normalizeSharedMonitorBatch).filter(Boolean),
     history: STATE.history.map(({ _searchIndex, ...item }) => item),
@@ -1478,13 +1614,27 @@ function getSharedDemoSnapshot() {
     deletedLaptopStickers: normalizeDeletedLaptopStickers(STATE.deletedLaptopStickers),
     deletedMonitorBatchIds: normalizeDeletedMonitorBatchIds(STATE.deletedMonitorBatchIds),
     deletedMonitorStickers: normalizeDeletedMonitorStickers(STATE.deletedMonitorStickers),
-    updatedAt: new Date().toISOString(),
+    ...(restoreDeletedBatchIds.length ? { restoreDeletedBatchIds } : {}),
+    ...(restoreDeletedLaptopStickers.length ? { restoreDeletedLaptopStickers } : {}),
+    ...(restoreDeletedMonitorBatchIds.length ? { restoreDeletedMonitorBatchIds } : {}),
+    ...(restoreDeletedMonitorStickers.length ? { restoreDeletedMonitorStickers } : {}),
+    updatedAt: now,
   };
 }
 
 function saveLocalDemoStateBackup(snapshot = getSharedDemoSnapshot()) {
   try {
-    localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify(snapshot));
+    let backupSnapshot = snapshot;
+    if ((!Array.isArray(snapshot.users) || !snapshot.users.length) && USERS.length) {
+      const existingBackup = readLocalDemoStateBackup();
+      backupSnapshot = {
+        ...snapshot,
+        users: USERS.map(serializeUser),
+        userSync: 'user-management',
+        userSyncAt: (existingBackup && existingBackup.userSyncAt) || snapshot.updatedAt || new Date().toISOString(),
+      };
+    }
+    localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify(backupSnapshot));
   } catch {
     // Local storage may be unavailable in restricted browser contexts.
   }
@@ -1586,20 +1736,20 @@ function mergeSharedDemoStateForLoad(primary, secondary) {
   if (!secondary || typeof secondary !== 'object') return primary;
   const mergedBatches = primary.batches || [];
   const mergedMonitorBatches = mergeMonitorBatchesForLoad(primary.monitorBatches, secondary.monitorBatches);
-  const batchIds = getBatchIdsFromStateBatches(mergedBatches);
-  const laptopStickers = getLaptopStickersFromStateBatches(mergedBatches);
-  const monitorBatchIds = getBatchIdsFromStateBatches(mergedMonitorBatches);
-  const monitorStickers = getMonitorStickersFromStateBatches(mergedMonitorBatches);
+  const restoreDeletedBatchIds = mergeUniqueList(primary.restoreDeletedBatchIds, secondary.restoreDeletedBatchIds, value => sanitizeExternalText(value, 100));
+  const restoreDeletedLaptopStickers = mergeUniqueList(primary.restoreDeletedLaptopStickers, secondary.restoreDeletedLaptopStickers, value => getCanonicalSticker(value));
+  const restoreDeletedMonitorBatchIds = mergeUniqueList(primary.restoreDeletedMonitorBatchIds, secondary.restoreDeletedMonitorBatchIds, value => sanitizeExternalText(value, 100));
+  const restoreDeletedMonitorStickers = mergeUniqueList(primary.restoreDeletedMonitorStickers, secondary.restoreDeletedMonitorStickers, value => getCanonicalMonitorSticker(value));
   return {
     ...primary,
     monitorBatches: mergedMonitorBatches,
     monitorLabelPrints: mergeUniqueList(primary.monitorLabelPrints, secondary.monitorLabelPrints, item => (
       item && item.sticker ? `${getCanonicalMonitorSticker(item.sticker)}:${item.printedAt || ''}` : ''
     )),
-    deletedBatchIds: removeExistingValues(mergeUniqueList(primary.deletedBatchIds, secondary.deletedBatchIds, value => sanitizeExternalText(value, 100)), batchIds),
-    deletedLaptopStickers: removeExistingValues(mergeUniqueList(primary.deletedLaptopStickers, secondary.deletedLaptopStickers, value => getCanonicalSticker(value)), laptopStickers),
-    deletedMonitorBatchIds: removeExistingValues(mergeUniqueList(primary.deletedMonitorBatchIds, secondary.deletedMonitorBatchIds, value => sanitizeExternalText(value, 100)), monitorBatchIds),
-    deletedMonitorStickers: removeExistingValues(mergeUniqueList(primary.deletedMonitorStickers, secondary.deletedMonitorStickers, value => getCanonicalMonitorSticker(value)), monitorStickers),
+    deletedBatchIds: removeExistingValues(mergeUniqueList(primary.deletedBatchIds, secondary.deletedBatchIds, value => sanitizeExternalText(value, 100)), restoreDeletedBatchIds),
+    deletedLaptopStickers: removeExistingValues(mergeUniqueList(primary.deletedLaptopStickers, secondary.deletedLaptopStickers, value => getCanonicalSticker(value)), restoreDeletedLaptopStickers),
+    deletedMonitorBatchIds: removeExistingValues(mergeUniqueList(primary.deletedMonitorBatchIds, secondary.deletedMonitorBatchIds, value => sanitizeExternalText(value, 100)), restoreDeletedMonitorBatchIds),
+    deletedMonitorStickers: removeExistingValues(mergeUniqueList(primary.deletedMonitorStickers, secondary.deletedMonitorStickers, value => getCanonicalMonitorSticker(value)), restoreDeletedMonitorStickers),
   };
 }
 
@@ -1625,7 +1775,51 @@ function chooseSharedDemoState(remoteState, localState) {
     secondary = localState;
   }
 
-  return mergeSharedDemoStateForLoad(primary, secondary);
+  const merged = mergeSharedDemoStateForLoad(primary, secondary);
+  if (Array.isArray(remoteState.users) && remoteState.users.length) {
+    merged.users = remoteState.users;
+  }
+  return merged;
+}
+
+function getUserStateSignature(users) {
+  return JSON.stringify((Array.isArray(users) ? users : [])
+    .map(user => normalizeStoredUser(user))
+    .filter(Boolean)
+    .map(user => serializeUser(user)));
+}
+
+function applySharedUsers(state) {
+  if (!state || !Array.isArray(state.users)) return false;
+  const normalizedUsers = state.users.map(normalizeStoredUser).filter(Boolean);
+  if (!normalizedUsers.length) return false;
+  const previousSignature = getUserStateSignature(USERS);
+  const nextSignature = getUserStateSignature(normalizedUsers);
+  if (previousSignature === nextSignature) return false;
+
+  USERS.splice(0, USERS.length, ...normalizedUsers);
+  saveUsers();
+  if (STATE.currentUser && STATE.currentUser.id) {
+    const refreshedUser = getUserById(STATE.currentUser.id);
+    if (refreshedUser) {
+      STATE.currentUser = refreshedUser;
+      saveSessionUser(refreshedUser);
+      if (refreshedUser.mustChangePassword === true) {
+        STATE.currentScreen = 'password_change';
+        STATE.currentLaptop = null;
+        STATE.currentMonitor = null;
+        STATE.currentGrading = null;
+        STATE.pendingDecision = null;
+        STATE.supplierNotice = null;
+        STATE.imagePreview = null;
+      }
+    } else {
+      clearSessionUser();
+      STATE.currentUser = null;
+      STATE.currentScreen = 'login';
+    }
+  }
+  return true;
 }
 
 function applySharedDemoState(state) {
@@ -1636,24 +1830,7 @@ function applySharedDemoState(state) {
   STATE.deletedMonitorBatchIds = normalizeDeletedMonitorBatchIds(state.deletedMonitorBatchIds);
   STATE.deletedMonitorStickers = normalizeDeletedMonitorStickers(state.deletedMonitorStickers);
 
-  if (Array.isArray(state.users)) {
-    const normalizedUsers = state.users.map(normalizeStoredUser).filter(Boolean);
-    if (normalizedUsers.length) {
-      USERS.splice(0, USERS.length, ...normalizedUsers);
-      saveUsers();
-      if (STATE.currentUser && STATE.currentUser.id) {
-        const refreshedUser = getUserById(STATE.currentUser.id);
-        if (refreshedUser) {
-          STATE.currentUser = refreshedUser;
-          saveSessionUser(refreshedUser);
-        } else {
-          clearSessionUser();
-          STATE.currentUser = null;
-          STATE.currentScreen = 'login';
-        }
-      }
-    }
-  }
+  applySharedUsers(state);
   if (Array.isArray(state.batches) && (state.batches.length || state.updatedAt || STATE.deletedBatchIds.length || STATE.deletedLaptopStickers.length)) {
     const batches = applyDeletionMarkersToBatches(state.batches.map(normalizeSharedBatch).filter(Boolean));
     BATCHES.splice(0, BATCHES.length, ...batches);
@@ -1696,9 +1873,9 @@ async function loadSharedDemoState() {
   if (!canUseSharedDemoState()) return loadLocalDemoStateBackup();
   const localState = readLocalDemoStateBackup();
   try {
-    const response = await fetch(SHARED_DEMO_STATE_URL, { cache: 'no-store' });
+    const response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
     if (!response.ok) return loadLocalDemoStateBackup();
-    const remoteState = await response.json();
+    const remoteState = await decodeSharedDemoStatePayload(await response.json());
     const state = chooseSharedDemoState(remoteState, localState);
     const applied = applySharedDemoState(state);
     if (applied) saveLocalDemoStateBackup(state);
@@ -1709,19 +1886,32 @@ async function loadSharedDemoState() {
   }
 }
 
-async function saveSharedDemoState() {
-  const snapshot = getSharedDemoSnapshot();
+async function saveSharedDemoState(options = {}) {
+  const snapshot = getSharedDemoSnapshot(options);
   saveLocalDemoStateBackup(snapshot);
   if (!canUseSharedDemoState()) return false;
   try {
     const response = await fetch(SHARED_DEMO_STATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(snapshot),
+      body: await encodeSharedDemoStateBody(snapshot),
     });
     return response.ok;
   } catch (error) {
     reportAppWarning('Gedeelde demo-opslag kon niet worden opgeslagen', error);
+    return false;
+  }
+}
+
+async function refreshSharedUsers() {
+  if (!canUseSharedDemoState()) return false;
+  try {
+    const response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
+    if (!response.ok) return false;
+    const remoteState = await decodeSharedDemoStatePayload(await response.json());
+    return applySharedUsers(remoteState);
+  } catch (error) {
+    reportAppWarning('Gebruikers konden niet live worden bijgewerkt', error);
     return false;
   }
 }
