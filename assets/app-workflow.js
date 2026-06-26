@@ -477,14 +477,25 @@ function applyMonitorManualDatabaseMatch(match) {
 }
 
 function applyMonitorManualVideoInputsToPicker(videoInputs) {
-  const countSelects = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
-  if (!countSelects.length) return;
+  const countInputs = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
+  if (!countInputs.length) return;
   const selections = typeof getMonitorManualPortSelections === 'function' ? getMonitorManualPortSelections(videoInputs) : [];
   const selectionByPort = new Map(selections.map(selection => [selection.port, selection]));
-  countSelects.forEach(select => {
-    const port = select.dataset ? select.dataset.monitorVideoPort : '';
+  countInputs.forEach(input => {
+    const port = input.dataset ? input.dataset.monitorVideoPort : '';
     const selection = selectionByPort.get(port);
-    select.value = String(selection ? selection.count || 0 : 0);
+    const count = Math.max(0, Math.min(2, Number(selection ? selection.count || 0 : 0)));
+    input.value = String(count);
+    // Keep the visible 0x/1x/2x buttons in sync with the auto-filled value,
+    // mirroring setMonitorManualPortCount() so a database match also updates the UI.
+    const group = input.closest('.monitor-manual-port-option');
+    if (group) {
+      group.querySelectorAll('[data-monitor-video-port-count-button]').forEach(button => {
+        const active = Number(button.dataset.count || 0) === count;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
   });
 }
 
