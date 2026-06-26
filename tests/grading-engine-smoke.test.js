@@ -533,9 +533,12 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
   assert.match(app.__appElement.innerHTML, /Throughput trend/);
   assert.match(app.__appElement.innerHTML, /Batch completion/);
   assert.match(app.__appElement.innerHTML, /Employee performance/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Repair bottlenecks/);
-  assert.match(app.__appElement.innerHTML, /Productivity heatmap/);
+  assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
   assert.match(app.__appElement.innerHTML, /Recent activity/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Repair bottlenecks/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Productivity heatmap/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Top brands/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Top models/);
 
   vm.runInContext(`setAnalyticsFilter('brand', 'Dell');`, app);
   assert.equal(vm.runInContext(`getAnalyticsFilters().brand`, app), 'Dell');

@@ -1743,3 +1743,14 @@ html[data-theme="dark"] .analytics-server-stats {
 html[data-theme="dark"] .analytics-server-stat-value {
   color: var(--dark-text, #E8E8E2);
 }
+
+/* Leverancier scorecard: rendement per leverancier. */
+.supplier-scorecard-table .scorecard-pos { color: #1A7F37; font-weight: 700; }
+.supplier-scorecard-table .scorecard-neg { color: #C8102E; font-weight: 700; }
+.supplier-scorecard-table .scorecard-uplift { font-weight: 800; }
+.supplier-scorecard-table .scorecard-uplift.positive { color: #1A7F37; }
+.supplier-scorecard-table .scorecard-uplift.negative { color: #C8102E; }
+html[data-theme="dark"] .supplier-scorecard-table .scorecard-pos,
+html[data-theme="dark"] .supplier-scorecard-table .scorecard-uplift.positive { color: #4ADE80; }
+html[data-theme="dark"] .supplier-scorecard-table .scorecard-neg,
+html[data-theme="dark"] .supplier-scorecard-table .scorecard-uplift.negative { color: #F87171; }

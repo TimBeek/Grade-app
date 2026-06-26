@@ -167,6 +167,60 @@ function renderTransitionChips(transitions) {
   `).join('');
 }
 
+// Per-supplier roll-up of the grade comparison. The headline management view:
+// which suppliers under-grade (we capture margin) vs over-grade (we overpay),
+// and the average grade-uplift per device — the real "rendement" signal.
+function getSupplierScorecardRows(items) {
+  const rows = getSupplierComparisonRows(items);
+  const map = new Map();
+  rows.forEach(row => {
+    const key = (row.batchSupplier || '').trim() || 'Onbekend';
+    const supplier = map.get(key) || {
+      supplier: key, total: 0, improved: 0, same: 0, downgraded: 0, netDelta: 0, toA: 0,
+    };
+    supplier.total += 1;
+    if (supplier[row.statusKey] !== undefined) supplier[row.statusKey] += 1;
+    supplier.netDelta += row.delta;
+    if (row.remarktGrade === 'A' && row.supplierGrade !== 'A') supplier.toA += 1;
+    map.set(key, supplier);
+  });
+  return Array.from(map.values())
+    .map(supplier => ({
+      ...supplier,
+      improvedPercent: safePercent(supplier.improved, supplier.total),
+      downgradedPercent: safePercent(supplier.downgraded, supplier.total),
+      avgUplift: supplier.total ? Math.round((supplier.netDelta / supplier.total) * 100) / 100 : 0,
+    }))
+    .sort((a, b) => b.avgUplift - a.avgUplift || b.total - a.total);
+}
+
+function renderSupplierScorecard(rows) {
+  if (!rows.length) return '<div class="empty-analytics">Nog geen leveranciersgrades beschikbaar voor vergelijking.</div>';
+  return `
+    <div class="analytics-table-wrap">
+      <table class="analytics-table supplier-scorecard-table">
+        <thead>
+          <tr><th>Leverancier</th><th>Apparaten</th><th>% boven</th><th>% onder</th><th>⌀ uplift/apparaat</th><th>→ A</th></tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => {
+            const tone = row.avgUplift > 0.05 ? 'positive' : row.avgUplift < -0.05 ? 'negative' : '';
+            return `
+            <tr>
+              <td><strong>${escapeHtml(row.supplier)}</strong></td>
+              <td>${formatNumber(row.total)}</td>
+              <td class="scorecard-pos">${row.improvedPercent}%</td>
+              <td class="scorecard-neg">${row.downgradedPercent}%</td>
+              <td class="scorecard-uplift ${tone}">${formatSignedNumber(row.avgUplift)}</td>
+              <td>${formatNumber(row.toA)}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderSupplierComparisonPanel(items) {
   const comparison = getSupplierComparisonStats(items);
   const { summary, batches } = comparison;
@@ -1112,29 +1166,25 @@ function renderAnalytics() {
   const openCount = countAnalyticsStatus(filteredItems, 'open');
   const repairCount = countAnalyticsStatus(filteredItems, 'repair');
   const labelOnlyCount = countAnalyticsStatus(filteredItems, 'label');
-  const laptopVolume = filteredItems.filter(item => item.productType === 'laptop' && item.status !== 'open').length;
-  const monitorVolume = filteredItems.filter(item => item.productType === 'monitor' && item.status !== 'open').length;
   const avgTime = getAverageAnalyticsTime(completedItems);
   const avgBattery = getAverageBattery(filteredItems);
   const todayCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
   const weekCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
   const missingAccessories = filteredItems.filter(hasMissingAccessorySignal).length;
   const completionRate = safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
-  const brandRows = buildCountRows(filteredItems, item => item.brand, value => value, 7);
-  const modelRows = buildCountRows(filteredItems, item => [item.brand, item.model].filter(Boolean).join(' '), value => value, 7);
-  const productRows = [
-    { label: 'Laptops', value: laptopVolume },
-    { label: 'Monitoren', value: monitorVolume },
-  ];
-  const problemRows = buildAnalyticsProblemRows(completedItems);
   const componentRows = buildComponentRows(completedItems);
   const employeeRows = buildEmployeeRows(filteredItems);
   const batchRows = buildBatchProgressRows(filters.productType);
   const trendBuckets = buildTrendBuckets(filteredItems, 7);
-  const heatmapRows = buildHeatmapRows(filteredItems);
   const supplierComparisonItems = filteredItems
     .filter(item => item.rawItem)
     .map(item => item.rawItem);
+  const supplierSummary = getSupplierComparisonStats(supplierComparisonItems).summary;
+  const upliftAvg = supplierSummary.total
+    ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100
+    : 0;
+  const supplierScorecardRows = getSupplierScorecardRows(supplierComparisonItems);
+  const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), totalCompleted);
   const rangeLabel = filters.dateRange === 'today' ? 'vandaag'
     : filters.dateRange === 'week' ? 'laatste 7 dagen'
       : filters.dateRange === 'month' ? 'laatste 30 dagen'
@@ -1146,7 +1196,7 @@ function renderAnalytics() {
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Insights Dashboard</div>
           <h1>Operations Analytics</h1>
-          <p>Realtime overzicht van grading-output, batchvoortgang, reparatiestroom, kwaliteitssignalen en medewerkerprestaties.</p>
+          <p>Realtime sturing op leveranciersrendement, grading-output, batchvoortgang, kwaliteit en medewerkerprestaties.</p>
         </div>
         <div class="analytics-hero-actions">
           <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
@@ -1164,23 +1214,27 @@ function renderAnalytics() {
         ${renderKpiCard({ label: 'Wacht op grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
         ${renderKpiCard({ label: 'Reparatie / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} apparaten naar repair`, tone: repairCount ? 'danger' : '' })}
         ${renderKpiCard({ label: 'Gemiddelde gradingtijd', value: formatSeconds(avgTime), sub: `op basis van ${formatNumber(totalCompleted)} gradings` })}
-        ${renderKpiCard({ label: 'Labelprints', value: formatNumber(labelOnlyCount + totalCompleted), sub: `${labelOnlyCount} nog niet gegraded` })}
+        ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} van ${formatNumber(totalCompleted)} verkoopbaar als A/B` })}
         ${renderKpiCard({ label: 'Gem. accu gezondheid', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: `${rangeLabel}` })}
         ${renderKpiCard({ label: 'Accessoire signalen', value: formatNumber(missingAccessories), sub: 'missing adapter, rubber feet, lader' })}
-        ${renderKpiCard({ label: 'Productmix', value: `${formatNumber(laptopVolume)} / ${formatNumber(monitorVolume)}`, sub: 'laptops / monitoren' })}
+        ${renderKpiCard({
+          label: 'Rendement vs leverancier',
+          value: supplierSummary.total ? `${supplierSummary.improvedPercent}% ↑` : '-',
+          sub: supplierSummary.total
+            ? `${formatSignedNumber(supplierSummary.netDelta)} netto delta · ${formatNumber(supplierSummary.toAFromLower)} naar A · ⌀ ${formatSignedNumber(upliftAvg)}/apparaat`
+            : 'geen leveranciersgrades beschikbaar',
+          tone: 'primary',
+        })}
       </div>
 
       <div class="analytics-grid">
-        ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
-        ${renderAnalyticsPanel('Throughput trend', 'Output en repair-flow per dag.', renderTrendChart(trendBuckets))}
-        ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
-        ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
-        ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
-        ${renderAnalyticsPanel('Top brands', 'Merken met de meeste intake of output.', renderBarList(brandRows, 'Nog geen merken beschikbaar.'))}
-        ${renderAnalyticsPanel('Top models', 'Modellen die het vaakst door de workflow komen.', renderBarList(modelRows, 'Nog geen modellen beschikbaar.'))}
-        ${renderAnalyticsPanel('Monitor vs laptop volume', 'Directe vergelijking van productgroepen.', renderBarList(productRows, 'Nog geen productvolume beschikbaar.'))}
-        ${renderAnalyticsPanel('Productivity heatmap', 'Wanneer het meeste werk door de app loopt.', renderHeatmap(heatmapRows))}
         ${renderSupplierComparisonPanel(supplierComparisonItems)}
+        ${renderAnalyticsPanel('Leverancier scorecard', 'Rendement per leverancier: wie onder- of overschat en hoeveel grade-uplift je gemiddeld per apparaat haalt. Sorteer-indicatie voor inkoop.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
+        ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
+        ${renderAnalyticsPanel('Throughput trend', 'Output per dag binnen de actieve filters.', renderTrendChart(trendBuckets))}
+        ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
+        ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
+        ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken — input voor leverancierskwaliteit.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
         ${renderAnalyticsPanel('Recent activity', 'Laatste gradings en labelprints binnen de filters.', renderRecentActivity(filteredItems), 'analytics-wide')}
       </div>
     </div>
