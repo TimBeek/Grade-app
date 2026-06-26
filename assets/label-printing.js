@@ -400,22 +400,33 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const longestRow = Math.max(...cleanRows.map(row => row.length), 1);
   const tight = longestRow > 46;
   const compact = longestRow > 34;
+  // Reserve a tidy column on the right for the grade (caption + value) on
+  // monitor labels, with the spec rows kept in a clean left column.
+  const monitorRowWidth = showGradeBadge ? 1900 : 2770;
+  // A long device name gets a taller first row so it wraps to two lines and
+  // stays readable, instead of being shrunk down to fit a single line.
+  const monitorTitleLong = isMonitorLabel && (cleanRows[0] || '').length > 24;
+  const monitorSpecsLongest = Math.max((cleanRows[1] || '').length, (cleanRows[2] || '').length, 1);
+  const monitorSpecSize = monitorSpecsLongest > 40 ? 8.2 : monitorSpecsLongest > 30 ? 8.9 : 9.6;
   const fontSizes = isMonitorLabel
-    ? (tight ? [10.2, 8.1, 8.1] : compact ? [11.5, 8.8, 8.8] : [13, 9.6, 9.6])
+    ? [monitorTitleLong ? 11 : 13, monitorSpecSize, monitorSpecSize]
     : (tight
       ? [9.5, 6.8, 6.8, 6.2]
       : compact
         ? [11.2, 7.8, 7.8, 6.8]
         : [13, 8.8, 8.8, 7.5]);
-  // Reserve a tidy column on the right for the grade (caption + value) on
-  // monitor labels, with the spec rows kept in a clean left column.
-  const monitorRowWidth = showGradeBadge ? 1900 : 2770;
   const bounds = isMonitorLabel
-    ? [
-      { x: 170, y: 90, width: monitorRowWidth, height: 410 },
-      { x: 170, y: 520, width: monitorRowWidth, height: 345 },
-      { x: 170, y: 885, width: monitorRowWidth, height: 345 },
-    ]
+    ? (monitorTitleLong
+      ? [
+        { x: 170, y: 70, width: monitorRowWidth, height: 690 },
+        { x: 170, y: 800, width: monitorRowWidth, height: 300 },
+        { x: 170, y: 1110, width: monitorRowWidth, height: 300 },
+      ]
+      : [
+        { x: 170, y: 90, width: monitorRowWidth, height: 410 },
+        { x: 170, y: 520, width: monitorRowWidth, height: 345 },
+        { x: 170, y: 885, width: monitorRowWidth, height: 345 },
+      ])
     : [
       { x: 170, y: 50, width: 2770, height: 330 },
       { x: 170, y: 390, width: 2770, height: 285 },
@@ -614,12 +625,28 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
         }
         .monitor-label.monitor-has-grade .monitor-label-text {
           min-width: 0;
-          display: grid;
-          grid-template-rows: 8mm 6.7mm 6.7mm;
-          align-content: center;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 0.7mm;
           padding-right: 1.4mm;
         }
-        .monitor-label.monitor-has-grade.tight .monitor-label-text { grid-template-rows: repeat(3, 7.05mm); }
+        /* Long device names wrap to two lines and stay readable instead of shrinking. */
+        .monitor-label.monitor-has-grade .row-1 {
+          white-space: normal;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.04;
+          font-size: 10.5pt;
+        }
+        .monitor-label.monitor-has-grade .row-2,
+        .monitor-label.monitor-has-grade .row-3 {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
         .monitor-grade-box {
           display: flex;
           flex-direction: column;
