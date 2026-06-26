@@ -451,7 +451,12 @@ async function writeDemoState(state) {
 async function handleDemoStateApi(request, response) {
   if (request.method === "GET") {
     const state = await readDemoState();
-    // Mirror the Vercel API: return a gzip envelope by default, plain on ?raw=1.
+    // Mirror the Vercel API: cheap change-check on ?meta=1, plain on ?raw=1,
+    // gzip envelope by default.
+    if (/[?&]meta=1\b/.test(request.url || "")) {
+      sendJson(response, 200, { updatedAt: state.updatedAt || null });
+      return true;
+    }
     const raw = /[?&]raw=1\b/.test(request.url || "");
     sendJson(response, 200, raw ? state : toEnvelope(state));
     return true;

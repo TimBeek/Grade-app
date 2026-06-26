@@ -3,6 +3,7 @@
 
 import {
   kvReadState,
+  kvReadMeta,
   kvWriteState,
   mergeDemoState,
   toEnvelope,
@@ -15,6 +16,12 @@ export default async function handler(request, response) {
 
   try {
     if (request.method === "GET") {
+      // `?meta=1` is a cheap change-check: just the stored updatedAt (1 command).
+      if (/[?&]meta=1\b/.test(request.url || "")) {
+        const meta = await kvReadMeta();
+        response.status(200).json({ updatedAt: meta && meta.updatedAt ? meta.updatedAt : null });
+        return;
+      }
       const state = await kvReadState();
       // `?raw=1` returns the plain state for clients without DecompressionStream
       // and for local debugging. The default response is the gzip envelope.

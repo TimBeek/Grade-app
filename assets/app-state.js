@@ -1869,6 +1869,38 @@ function loadLocalDemoStateBackup() {
   return applySharedDemoState(readLocalDemoStateBackup());
 }
 
+// Last server "updatedAt" stamp we are in sync with. Used by the periodic
+// live-sync so we only re-read the full state when the server data changed.
+let lastSharedStateStamp = null;
+
+// Cheap change-check: one tiny request (1 KV command) returning only updatedAt.
+async function fetchSharedStateStamp() {
+  if (!canUseSharedDemoState()) return null;
+  try {
+    const response = await fetch(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const meta = await response.json();
+    return meta && meta.updatedAt ? String(meta.updatedAt) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Records the current server stamp so the next change is detected against it.
+async function primeSharedStateStamp() {
+  lastSharedStateStamp = await fetchSharedStateStamp();
+}
+
+// Periodic sync: does a full reload ONLY when the server stamp changed.
+async function syncSharedStateIfChanged() {
+  if (!canUseSharedDemoState()) return false;
+  const stamp = await fetchSharedStateStamp();
+  if (stamp === null) return false;
+  if (lastSharedStateStamp !== null && stamp === lastSharedStateStamp) return false;
+  lastSharedStateStamp = stamp;
+  return loadSharedDemoState();
+}
+
 async function loadSharedDemoState() {
   if (!canUseSharedDemoState()) return loadLocalDemoStateBackup();
   const localState = readLocalDemoStateBackup();
@@ -1896,6 +1928,15 @@ async function saveSharedDemoState(options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: await encodeSharedDemoStateBody(snapshot),
     });
+    if (response.ok) {
+      // Track our own write so the next live-sync doesn't reload needlessly.
+      try {
+        const result = await response.json();
+        if (result && result.updatedAt) lastSharedStateStamp = String(result.updatedAt);
+      } catch (parseError) {
+        // Non-fatal: a missing body just means the next sync re-checks.
+      }
+    }
     return response.ok;
   } catch (error) {
     reportAppWarning('Gedeelde demo-opslag kon niet worden opgeslagen', error);

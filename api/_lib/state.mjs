@@ -73,6 +73,14 @@ function splitChunks(value) {
   return chunks.length ? chunks : [""];
 }
 
+// Cheap "has anything changed?" read: a single GET of the meta key, no mget.
+// Used by the client's periodic live-sync to avoid reading the full state.
+export async function kvReadMeta() {
+  const redis = getRedis();
+  const meta = await redis.get(`${STATE_KEY}:meta`);
+  return meta && typeof meta === "object" ? meta : null;
+}
+
 export async function kvReadState() {
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
