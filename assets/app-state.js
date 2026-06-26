@@ -63,8 +63,6 @@ const SHARED_DEMO_STATE_URL = '/api/demo-state';
 const USERS = [
   { id: 'tim', naam: 'Tim', rol: 'Manager', initialen: 'T', voorkeur: 'expert', passwordHash: '0aaa2665d28098e82a8b771ab0d48e2afafc93939088a1b9a4be6ae3e393b029' },
   { id: 'thibault', naam: 'Thibault', rol: 'Grader', initialen: 'TH', voorkeur: 'beginner', passwordHash: '4ec075046bd8fcbe41c06c57c8761c4dcaa7b30dec043a9f10438008d048f36f' },
-  { id: 'demo', naam: 'Demo medewerker', rol: 'Grader', initialen: 'D', voorkeur: 'beginner', passwordHash: '04091db322a8218b55a339936c9134f24ad880e67090badfee78c90489c9cd4c' },
-  { id: 'admin', naam: 'Admin', rol: 'Manager', initialen: 'A', voorkeur: 'expert', passwordHash: '0aaa2665d28098e82a8b771ab0d48e2afafc93939088a1b9a4be6ae3e393b029' },
 ];
 const DEFAULT_USERS = USERS.map(user => ({ ...user }));
 
