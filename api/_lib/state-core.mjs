@@ -300,8 +300,23 @@ export function mergeDemoState(existingState, incomingState) {
 // Dashboard statistics
 // ---------------------------------------------------------------------------
 
-function dayKey(value) {
-  const date = new Date(value);
+// Real timestamp (ms) for a grading item: prefer an explicit date field, else
+// recover it from the id (grading_<ms>_<sticker>) used by all existing data.
+function historyTimestampMs(item) {
+  if (!item) return null;
+  const direct = Date.parse(item.savedAt || item.createdAt || item.completedAt || item.printedAt || "");
+  if (Number.isFinite(direct)) return direct;
+  const match = String(item.id || "").match(/(\d{13})/);
+  if (match) {
+    const ms = Number(match[1]);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
+function dayKeyFromMs(ms) {
+  if (ms === null) return null;
+  const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 10);
 }
@@ -331,6 +346,11 @@ export function computeStats(state) {
   let repairCount = 0;
   let totalDurationSec = 0;
   let durationSamples = 0;
+  let gradedToday = 0;
+  let gradedLast7Days = 0;
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   for (const item of history) {
     const grade = String(item.grade || "?").trim() || "?";
@@ -343,8 +363,13 @@ export function computeStats(state) {
     const supplier = String(item.leverancier || item.batchNummer || "Onbekend").trim() || "Onbekend";
     perSupplier.set(supplier, (perSupplier.get(supplier) || 0) + 1);
 
-    const day = dayKey(item.savedAt || item.createdAt || item.datum || item.tijdstip);
-    if (day) perDay.set(day, (perDay.get(day) || 0) + 1);
+    const ms = historyTimestampMs(item);
+    const day = dayKeyFromMs(ms);
+    if (day) {
+      perDay.set(day, (perDay.get(day) || 0) + 1);
+      if (day === todayKey) gradedToday += 1;
+      if (ms >= weekAgoMs) gradedLast7Days += 1;
+    }
 
     const duration = Number(item.duurSec);
     if (Number.isFinite(duration) && duration > 0) {
@@ -360,6 +385,8 @@ export function computeStats(state) {
     updatedAt: state.updatedAt || null,
     totals: {
       graded: totalGraded,
+      gradedToday,
+      gradedLast7Days,
       laptopsInVoorraad: totalLaptops,
       monitorsInVoorraad: totalMonitors,
       batches: batches.length,

@@ -84,6 +84,9 @@ function isRepairLabelIssue(issue) {
 
 function getRepairIssues(laptop, result) {
   result = result || {};
+  if (Array.isArray(result.repairActions) && result.repairActions.length) {
+    return Array.from(new Set(result.repairActions.map(action => action && action.issue).filter(Boolean))).map(compactProblemText);
+  }
   const resultIssues = (result.problems || []).filter(Boolean);
   const repairResultIssues = result.forceProblemLabel ? resultIssues : resultIssues.filter(isRepairLabelIssue);
   const supplierIssues = splitSupplierIssues(laptop).filter(isRepairLabelIssue);
@@ -95,6 +98,25 @@ function getProblemLabelRows(laptop, result) {
   const repairIssues = getRepairIssues(laptop, result);
   const isRepair = needsProblemLabel(laptop, result);
   const problems = repairIssues.length ? repairIssues : [isRepair ? 'Controle reparatie' : 'Geen reparatieomschrijving'];
+  const labelType = result.repairLabelType || (result.repairPolicy && result.repairPolicy.labelType) || '';
+
+  if (labelType === 'production') {
+    return [
+      'PRODUCTIE',
+      'Tijdens productie repareren',
+      problems.slice(0, 2).join(' / '),
+      ''
+    ];
+  }
+
+  if (labelType === 'reject') {
+    return [
+      'NIET VERKOOPBAAR',
+      compactProblemText(result.repairPolicy && result.repairPolicy.reason ? result.repairPolicy.reason : 'Te veel/zware reparatie'),
+      problems.slice(0, 2).join(' / '),
+      ''
+    ];
+  }
 
   return [
     'REPARATIE',
@@ -158,7 +180,7 @@ function getLabelRows(laptop, result, type = 'specs', options = {}) {
 
 function needsProblemLabel(laptop, result) {
   result = result || {};
-  return Boolean(result.forceProblemLabel) || getRepairIssues(laptop, result).length > 0;
+  return Boolean(result.forceProblemLabel) || (Array.isArray(result.repairActions) && result.repairActions.length > 0) || getRepairIssues(laptop, result).length > 0;
 }
 
 function getDymoLabelConfig() {
@@ -189,6 +211,11 @@ function getBrowserPrintProfile(options = {}) {
   return isLikelyHpEngageDevice()
     ? { ...BROWSER_PRINT_PROFILES.hpEngageReceipt }
     : { ...BROWSER_PRINT_PROFILES.dymoLabel };
+}
+
+function getMonitorBrowserPrintProfile(options = {}) {
+  if (options.browserPrintProfile) return getBrowserPrintProfile(options);
+  return { ...BROWSER_PRINT_PROFILES.dymoLabel };
 }
 
 function getHpEngagePageHeightMm(rows, type = 'specs') {
@@ -617,10 +644,17 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
     <body>
       <div class="label ${scaleClass}">${labelHtml}</div>
       <script>
-        window.onload = () => {
-          window.focus();
-          window.print();
-        };
+        (() => {
+          let printed = false;
+          const printLabel = () => {
+            if (printed) return;
+            printed = true;
+            window.focus();
+            setTimeout(() => window.print(), 50);
+          };
+          window.addEventListener('load', () => setTimeout(printLabel, 120), { once: true });
+          setTimeout(printLabel, 500);
+        })();
       <\/script>
     </body>
     </html>
@@ -663,7 +697,7 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
 async function printMonitorLabelFor(monitor, grade, options = {}) {
   const normalizedGrade = normalizeMonitorGrade(grade);
   const rows = getMonitorLabelRows(monitor, normalizedGrade);
-  const browserProfile = getBrowserPrintProfile(options);
+  const browserProfile = getMonitorBrowserPrintProfile(options);
   logAudit('print_monitor_label', 'monitor', monitor && monitor.sticker, { grade: normalizedGrade, browserProfile: browserProfile.id });
   const fallbackWindow = options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile);
 

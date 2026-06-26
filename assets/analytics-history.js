@@ -430,6 +430,27 @@ function getAnalyticsDate(value, fallbackTime) {
   return today;
 }
 
+// Real timestamp for a grading history item. Newer items have savedAt; older
+// items only carry a time string, but the millisecond timestamp is embedded in
+// the id (grading_<ms>_<sticker>), so we recover the true date from there.
+function getHistoryTimestampMs(item) {
+  if (!item) return null;
+  const direct = Date.parse(item.savedAt || item.createdAt || item.completedAt || item.printedAt || '');
+  if (Number.isFinite(direct)) return direct;
+  const match = String(item.id || '').match(/(\d{13})/);
+  if (match) {
+    const ms = Number(match[1]);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
+function getHistoryAnalyticsDate(item) {
+  const ms = getHistoryTimestampMs(item);
+  if (ms) return new Date(ms);
+  return getAnalyticsDate(null, item && item.tijd);
+}
+
 function isSameLocalDay(a, b) {
   return a.getFullYear() === b.getFullYear()
     && a.getMonth() === b.getMonth()
@@ -543,7 +564,7 @@ function buildAnalyticsItems(isAdmin) {
       problems,
       detailRows: getHistoryDetailRows(historyItem),
       rawItem: historyItem,
-      date: getAnalyticsDate(historyItem.savedAt || historyItem.createdAt || historyItem.completedAt || historyItem.printedAt, historyItem.tijd),
+      date: getHistoryAnalyticsDate(historyItem),
     }));
   });
 
@@ -1052,8 +1073,9 @@ async function refreshAnalyticsServerStats() {
       ? updated.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
       : '-';
     const cells = [
-      { label: 'Gegraded (DB)', value: formatNumber(totals.graded || 0) },
-      { label: 'Repair-rate', value: `${totals.repairRatePct != null ? totals.repairRatePct : 0}%` },
+      { label: 'Vandaag gegraded', value: formatNumber(totals.gradedToday || 0) },
+      { label: 'Laatste 7 dagen', value: formatNumber(totals.gradedLast7Days || 0) },
+      { label: 'Gegraded totaal (DB)', value: formatNumber(totals.graded || 0) },
       { label: 'Laptops voorraad', value: formatNumber(totals.laptopsInVoorraad || 0) },
       { label: 'Monitoren voorraad', value: formatNumber(totals.monitorsInVoorraad || 0) },
       { label: 'Gebruikers', value: formatNumber(totals.users || 0) },
@@ -1153,7 +1175,6 @@ function renderAnalytics() {
         ${renderAnalyticsPanel('Throughput trend', 'Output en repair-flow per dag.', renderTrendChart(trendBuckets))}
         ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
         ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
-        ${renderAnalyticsPanel('Repair bottlenecks', 'Meest voorkomende repair- en kwaliteitsredenen.', renderBarList(problemRows, 'Nog geen repair-signalen binnen deze filters.'))}
         ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
         ${renderAnalyticsPanel('Top brands', 'Merken met de meeste intake of output.', renderBarList(brandRows, 'Nog geen merken beschikbaar.'))}
         ${renderAnalyticsPanel('Top models', 'Modellen die het vaakst door de workflow komen.', renderBarList(modelRows, 'Nog geen modellen beschikbaar.'))}

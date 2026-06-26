@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-function loadAppSandbox() {
+function loadAppSandbox(options = {}) {
   const scriptNames = [
     'grading-engine.js',
     'app-state.js',
@@ -26,10 +26,25 @@ function loadAppSandbox() {
     addEventListener() {},
   };
   const localStore = new Map();
+  Object.entries(options.localStorage || {}).forEach(([key, value]) => {
+    localStore.set(key, String(value));
+  });
 
   const sandbox = {
     console,
     window: {
+      location: {
+        protocol: options.protocol || 'http:',
+        search: options.search || '',
+        pathname: options.pathname || '/',
+        hash: options.hash || '',
+      },
+      history: {
+        replacedUrl: null,
+        replaceState(state, title, url) {
+          this.replacedUrl = url;
+        },
+      },
       performance: {
         mark() {},
         measure() {},
@@ -157,6 +172,22 @@ test('actieve sessie blijft bewaard na refresh en logout wist sessie', async () 
   assert.equal(vm.runInContext('STATE.currentUser', app), null);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'login');
   assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
+});
+
+test('login reset link wist lokale users en sessie zonder gedeelde backup te verwijderen', () => {
+  const app = loadAppSandbox({
+    search: '?resetLogin=1',
+    localStorage: {
+      remarktDemoUsersV2: JSON.stringify([{ id: 'stale', naam: 'Oud', rol: 'Grader', initialen: 'O', voorkeur: 'beginner', passwordHash: 'oud' }]),
+      remarktSessionUserV1: JSON.stringify({ id: 'stale' }),
+      remarktDemoStateBackupV1: JSON.stringify({ updatedAt: '2026-06-19T00:00:00.000Z' }),
+    },
+  });
+
+  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), null);
+  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)', app), /2026-06-19/);
+  assert.equal(vm.runInContext('window.history.replacedUrl', app), '/');
 });
 
 test('taalvertaling laat productnamen en poortnamen ongemoeid', () => {
@@ -296,6 +327,8 @@ test('lokale monitorimport blijft staan wanneer gedeelde state nieuwer maar leeg
       labelPrints: [],
       monitorLabelPrints: [],
       auditLogs: [],
+      restoreDeletedMonitorBatchIds: ['monitor_batch_local_newer_remote'],
+      restoreDeletedMonitorStickers: ['MON-LOCAL-2'],
       updatedAt: '2026-05-20T08:00:00.000Z'
     }));
   `, app);
@@ -320,6 +353,53 @@ test('lokale monitorimport blijft staan wanneer gedeelde state nieuwer maar leeg
   assert.equal(vm.runInContext('STATE.history[0].id', app), 'remote_history_marker');
   assert.equal(vm.runInContext("STATE.deletedMonitorBatchIds.includes('monitor_batch_local_newer_remote')", app), false);
   assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)', app), /MON-LOCAL-2/);
+});
+
+test('verwijderde laptop komt niet terug uit een oude lokale batchbackup', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const staleLocal = {
+      version: 1,
+      users: [],
+      batches: [{
+        id: 'batch_stale_laptop',
+        nummer: 'STALE',
+        leverancier: 'Supplier import',
+        geimporteerd: '18-6-2026',
+        laptops: [{
+          sticker: 'STALE-1',
+          merk: 'HP',
+          model: 'EliteBook',
+          batchId: 'batch_stale_laptop',
+          batchNummer: 'STALE'
+        }]
+      }],
+      monitorBatches: [],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-06-18T12:00:00.000Z'
+    };
+    const remoteWithDeletion = {
+      version: 1,
+      users: [],
+      batches: [],
+      monitorBatches: [],
+      history: [],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      deletedLaptopStickers: ['STALE-1'],
+      updatedAt: '2026-06-18T11:00:00.000Z'
+    };
+    const merged = chooseSharedDemoState(remoteWithDeletion, staleLocal);
+    applySharedDemoState(merged);
+  `, app);
+
+  assert.equal(vm.runInContext("STATE.deletedLaptopStickers.includes('STALE-1')", app), true);
+  assert.equal(vm.runInContext("Boolean(getLaptopBySticker('STALE-1'))", app), false);
 });
 
 test('dashboard scheidt werkstroom, support en analyse', () => {
@@ -453,7 +533,7 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
   assert.match(app.__appElement.innerHTML, /Throughput trend/);
   assert.match(app.__appElement.innerHTML, /Batch completion/);
   assert.match(app.__appElement.innerHTML, /Employee performance/);
-  assert.match(app.__appElement.innerHTML, /Repair bottlenecks/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Repair bottlenecks/);
   assert.match(app.__appElement.innerHTML, /Productivity heatmap/);
   assert.match(app.__appElement.innerHTML, /Recent activity/);
 
@@ -567,6 +647,202 @@ test('grader ziet alleen begeleide modus en kan expertmodus niet starten', async
   vm.runInContext(`STATE.appMessage = null; STATE.currentScreen = 'test_start'; render();`, app);
   assert.match(app.__appElement.innerHTML, /Guided Mode/);
   assert.doesNotMatch(app.__appElement.innerHTML, /data-action="start_test_expert"/);
+});
+
+test('expert-grader kan expertmodus gebruiken zonder managerrechten', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = { id: 'danny', naam: 'Danny', rol: 'Grader', initialen: 'D', voorkeur: 'expert', passwordHash: 'x' };
+    STATE.currentLaptop = getLaptopBySticker('7771198');
+    STATE.currentScreen = 'laptop_info';
+    render();
+  `, app);
+
+  assert.equal(vm.runInContext('isAdminUser()', app), false);
+  assert.equal(vm.runInContext('canUseExpertMode()', app), true);
+  assert.match(app.__appElement.innerHTML, /Guided Mode/);
+  assert.match(app.__appElement.innerHTML, /data-action="start_expert"/);
+
+  await app.handleAction('start_expert', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.currentGrading.modus', app), 'expert');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'grading_expert');
+});
+
+test('live gebruikerssync werkt actieve gebruiker bij zonder volledige refresh', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    USERS.push({ id: 'danny', naam: 'Danny', rol: 'Grader', initialen: 'D', voorkeur: 'beginner', passwordHash: 'x' });
+    STATE.currentUser = USERS.find(user => user.id === 'danny');
+    STATE.currentScreen = 'home';
+  `, app);
+
+  const changed = app.applySharedUsers({
+    users: [
+      { id: 'danny', naam: 'Danny', rol: 'Grader', initialen: 'D', voorkeur: 'expert', passwordHash: 'x' },
+    ],
+  });
+
+  assert.equal(changed, true);
+  assert.equal(vm.runInContext('STATE.currentUser.id', app), 'danny');
+  assert.equal(vm.runInContext('STATE.currentUser.voorkeur', app), 'expert');
+  assert.equal(vm.runInContext('canUseExpertMode()', app), true);
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /expert/);
+});
+
+test('lokale demo-backup bewaart gebruikers ook bij gewone state-save', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    USERS.find(user => user.id === 'thibault').passwordHash = 'custom-thibault-hash';
+    saveLocalDemoStateBackup(getSharedDemoSnapshot());
+  `, app);
+
+  const backup = JSON.parse(vm.runInContext(`localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)`, app));
+  const thibault = backup.users.find(user => user.id === 'thibault');
+  assert.equal(backup.userSync, 'user-management');
+  assert.equal(thibault.passwordHash, 'custom-thibault-hash');
+});
+
+test('login haalt eerst live gebruikers op zodat wachtwoorden niet terugvallen', async () => {
+  const app = loadAppSandbox();
+  const remoteHash = await app.hashDemoPassword('nieuw-thibault');
+
+  vm.runInContext(`
+    window.location = { protocol: 'https:' };
+    fetch = async function() {
+      return {
+        ok: true,
+        async json() {
+          return {
+            users: [
+              { id: 'thibault', naam: 'Thibault', rol: 'Manager', initialen: 'TH', voorkeur: 'expert', passwordHash: '${remoteHash}' },
+            ],
+          };
+        },
+      };
+    };
+    const loginElements = {
+      loginUser: { value: 'thibault' },
+      loginPassword: { value: 'nieuw-thibault' },
+    };
+    document.getElementById = function(id) {
+      if (id === 'app') return __appElement;
+      return loginElements[id] || null;
+    };
+  `, app);
+
+  await app.loginWithPassword();
+
+  assert.equal(vm.runInContext('STATE.currentUser && STATE.currentUser.id', app), 'thibault');
+  assert.equal(vm.runInContext('STATE.currentUser && STATE.currentUser.rol', app), 'Manager');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+});
+
+test('nieuwe gebruiker krijgt startwachtwoord en moet dit bij eerste login wijzigen', async () => {
+  const app = loadAppSandbox();
+  const startPassword = vm.runInContext('FIRST_LOGIN_PASSWORD', app);
+  const startHash = await app.hashDemoPassword(startPassword);
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'accounts';
+    const newUserElements = {
+      newUserName: { value: 'Nieuwe Grader' },
+      newUserId: { value: 'Nieuwe Grader' },
+      newUserRole: { value: 'Grader' },
+      newUserMode: { value: 'beginner' },
+    };
+    document.getElementById = function(id) {
+      if (id === 'app') return __appElement;
+      return newUserElements[id] || null;
+    };
+  `, app);
+
+  await app.createUserFromForm();
+
+  const created = vm.runInContext(`USERS.find(user => user.id === 'nieuwegrader')`, app);
+  assert.equal(created.naam, 'Nieuwe Grader');
+  assert.equal(created.passwordHash, startHash);
+  assert.equal(created.mustChangePassword, true);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Start password/);
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /mustChangePassword/);
+});
+
+test('eerste login verplicht eigen wachtwoord en bewaart dit in gebruikersbeheer', async () => {
+  const app = loadAppSandbox();
+  const startPassword = vm.runInContext('FIRST_LOGIN_PASSWORD', app);
+  const startHash = await app.hashDemoPassword(startPassword);
+
+  vm.runInContext(`
+    USERS.push({
+      id: 'firstlogin',
+      naam: 'First Login',
+      rol: 'Grader',
+      initialen: 'FL',
+      voorkeur: 'beginner',
+      passwordHash: '${startHash}',
+      mustChangePassword: true,
+      passwordUpdatedAt: '',
+    });
+    const passwordElements = {
+      loginUser: { value: 'firstlogin' },
+      loginPassword: { value: '${startPassword}' },
+      newOwnPassword: { value: 'eigen-wachtwoord-2026' },
+      confirmOwnPassword: { value: 'eigen-wachtwoord-2026' },
+    };
+    document.getElementById = function(id) {
+      if (id === 'app') return __appElement;
+      return passwordElements[id] || null;
+    };
+  `, app);
+
+  await app.loginWithPassword();
+
+  assert.equal(vm.runInContext('STATE.currentUser && STATE.currentUser.id', app), 'firstlogin');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'password_change');
+
+  await app.handleAction('home', { dataset: {} });
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'password_change');
+
+  await app.changeOwnPassword();
+
+  const updated = vm.runInContext(`USERS.find(user => user.id === 'firstlogin')`, app);
+  assert.equal(updated.mustChangePassword, false);
+  assert.notEqual(updated.passwordHash, startHash);
+  assert.match(updated.passwordUpdatedAt, /^20/);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /eigen wachtwoord actief|mustChangePassword/);
+});
+
+test('admin kan gebruiker resetten naar startwachtwoord met verplichte wijziging', async () => {
+  const app = loadAppSandbox();
+  const startPassword = vm.runInContext('FIRST_LOGIN_PASSWORD', app);
+  const startHash = await app.hashDemoPassword(startPassword);
+  const customHash = await app.hashDemoPassword('bestaand-wachtwoord');
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    USERS.push({
+      id: 'resetcase',
+      naam: 'Reset Case',
+      rol: 'Grader',
+      initialen: 'RC',
+      voorkeur: 'beginner',
+      passwordHash: '${customHash}',
+      mustChangePassword: false,
+      passwordUpdatedAt: '2026-06-01T10:00:00.000Z',
+    });
+  `, app);
+
+  await app.resetUserPassword('resetcase');
+
+  const resetUser = vm.runInContext(`USERS.find(user => user.id === 'resetcase')`, app);
+  assert.equal(resetUser.passwordHash, startHash);
+  assert.equal(resetUser.mustChangePassword, true);
+  assert.equal(resetUser.passwordUpdatedAt, '');
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Start password/);
 });
 
 test('scan-en-print markeert label klaar en sluit digitale grading af', async () => {
@@ -847,6 +1123,36 @@ test('expertmodus toont zware leveranciersmelding als popup en lichte melding in
   assert.equal(vm.runInContext('STATE.supplierNotice', app), null);
   assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
   assert.match(app.__appElement.innerHTML, /Touchpad = Used touchpad/);
+});
+
+test('Class D waarschuwing toont reden uit leverancierslijst', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: '5460901',
+      merk: 'HP',
+      model: 'EliteBook 840 G8',
+      processor: 'i5-1145G7',
+      ram: '16GB',
+      ssd: '512GB',
+      display: '14"',
+      serial: '5CG1276L7P',
+      leverancier_class: 'Class D',
+      meldingen: 'Gebarsten scherm,Missing rubber feet',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+  `, app);
+
+  await app.selectLaptop('5460901');
+
+  assert.match(app.__appElement.innerHTML, /Supplier marked this device as Class D/);
+  assert.match(app.__appElement.innerHTML, /Reden uit leverancierslijst/);
+  assert.match(app.__appElement.innerHTML, /Gebarsten scherm/);
+  assert.match(app.__appElement.innerHTML, /Missing rubber feet/);
 });
 
 test('beheerder kan een verkeerde batch verwijderen', () => {
@@ -1331,6 +1637,102 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   assert.equal(vm.runInContext('STATE.monitorLabelPrints[0].grade', app), 'A');
 });
 
+test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_busy',
+      nummer: 'BUSY',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '18-6-2026',
+      monitors: [{
+        sticker: 'MON-BUSY-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort',
+        batchId: 'monitor_batch_busy',
+        batchNummer: 'BUSY'
+      }]
+    });
+    rebuildMonitorIndex();
+    globalThis.monitorPrintCalls = [];
+    globalThis.resolveMonitorPrint = null;
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade });
+      return await new Promise(resolve => {
+        resolveMonitorPrint = () => resolve(true);
+      });
+    };
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-BUSY-1');
+  `, app);
+
+  const printPromise = app.scanAndPrintMonitorLabel('MON-BUSY-1', 'B');
+
+  assert.equal(vm.runInContext('STATE.monitorPrintInProgress', app), true);
+  assert.equal(vm.runInContext('STATE.monitorSelectedGrade', app), 'B');
+  assert.match(app.__appElement.innerHTML, /Monitorlabel wordt geprint en live opgeslagen/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-print-grade="B"[^>]*disabled/);
+
+  assert.equal(await app.scanAndPrintMonitorLabel('MON-BUSY-1', 'C'), false);
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+
+  vm.runInContext('resolveMonitorPrint()', app);
+  assert.equal(await printPromise, true);
+  assert.equal(vm.runInContext('STATE.monitorPrintInProgress', app), false);
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.equal(vm.runInContext('monitorPrintCalls[0].grade', app), 'B');
+  assert.equal(vm.runInContext('STATE.monitorLabelPrints.length', app), 1);
+  assert.equal(vm.runInContext('STATE.currentMonitor', app), null);
+});
+
+test('monitorlabel printfout laat monitor opnieuw proberen zonder vast te hangen', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_fail',
+      nummer: 'FAIL',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '18-6-2026',
+      monitors: [{
+        sticker: 'MON-FAIL-1',
+        deviceName: 'HP E24 G4 Monitor',
+        merk: 'HP',
+        model: 'E24 G4',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / USB-C',
+        batchId: 'monitor_batch_fail',
+        batchNummer: 'FAIL'
+      }]
+    });
+    rebuildMonitorIndex();
+    globalThis.monitorPrintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      monitorPrintCalls.push({ sticker: monitor.sticker, grade });
+      throw new Error('printer vast');
+    };
+    STATE.currentScreen = 'monitor_label_scan';
+    selectMonitorForLabel('MON-FAIL-1');
+  `, app);
+
+  assert.equal(await app.scanAndPrintMonitorLabel('MON-FAIL-1', 'A'), false);
+
+  assert.equal(vm.runInContext('STATE.monitorPrintInProgress', app), false);
+  assert.equal(vm.runInContext('STATE.currentMonitor.sticker', app), 'MON-FAIL-1');
+  assert.equal(vm.runInContext('STATE.monitorLabelPrints.length', app), 0);
+  assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /niet voltooid/);
+  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+});
+
 test('monitor handmatige invoer gebruikt database autocomplete en vult specs automatisch', () => {
   const app = loadAppSandbox();
 
@@ -1607,6 +2009,91 @@ test('specs-label bevat kernspecificaties en grade', () => {
   assert.equal(rows[3], 'Accu 88%');
 });
 
+test('touchcorrectie overschrijft leveranciersdisplay op specs-label', () => {
+  const app = loadAppSandbox();
+  const correctedNo = app.getLabelRows({
+    merk: 'Dell',
+    model: 'Latitude 7420',
+    processor: 'i5-1135G7',
+    ram: '16GB',
+    ssd: '512GB',
+    display: 'touch 14"',
+    touchOverride: 'no',
+  }, { eindgrade: 'B' });
+  const correctedYes = app.getLabelRows({
+    merk: 'HP',
+    model: 'EliteBook 840',
+    processor: 'i5',
+    ram: '16GB',
+    ssd: '512GB',
+    display: '14"',
+    touchOverride: 'yes',
+  }, { eindgrade: 'B' });
+
+  assert.equal(correctedNo[2], 'Grade B / Touch Nee');
+  assert.equal(correctedYes[2], 'Grade B / Touch Ja');
+});
+
+test('touchcorrectie wordt bewaard in gedeelde state en historie', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: 'TOUCH-OVERRIDE-1',
+      merk: 'Dell',
+      model: 'Latitude 7420',
+      processor: 'i5-1135G7',
+      ram: '16GB',
+      ssd: '512GB',
+      display: 'touch 14"',
+      battery: '91%',
+      gpu: '',
+      leverancier_class: 'Class B',
+      meldingen: '',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+  `, app);
+
+  await app.selectLaptop('TOUCH-OVERRIDE-1');
+  assert.doesNotMatch(app.__appElement.innerHTML, /touch-override-panel/);
+
+  vm.runInContext(`startGrading('beginner'); render();`, app);
+  const lcdIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'lcd')`, app);
+  for (let index = 0; index < lcdIndex; index++) {
+    await app.handleAction('next_q', { dataset: {} });
+  }
+  assert.match(app.__appElement.innerHTML, /Touch ja/);
+  assert.match(app.__appElement.innerHTML, /Touch nee/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Volgens lijst \(/);
+
+  await app.handleAction('set_touch_override', { dataset: { touchOverride: 'no' } });
+
+  assert.equal(vm.runInContext("getLaptopBySticker('TOUCH-OVERRIDE-1').touchOverride", app), 'no');
+  assert.equal(vm.runInContext("isTouchscreenLaptop(getLaptopBySticker('TOUCH-OVERRIDE-1'))", app), false);
+  assert.equal(vm.runInContext("getLabelRows(getLaptopBySticker('TOUCH-OVERRIDE-1'), { eindgrade: 'B' })[2]", app), 'Grade B / Touch Nee');
+  assert.equal(vm.runInContext("getSharedDemoSnapshot().batches[0].laptops.find(laptop => laptop.sticker === 'TOUCH-OVERRIDE-1').touchOverride", app), 'no');
+
+  vm.runInContext(`
+    STATE.currentLaptop = getLaptopBySticker('TOUCH-OVERRIDE-1');
+    STATE.currentGrading = {
+      gestart: Date.now() - 1000,
+      bevestigd: Date.now(),
+      modus: 'expert',
+      keuzes: {},
+      triggers: {},
+      impactOverrides: {},
+      repairIssues: {},
+      result: { eindgrade: 'B', score: 10, problems: [] }
+    };
+    saveGrading();
+  `, app);
+
+  assert.equal(vm.runInContext("STATE.history.find(item => item.sticker === 'TOUCH-OVERRIDE-1').touchOverride", app), 'no');
+});
+
 test('DYMO specs-label gebruikt 25x54mm S0722520 template', () => {
   const app = loadAppSandbox();
   const config = app.getDymoLabelConfig();
@@ -1697,6 +2184,57 @@ test('browserfallback gebruikt korte HP Engage bon op 80mm papier', () => {
     'Grade B / Touch Nee',
     'Accu 90%'
   ], 'specs'), 78);
+});
+
+test('monitor browserfallback blijft exact DYMO 54x25mm op touchapparaat', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    navigator = {
+      userAgent: 'Mozilla/5.0 (Linux; Android 13; HP Engage One Prime) Chrome/125',
+      platform: 'Linux armv8l',
+      maxTouchPoints: 10
+    };
+  `, app);
+
+  const defaultProfile = app.getBrowserPrintProfile();
+  const monitorProfile = app.getMonitorBrowserPrintProfile();
+  const markup = app.getBrowserLabelMarkup([
+    'Demo P2422H Monitor',
+    'Grade B / 24" / 1920x1080',
+    'Video in: HDMI / DP'
+  ], 'monitor', monitorProfile);
+
+  assert.equal(defaultProfile.id, 'hp-engage-80x297');
+  assert.equal(monitorProfile.id, 'dymo-label-54x25');
+  assert.equal(monitorProfile.widthMm, 54);
+  assert.equal(monitorProfile.heightMm, 25);
+  assert.match(markup.scaleClass, /monitor-label/);
+
+  const printHtml = vm.runInContext(`
+    let html = '';
+    window.open = function() {
+      return {
+        document: {
+          write(value) { html += value; },
+          close() {}
+        },
+        focus() {},
+        print() {}
+      };
+    };
+    openBrowserPrintLabel([
+      'Demo P2422H Monitor',
+      'Grade B / 24" / 1920x1080',
+      'Video in: HDMI / DP'
+    ], 'monitor', null, getMonitorBrowserPrintProfile());
+    html;
+  `, app);
+
+  assert.match(printHtml, /@page \{ size: 54mm 25mm; margin: 0; \}/);
+  assert.match(printHtml, /width: 54mm;/);
+  assert.match(printHtml, /height: 25mm;/);
+  assert.match(printHtml, /setTimeout\(printLabel, 500\)/);
 });
 
 test('analyse vergelijkt leverancier-grading met ReMarkt-grading per batch', () => {
@@ -1864,7 +2402,9 @@ test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
     finishGrading();
   `, app);
 
-  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'direct');
   assert.equal(vm.runInContext('STATE.currentGrading.result.forceProblemLabel', app), true);
   assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /LCD pixel line/);
 
@@ -1872,6 +2412,78 @@ test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
   assert.equal(rows[0], 'REPARATIE');
   assert.match(rows.join('|'), /LCD pixel line/);
   assert.doesNotMatch(rows.join('|'), /GRADE/i);
+});
+
+test('twee lichte productie-reparaties houden grade na reparatie en productie-label', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.keyboard = 'D';
+    STATE.currentGrading.impactOverrides.keyboard = 'x';
+    STATE.currentGrading.repairIssues.keyboard = 'Missing key';
+    STATE.currentGrading.repairActions.keyboard = createRepairAction('keyboard', 'Missing key', { repairRoute: 'production', repairSeverity: 'light' });
+    STATE.currentGrading.keuzes.touchpad = 'D';
+    STATE.currentGrading.impactOverrides.touchpad = 'x';
+    STATE.currentGrading.repairIssues.touchpad = 'Touchpad werkt niet';
+    STATE.currentGrading.repairActions.touchpad = createRepairAction('touchpad', 'Touchpad werkt niet', { repairRoute: 'production', repairSeverity: 'light' });
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'production');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairPolicy.lightCount', app), 2);
+
+  const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(specsRows[2], /Grade A/);
+
+  const productionRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
+  assert.equal(productionRows[0], 'PRODUCTIE');
+  assert.equal(productionRows[1], 'Tijdens productie repareren');
+  assert.match(productionRows.join('|'), /Missing key/);
+  assert.match(productionRows.join('|'), /TP werkt niet|Touchpad werkt niet/);
+});
+
+test('twee zware reparaties blijven X en krijgen niet-verkoopbaar label', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.lcd = 'D';
+    STATE.currentGrading.impactOverrides.lcd = 'x';
+    STATE.currentGrading.repairIssues.lcd = 'LCD pixel line';
+    STATE.currentGrading.repairActions.lcd = createRepairAction('lcd', 'LCD pixel line', { repairRoute: 'direct', repairSeverity: 'heavy' });
+    STATE.currentGrading.keuzes.scharnieren = 'D';
+    STATE.currentGrading.impactOverrides.scharnieren = 'x';
+    STATE.currentGrading.repairIssues.scharnieren = 'Scharnier werkt niet';
+    STATE.currentGrading.repairActions.scharnieren = createRepairAction('scharnieren', 'Scharnier werkt niet', { repairRoute: 'direct', repairSeverity: 'heavy' });
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), undefined);
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'reject');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairPolicy.heavyCount', app), 2);
+
+  const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(specsRows[2], /Grade X/);
+
+  const rejectRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
+  assert.equal(rejectRows[0], 'NIET VERKOOPBAAR');
+  assert.match(rejectRows[1], /Te veel zware reparaties/);
+  assert.match(rejectRows.join('|'), /LCD pixel line/);
+  assert.match(rejectRows.join('|'), /Hinge werkt niet|Scharnier werkt niet/);
 });
 
 test('nieuwe detailkeuzes voor schermrand bovenkap en zijkant sturen score scherper', () => {
@@ -1894,10 +2506,87 @@ test('nieuwe detailkeuzes voor schermrand bovenkap en zijkant sturen score scher
   const nonRepairableSide = app.getChoiceDecision('randen', 'C').options[1];
   assert.equal(repairableSide.impact, 'a');
   assert.match(repairableSide.repairIssue, /Zijkant open\/verbogen rechtmaken/);
-  assert.match(repairableSide.image, /randen-open-verbogen-herstelbaar-dell-ai\.jpg$/);
+  assert.match(repairableSide.image, /randen-open-verbogen-herstelbaar-v3-ai\.jpg$/);
   assert.equal(nonRepairableSide.impact, 'c');
   assert.match(nonRepairableSide.image, /randen-open-verbogen-niet-herstelbaar-dell-ai\.jpg$/);
   assert.equal(vm.runInContext("IMPACT_PROFILES['b-minus'].minGrade", app), 'B');
+});
+
+test('LCD toetsafdruk B vraagt grootte en kan lichte impact geven', () => {
+  const app = loadAppSandbox();
+
+  const lcdB = app.getChoiceDecision('lcd', 'B');
+  assert.match(lcdB.options[0].label, /Toetsafdrukken/);
+  assert.equal(lcdB.options[0].impact, 'a-minus');
+  assert.match(lcdB.options[0].image, /lcd-keyinprint-b\.jpg$/);
+  assert.equal(lcdB.options[0].nextDecision.options[0].impact, 'a-minus');
+  assert.equal(lcdB.options[0].nextDecision.options[1].impact, 'a-minus-if-all-other-a');
+  assert.equal(lcdB.options[0].nextDecision.options[2].impact, 'b');
+  assert.match(lcdB.options[0].nextDecision.options[0].image, /lcd-keyinprint-0-5cm\.jpg$/);
+  assert.match(lcdB.options[0].nextDecision.options[1].image, /lcd-keyinprint-5-10cm\.jpg$/);
+  assert.match(lcdB.options[0].nextDecision.options[2].image, /lcd-keyinprint-10-plus-cm\.jpg$/);
+  assert.equal(lcdB.options[1].impact, 'b');
+  assert.equal(lcdB.options[2].impact, 'b');
+
+  const choices = allChoices(app, 'A');
+  choices.lcd = 'B';
+
+  const smallKeyprint = app.calculateGrade(choices, {}, { lcd: 'a-minus' });
+  assert.equal(smallKeyprint.eindgrade, 'A');
+  assert.equal(smallKeyprint.score, 2);
+  assert.equal(smallKeyprint.detailRows.find(row => row.naam === 'LCD & Glass').impact, 'A-');
+
+  const mediumKeyprintWithAllOtherA = app.calculateGrade(choices, {}, { lcd: 'a-minus-if-all-other-a' });
+  assert.equal(mediumKeyprintWithAllOtherA.eindgrade, 'A');
+  assert.equal(mediumKeyprintWithAllOtherA.score, 2);
+  assert.equal(mediumKeyprintWithAllOtherA.detailRows.find(row => row.naam === 'LCD & Glass').impact, 'A-');
+
+  const mediumKeyprintWithOtherB = app.calculateGrade({
+    ...choices,
+    bovenkap: 'B',
+  }, {}, {
+    bovenkap: 'a-minus',
+    lcd: 'a-minus-if-all-other-a',
+  });
+  assert.equal(mediumKeyprintWithOtherB.eindgrade, 'B');
+  assert.equal(mediumKeyprintWithOtherB.score, 10);
+  assert.equal(mediumKeyprintWithOtherB.detailRows.find(row => row.naam === 'LCD & Glass').impact, 'B');
+
+  const largeKeyprint = app.calculateGrade(choices, {}, { lcd: 'b' });
+  assert.equal(largeKeyprint.eindgrade, 'B');
+  assert.equal(largeKeyprint.score, 8);
+});
+
+test('LCD toetsafdruk workflow opent na B eerst de groottekeuze', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'lcd');
+    applyComponentChoice('lcd', 'B', false);
+  `, app);
+
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /LCD B Detail/);
+  assert.match(app.__appElement.innerHTML, /Toetsafdrukken/);
+
+  vm.runInContext(`resolvePendingDecision(0);`, app);
+  assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /toetsafdruk grootte/i);
+  assert.match(app.__appElement.innerHTML, /0-5 cm/);
+  assert.match(app.__appElement.innerHTML, /5-10 cm/);
+  assert.match(app.__appElement.innerHTML, /10\+ cm/);
+
+  vm.runInContext(`
+    resolvePendingDecision(1);
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.score', app), 2);
 });
 
 test('herstelbare zijkant geeft A-impact en reparatielabel', async () => {
@@ -2142,7 +2831,7 @@ test('detailkeuze-menu heeft loep zonder score-uitleg in tekst', () => {
 
   assert.match(app.__appElement.innerHTML, /decision-zoom-action/);
   assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
-  assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-dell-ai\.jpg/);
+  assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-v3-ai\.jpg/);
   assert.doesNotMatch(app.__appElement.innerHTML, /telt als/i);
   assert.doesNotMatch(app.__appElement.innerHTML, /blijft C/i);
 });
@@ -2308,7 +2997,9 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
   await app.handleAction('confirm_save', {});
 
   assert.equal(vm.runInContext('STATE.history.length', app), 1);
-  assert.equal(vm.runInContext('STATE.history[0].grade', app), 'D');
+  assert.equal(vm.runInContext('STATE.history[0].grade', app), 'A');
+  assert.equal(vm.runInContext('STATE.history[0].result.repairOriginalGrade', app), 'D');
+  assert.equal(vm.runInContext('STATE.history[0].result.repairLabelType', app), 'direct');
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);

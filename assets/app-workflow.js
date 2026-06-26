@@ -83,7 +83,7 @@ function bindRenderedControlHandlers() {
       return;
     }
     if (event.target.closest('[data-monitor-grade-info-panel]')) return;
-    if (!STATE.currentMonitor) return;
+    if (!STATE.currentMonitor || STATE.monitorPrintInProgress) return;
     STATE.monitorGradeInfoOpen = null;
     return scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, button.dataset.monitorPrintGrade, { source: 'grade' });
   });
@@ -221,7 +221,7 @@ async function handleDelegatedClick(e) {
 
   const monitorPrintGradeButton = e.target.closest('[data-monitor-print-grade]');
   if (monitorPrintGradeButton) {
-    if (STATE.currentMonitor) {
+    if (STATE.currentMonitor && !STATE.monitorPrintInProgress) {
       STATE.monitorGradeInfoOpen = null;
       await scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, monitorPrintGradeButton.dataset.monitorPrintGrade, { source: 'grade' });
     }
@@ -339,7 +339,7 @@ async function handleDelegatedChange(e) {
           importedLaptops: STATE.importResult ? STATE.importResult.importedLaptops || 0 : 0,
           importedMonitors: STATE.importResult ? STATE.importResult.importedMonitors || 0 : 0,
         });
-        await saveSharedDemoState();
+        await saveSharedDemoState(getImportRestoreOptions());
         setAppMessage(`${STATE.importResult ? STATE.importResult.importedLaptops || 0 : 0} laptops and ${STATE.importResult ? STATE.importResult.importedMonitors || 0 : 0} monitors imported and ready.`, 'success');
         render();
       } catch (err) {
@@ -380,6 +380,19 @@ function handleDelegatedInput(e) {
   if (e.target.id === 'monitorScanSearch') {
     scheduleMonitorScanSearch(e.target.value);
   }
+}
+
+function getImportRestoreOptions(result = STATE.importResult) {
+  const batches = Array.isArray(result && result.batches) ? result.batches : [];
+  const monitorBatches = Array.isArray(result && result.monitorBatches) ? result.monitorBatches : [];
+  const laptops = Array.isArray(result && result.laptops) ? result.laptops : [];
+  const monitors = Array.isArray(result && result.monitors) ? result.monitors : [];
+  return {
+    restoreDeletedBatchIds: batches.map(batch => batch && batch.id).filter(Boolean),
+    restoreDeletedLaptopStickers: laptops.map(laptop => laptop && laptop.sticker).filter(Boolean),
+    restoreDeletedMonitorBatchIds: monitorBatches.map(batch => batch && batch.id).filter(Boolean),
+    restoreDeletedMonitorStickers: monitors.map(monitor => monitor && monitor.sticker).filter(Boolean),
+  };
 }
 
 function syncMonitorManualDatabaseAssist() {
@@ -516,7 +529,7 @@ function handleDelegatedKeydown(e) {
   if (isTypingField || STATE.pendingDecision) return;
 
   const key = String(e.key || '').toLowerCase();
-  if (STATE.currentScreen === 'monitor_label_scan' && STATE.currentMonitor && !monitorNeedsIdentityChoice(STATE.currentMonitor) && ['a', 'b', 'c', 'd', 'x'].includes(key)) {
+  if (STATE.currentScreen === 'monitor_label_scan' && STATE.currentMonitor && !STATE.monitorPrintInProgress && !monitorNeedsIdentityChoice(STATE.currentMonitor) && ['a', 'b', 'c', 'd', 'x'].includes(key)) {
     e.preventDefault();
     const grade = key === 'x' ? 'D' : key.toUpperCase();
     Promise.resolve(scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, grade, { source: 'keyboard' })).catch(error => {
@@ -667,8 +680,10 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
   STATE.currentGrading.keuzes[componentId] = letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
   STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
+  STATE.currentGrading.repairActions = STATE.currentGrading.repairActions || {};
   delete STATE.currentGrading.impactOverrides[componentId];
   delete STATE.currentGrading.repairIssues[componentId];
+  delete STATE.currentGrading.repairActions[componentId];
   STATE.currentGrading.gradeReviewDone = false;
   STATE.currentGrading.finalGradeOverride = null;
 
@@ -720,9 +735,16 @@ function resolvePendingDecision(optionIndex) {
   STATE.currentGrading.keuzes[decision.componentId] = decision.letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
   STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
+  STATE.currentGrading.repairActions = STATE.currentGrading.repairActions || {};
   STATE.currentGrading.impactOverrides[decision.componentId] = option.impact;
-  if (option.repairIssue) STATE.currentGrading.repairIssues[decision.componentId] = option.repairIssue;
-  else delete STATE.currentGrading.repairIssues[decision.componentId];
+  if (option.repairIssue) {
+    STATE.currentGrading.repairIssues[decision.componentId] = option.repairIssue;
+    const repairAction = typeof getRepairActionForOption === 'function' ? getRepairActionForOption(decision.componentId, option) : null;
+    if (repairAction) STATE.currentGrading.repairActions[decision.componentId] = repairAction;
+  } else {
+    delete STATE.currentGrading.repairIssues[decision.componentId];
+    delete STATE.currentGrading.repairActions[decision.componentId];
+  }
   STATE.currentGrading.gradeReviewDone = false;
   STATE.currentGrading.finalGradeOverride = null;
   if (option.nextDecision) {
@@ -749,6 +771,7 @@ function cancelPendingDecision() {
       delete STATE.currentGrading.keuzes[decision.componentId];
       if (STATE.currentGrading.impactOverrides) delete STATE.currentGrading.impactOverrides[decision.componentId];
       if (STATE.currentGrading.repairIssues) delete STATE.currentGrading.repairIssues[decision.componentId];
+      if (STATE.currentGrading.repairActions) delete STATE.currentGrading.repairActions[decision.componentId];
     }
   }
   STATE.pendingDecision = null;
@@ -784,8 +807,18 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'scan',
   'back_scan',
   'login_password',
+  'change_own_password',
   'print_supplier_specs_label',
   'reprint_completed_laptop',
+  'set_touch_override',
+]);
+
+const PASSWORD_CHANGE_ALLOWED_ACTIONS = new Set([
+  'dismiss_message',
+  'toggle_language',
+  'toggle_theme',
+  'logout',
+  'change_own_password',
 ]);
 
 function guardStickerAction(action) {
@@ -801,8 +834,23 @@ function guardStickerAction(action) {
   return true;
 }
 
+function guardPasswordChangeAction(action) {
+  if (!STATE.currentUser || STATE.currentUser.mustChangePassword !== true || PASSWORD_CHANGE_ALLOWED_ACTIONS.has(action)) return false;
+  STATE.currentScreen = 'password_change';
+  STATE.currentLaptop = null;
+  STATE.currentMonitor = null;
+  STATE.currentGrading = null;
+  STATE.pendingDecision = null;
+  STATE.supplierNotice = null;
+  STATE.imagePreview = null;
+  setAppMessage('Kies eerst een eigen wachtwoord voordat je verdergaat.');
+  render();
+  return true;
+}
+
 async function handleAction(action, el) {
   if (guardStickerAction(action)) return;
+  if (guardPasswordChangeAction(action)) return;
   switch (action) {
     case 'dismiss_message':
       setAppMessage(null);
@@ -872,6 +920,7 @@ async function handleAction(action, el) {
       STATE.currentScreen = 'monitor_label_scan';
       STATE.homeTab = 'monitor';
       STATE.currentMonitor = null;
+      STATE.monitorPrintInProgress = false;
       STATE.monitorManualContext = null;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
@@ -881,6 +930,7 @@ async function handleAction(action, el) {
       STATE.currentScreen = 'monitor_manual';
       STATE.homeTab = 'monitor';
       STATE.currentMonitor = null;
+      STATE.monitorPrintInProgress = false;
       STATE.monitorManualContext = null;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
@@ -893,11 +943,13 @@ async function handleAction(action, el) {
       STATE.currentScreen = 'monitor_manual';
       STATE.homeTab = 'monitor';
       STATE.monitorManualContext = { sticker: STATE.currentMonitor.sticker, mode: 'correction' };
+      STATE.monitorPrintInProgress = false;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
       break;
     case 'monitor_scan_reset':
       STATE.currentMonitor = null;
+      STATE.monitorPrintInProgress = false;
       STATE.monitorSelectedGrade = null;
       STATE.monitorScanSearch = '';
       break;
@@ -950,11 +1002,17 @@ async function handleAction(action, el) {
     case 'login_password':
       await loginWithPassword();
       return;
+    case 'change_own_password':
+      await changeOwnPassword();
+      return;
     case 'create_user':
       await createUserFromForm();
       return;
     case 'update_user':
       await updateUserFromRow(el.dataset.userId);
+      return;
+    case 'reset_user_password':
+      await resetUserPassword(el.dataset.userId);
       return;
     case 'delete_user':
       deleteUser(el.dataset.userId);
@@ -1087,6 +1145,9 @@ async function handleAction(action, el) {
       STATE.pendingDecision = null;
       STATE.supplierNotice = null;
       break;
+    case 'set_touch_override':
+      await setCurrentLaptopTouchOverride(el && el.dataset ? el.dataset.touchOverride : '');
+      return;
     case 'start_beginner':
       if (!canGradeUser()) {
         setAppMessage('This account cannot grade. Print specs labels only.');
@@ -1100,7 +1161,7 @@ async function handleAction(action, el) {
         break;
       }
       if (!canUseExpertMode()) {
-        setAppMessage('Expert Mode is only available for manager accounts. Use Guided Mode for grading.');
+        setAppMessage('Expert Mode is only available for managers or expert-enabled graders. Use Guided Mode for grading.');
         break;
       }
       startGrading('expert');
@@ -1118,7 +1179,7 @@ async function handleAction(action, el) {
         break;
       }
       if (!canUseExpertMode()) {
-        setAppMessage('Expert Mode is only available for manager accounts. Use Guided Mode for grading.');
+        setAppMessage('Expert Mode is only available for managers or expert-enabled graders. Use Guided Mode for grading.');
         break;
       }
       startTestGrading('expert');
@@ -1345,9 +1406,35 @@ async function selectLaptop(sticker) {
   render();
 }
 
+async function setCurrentLaptopTouchOverride(value) {
+  if (!STATE.currentLaptop) {
+    setAppMessage('Scan eerst een laptop voordat je de touchstatus aanpast.');
+    render();
+    return false;
+  }
+  const requested = normalizeTouchOverride(value);
+  const listValue = isTouchscreenFromDisplay(STATE.currentLaptop) ? 'yes' : 'no';
+  const override = setLaptopTouchOverride(STATE.currentLaptop, requested && requested !== listValue ? requested : '');
+  const effectiveTouch = isTouchscreenLaptop(STATE.currentLaptop) ? 'ja' : 'nee';
+  logAudit('update_touch_override', 'laptop', STATE.currentLaptop.sticker, {
+    touchOverride: override || 'list',
+    effectiveTouch,
+  });
+  await saveSharedDemoState();
+  setAppMessage(
+    override
+      ? `Touchstatus aangepast naar ${effectiveTouch}. Labels en grading gebruiken deze keuze.`
+      : `Touchstatus staat weer op de leverancierslijst (${effectiveTouch}).`,
+    'success'
+  );
+  render();
+  return true;
+}
+
 function buildLaptopFromHistoryOrBatch(sticker, historyItem = null) {
   const batchLaptop = getLaptopBySticker(sticker);
   const source = historyItem || batchLaptop || {};
+  const touchOverride = normalizeTouchOverride(source.touchOverride) || normalizeTouchOverride(batchLaptop && batchLaptop.touchOverride);
   return {
     ...(batchLaptop || {}),
     sticker: source.sticker || sticker,
@@ -1358,6 +1445,7 @@ function buildLaptopFromHistoryOrBatch(sticker, historyItem = null) {
     ram: source.ram || (batchLaptop && batchLaptop.ram) || '',
     ssd: source.ssd || (batchLaptop && batchLaptop.ssd) || '',
     display: source.display || (batchLaptop && batchLaptop.display) || '',
+    touchOverride,
     battery: source.battery || (batchLaptop && batchLaptop.battery) || '',
     gpu: source.gpu || (batchLaptop && batchLaptop.gpu) || '',
     labelGpu: source.labelGpu || (batchLaptop && batchLaptop.labelGpu) || '',
@@ -1569,6 +1657,11 @@ function chooseMonitorIdentityForLabel(optionIndex) {
 async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGrade, options = {}) {
   const cleanSticker = String(sticker || '').trim();
   const normalizedGrade = normalizeMonitorGrade(grade);
+  if (STATE.monitorPrintInProgress) {
+    setAppMessage('Monitorlabel wordt al verwerkt. Wacht even tot printen en opslaan klaar zijn.');
+    render();
+    return false;
+  }
   if (!cleanSticker) {
     setAppMessage('Scan or enter a monitor barcode first.');
     render();
@@ -1607,28 +1700,46 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   const preparedWindow = typeof window !== 'undefined' && typeof window.open === 'function'
     ? createPreparedPrintWindow('monitor')
     : null;
-  const printed = await printMonitorLabelFor(monitor, normalizedGrade, {
-    preparedWindow,
-    suppressMessage: true,
-  });
-
-  if (!printed) {
-    setAppMessage(`Monitor label for barcode ${cleanSticker} could not be printed automatically.`);
-    STATE.currentMonitor = monitor;
-    render();
-    return false;
-  }
-
-  recordMonitorLabelPrint(monitor, normalizedGrade);
-  await saveSharedDemoState();
-  STATE.currentMonitor = null;
-  STATE.monitorSelectedGrade = null;
-  setAppMessage(`Monitor label printed for ${monitor.deviceName || monitor.model || monitor.sticker} with grade ${displayMonitorGrade(normalizedGrade)}.`, 'success');
+  STATE.monitorPrintInProgress = true;
+  setAppMessage(`Monitorlabel ${displayMonitorGrade(normalizedGrade)} wordt geprint en opgeslagen...`, 'info');
   render();
-  return true;
+
+  try {
+    const printed = await printMonitorLabelFor(monitor, normalizedGrade, {
+      preparedWindow,
+      suppressMessage: true,
+    });
+
+    if (!printed) {
+      setAppMessage(`Monitorlabel voor barcode ${cleanSticker} kon niet automatisch worden geprint. Probeer opnieuw of print via het browservenster.`, 'warning');
+      STATE.currentMonitor = monitor;
+      return false;
+    }
+
+    recordMonitorLabelPrint(monitor, normalizedGrade);
+    const savedLive = await saveSharedDemoState();
+    STATE.currentMonitor = null;
+    STATE.monitorSelectedGrade = null;
+    if (canUseSharedDemoState() && savedLive === false) {
+      setAppMessage(`Monitorlabel is geprint voor ${monitor.deviceName || monitor.model || monitor.sticker}, maar live opslaan lukte niet. Refresh of probeer opnieuw voordat je verdergaat.`, 'warning');
+    } else {
+      setAppMessage(`Monitorlabel geprint voor ${monitor.deviceName || monitor.model || monitor.sticker} met grade ${displayMonitorGrade(normalizedGrade)}.`, 'success');
+    }
+    return true;
+  } catch (error) {
+    reportAppError('Monitor label print failed', error);
+    if (typeof closePreparedPrintWindow === 'function') closePreparedPrintWindow(preparedWindow);
+    setAppMessage('Monitorlabel printen is niet voltooid. Probeer opnieuw; de monitor blijft geselecteerd.', 'warning');
+    STATE.currentMonitor = monitor;
+    return false;
+  } finally {
+    STATE.monitorPrintInProgress = false;
+    render();
+  }
 }
 
 async function loginWithPassword() {
+  await refreshSharedUsers();
   const id = document.getElementById('loginUser').value;
   const password = document.getElementById('loginPassword').value;
   const user = USERS.find(u => u.id === id);
@@ -1640,9 +1751,58 @@ async function loginWithPassword() {
   }
   STATE.currentUser = user;
   saveSessionUser(user);
-  STATE.currentScreen = 'home';
+  STATE.currentScreen = user.mustChangePassword ? 'password_change' : 'home';
   STATE.homeTab = 'workflow';
   setAppMessage(null);
+  render();
+}
+
+async function changeOwnPassword() {
+  if (!STATE.currentUser) return;
+  const passwordInput = document.getElementById('newOwnPassword');
+  const confirmInput = document.getElementById('confirmOwnPassword');
+  const password = passwordInput ? String(passwordInput.value || '') : '';
+  const confirmation = confirmInput ? String(confirmInput.value || '') : '';
+  if (password.length < 8) {
+    setAppMessage('Gebruik minimaal 8 tekens voor je nieuwe wachtwoord.');
+    render();
+    return;
+  }
+  if (password !== confirmation) {
+    setAppMessage('De twee wachtwoorden zijn niet hetzelfde.');
+    render();
+    return;
+  }
+  if (password === FIRST_LOGIN_PASSWORD) {
+    setAppMessage('Kies een eigen wachtwoord, niet opnieuw het startwachtwoord.');
+    render();
+    return;
+  }
+
+  const user = USERS.find(u => u.id === STATE.currentUser.id);
+  if (!user) {
+    setAppMessage('Account kon niet worden bijgewerkt. Log opnieuw in.');
+    render();
+    return;
+  }
+  const passwordHash = await hashDemoPassword(password);
+  if (user.passwordHash === passwordHash && user.mustChangePassword !== true) {
+    setAppMessage('Kies een nieuw wachtwoord dat anders is dan je huidige wachtwoord.');
+    render();
+    return;
+  }
+
+  user.passwordHash = passwordHash;
+  user.mustChangePassword = false;
+  user.passwordUpdatedAt = new Date().toISOString();
+  STATE.currentUser = user;
+  saveUsers();
+  saveSessionUser(user);
+  logAudit('change_own_password', 'user', user.id);
+  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id: user.id } });
+  STATE.currentScreen = 'home';
+  STATE.homeTab = 'workflow';
+  setAppMessage('Je wachtwoord is opgeslagen.', 'success');
   render();
 }
 
@@ -1652,9 +1812,8 @@ async function createUserFromForm() {
   const id = normalizeText(document.getElementById('newUserId').value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
   const rol = normalizeUserRole(document.getElementById('newUserRole').value);
   const voorkeur = normalizeUserPreference(document.getElementById('newUserMode').value, rol);
-  const wachtwoord = document.getElementById('newUserPassword').value;
-  if (!naam || !id || !wachtwoord) {
-    setAppMessage('Name, login ID and password are required.');
+  if (!naam || !id) {
+    setAppMessage('Name and login ID are required.');
     render();
     return;
   }
@@ -1663,12 +1822,21 @@ async function createUserFromForm() {
     render();
     return;
   }
-  const passwordHash = await hashDemoPassword(wachtwoord);
-  USERS.push({ id, naam: sanitizeExternalText(naam, 80), rol, initialen: initialsFromName(naam), voorkeur, passwordHash });
+  const passwordHash = await hashDemoPassword(FIRST_LOGIN_PASSWORD);
+  USERS.push({
+    id,
+    naam: sanitizeExternalText(naam, 80),
+    rol,
+    initialen: initialsFromName(naam),
+    voorkeur,
+    passwordHash,
+    mustChangePassword: true,
+    passwordUpdatedAt: '',
+  });
   saveUsers();
   logAudit('create_user', 'user', id, { rol, voorkeur });
-  await saveSharedDemoState();
-  setAppMessage(`User ${naam} created.`, 'success');
+  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'create', id } });
+  setAppMessage(`User ${naam} created. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
   render();
 }
 
@@ -1678,18 +1846,36 @@ async function updateUserFromRow(id) {
   if (!user) return;
   const roleInput = document.querySelector(`[data-account-role="${id}"]`);
   const modeInput = document.querySelector(`[data-account-mode="${id}"]`);
-  const passwordInput = document.querySelector(`[data-account-password="${id}"]`);
   user.rol = normalizeUserRole(roleInput ? roleInput.value : user.rol);
   user.voorkeur = normalizeUserPreference(modeInput ? modeInput.value : user.voorkeur, user.rol);
-  if (passwordInput && passwordInput.value) user.passwordHash = await hashDemoPassword(passwordInput.value);
   if (STATE.currentUser && STATE.currentUser.id === id) {
     STATE.currentUser = user;
     saveSessionUser(user);
   }
   saveUsers();
-  logAudit('update_user', 'user', id, { rol: user.rol, voorkeur: user.voorkeur, passwordChanged: Boolean(passwordInput && passwordInput.value) });
-  await saveSharedDemoState();
+  logAudit('update_user', 'user', id, { rol: user.rol, voorkeur: user.voorkeur });
+  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
   setAppMessage(`User ${user.naam} updated.`, 'success');
+  render();
+}
+
+async function resetUserPassword(id) {
+  if (!isAdminUser()) return;
+  const user = USERS.find(u => u.id === id);
+  if (!user) return;
+  if (!confirm(`Reset password for ${user.naam} to the start password?`)) return;
+  user.passwordHash = await hashDemoPassword(FIRST_LOGIN_PASSWORD);
+  user.mustChangePassword = true;
+  user.passwordUpdatedAt = '';
+  if (STATE.currentUser && STATE.currentUser.id === id) {
+    STATE.currentUser = user;
+    saveSessionUser(user);
+    STATE.currentScreen = 'password_change';
+  }
+  saveUsers();
+  logAudit('reset_user_password', 'user', id);
+  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
+  setAppMessage(`Password reset for ${user.naam}. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
   render();
 }
 
@@ -1702,7 +1888,7 @@ function deleteUser(id) {
   logAudit('delete_user', 'user', id, { naam: USERS[index].naam });
   USERS.splice(index, 1);
   saveUsers();
-  saveSharedDemoState();
+  saveSharedDemoState({ includeUsers: true, userMutation: { action: 'delete', id } });
   setAppMessage('User deleted.', 'success');
   render();
 }
@@ -1747,6 +1933,7 @@ function startGrading(modus) {
     triggers: {},
     impactOverrides: {},
     repairIssues: {},
+    repairActions: {},
     gradeReviewDone: false,
     finalGradeOverride: null,
     gestart: Date.now(),
@@ -1764,6 +1951,8 @@ function buildExpertDirectResult(grade, repairText = '') {
   const scores = { A: 0, B: 10, C: 30, D: 999 };
   const labels = { A: 'Premium', B: 'Good', C: 'Heavy Use', D: 'Repair / X' };
   const isRepair = normalized === 'D';
+  const repairAction = isRepair && repairText ? createRepairAction('expert', repairText) : null;
+  const repairPolicy = repairAction ? evaluateRepairPolicy([repairAction]) : null;
   return {
     score: scores[normalized] ?? 0,
     eindgrade: normalized,
@@ -1784,6 +1973,18 @@ function buildExpertDirectResult(grade, repairText = '') {
     }],
     problems: isRepair ? [repairText] : [],
     forceProblemLabel: isRepair,
+    ...(repairPolicy ? {
+      repairActions: repairPolicy.actions,
+      repairLabelType: repairPolicy.labelType,
+      repairPolicy: {
+        heavyCount: repairPolicy.heavyCount,
+        lightCount: repairPolicy.lightCount,
+        total: repairPolicy.total,
+        remainsX: true,
+        labelType: repairPolicy.labelType,
+        reason: repairPolicy.reason,
+      },
+    } : {}),
     rulesVersion: GRADING_RULES_VERSION,
   };
 }
@@ -1834,21 +2035,73 @@ function finishGrading() {
   STATE.currentGrading.result = calculateGrade(STATE.currentGrading.keuzes, STATE.currentGrading.triggers, STATE.currentGrading.impactOverrides);
   STATE.currentGrading.result.rulesVersion = GRADING_RULES_VERSION;
   const repairEntries = Object.entries(STATE.currentGrading.repairIssues || {}).filter(([, issue]) => Boolean(issue));
+  const storedRepairActions = STATE.currentGrading.repairActions || {};
   const repairComponentNames = new Set(repairEntries.map(([componentId]) => {
     const component = getGradingOnderdelen().find(ond => ond.id === componentId);
     return component && component.naam;
   }).filter(Boolean));
   const genericRepairProblems = new Set(Array.from(repairComponentNames).map(name => `${name}: repair / not sellable`));
-  STATE.currentGrading.result.problems = buildProblemRows(
+  const problemRows = buildProblemRows(
     STATE.currentGrading.keuzes,
     STATE.currentGrading.triggers,
     STATE.currentGrading.impactOverrides
   ).filter(problem => !genericRepairProblems.has(problem));
+  const repairActions = repairEntries
+    .map(([componentId, issue]) => storedRepairActions[componentId] || createRepairAction(componentId, issue))
+    .filter(Boolean)
+    .concat(typeof buildTriggerRepairActions === 'function' ? buildTriggerRepairActions(STATE.currentGrading.triggers) : []);
+  STATE.currentGrading.result.problems = problemRows;
   if (repairEntries.length) {
     repairEntries.forEach(([, issue]) => {
       if (!STATE.currentGrading.result.problems.includes(issue)) STATE.currentGrading.result.problems.push(issue);
     });
+  }
+  const repairPolicy = typeof evaluateRepairPolicy === 'function' ? evaluateRepairPolicy(repairActions) : null;
+  if (repairPolicy && repairPolicy.actions.length) {
+    STATE.currentGrading.result.repairActions = repairPolicy.actions;
+    STATE.currentGrading.result.repairPolicy = {
+      heavyCount: repairPolicy.heavyCount,
+      lightCount: repairPolicy.lightCount,
+      total: repairPolicy.total,
+      remainsX: repairPolicy.remainsX,
+      labelType: repairPolicy.labelType,
+      reason: repairPolicy.reason,
+    };
+    STATE.currentGrading.result.repairLabelType = repairPolicy.labelType;
     STATE.currentGrading.result.forceProblemLabel = true;
+    repairPolicy.actions.forEach(action => {
+      if (!STATE.currentGrading.result.problems.includes(action.issue)) STATE.currentGrading.result.problems.push(action.issue);
+    });
+    if (!repairPolicy.remainsX) {
+      const originalResult = STATE.currentGrading.result;
+      const afterRepairResult = calculateGradeAfterRepair(
+        STATE.currentGrading.keuzes,
+        STATE.currentGrading.triggers,
+        STATE.currentGrading.impactOverrides,
+        repairPolicy.actions
+      );
+      STATE.currentGrading.result = {
+        ...afterRepairResult,
+        problems: originalResult.problems,
+        forceProblemLabel: true,
+        repairActions: repairPolicy.actions,
+        repairPolicy: originalResult.repairPolicy,
+        repairLabelType: repairPolicy.labelType,
+        repairOriginalGrade: originalResult.eindgrade,
+        gradeAfterRepair: true,
+        rulesVersion: GRADING_RULES_VERSION,
+      };
+      STATE.currentGrading.result.redenen.unshift({
+        type: repairPolicy.labelType === 'production' ? 'warn' : 'bad',
+        text: `${repairPolicy.reason}: specs-label toont grade na reparatie.`,
+      });
+    } else {
+      STATE.currentGrading.result.eindgrade = 'D';
+      STATE.currentGrading.result.redenen.unshift({
+        type: 'bad',
+        text: `${repairPolicy.reason}: apparaat blijft X / niet verkoopbaar.`,
+      });
+    }
   }
   const borderlineReview = !STATE.currentGrading.gradeReviewDone ? getBorderlineAReview(STATE.currentGrading.result) : null;
   if (borderlineReview) {
@@ -1891,6 +2144,7 @@ function saveGrading() {
     ram: l.ram,
     ssd: l.ssd,
     display: l.display,
+    touchOverride: normalizeTouchOverride(l.touchOverride),
     battery: l.battery,
     gpu: l.gpu,
     user_id: STATE.currentUser.id,
@@ -1898,11 +2152,13 @@ function saveGrading() {
     modus: g.modus,
     rulesVersion: GRADING_RULES_VERSION,
     tijd: new Date().toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}),
+    savedAt: new Date().toISOString(),
     duurSec,
     keuzes: g.keuzes,
     triggers: g.triggers,
     impactOverrides: g.impactOverrides,
     repairIssues: g.repairIssues || {},
+    repairActions: g.repairActions || {},
     finalGradeOverride: g.finalGradeOverride,
     expertFinalGrade: g.expertFinalGrade || '',
     expertRepairText: g.expertRepairText || '',
