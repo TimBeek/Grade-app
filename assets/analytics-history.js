@@ -1194,9 +1194,9 @@ function renderAnalytics() {
     <div class="screen analytics-screen analytics-pro-screen">
       <div class="analytics-hero">
         <div>
-          <div class="ops-kicker" style="color: var(--remarkt-red);">Insights Dashboard</div>
-          <h1>Operations Analytics</h1>
-          <p>Realtime sturing op leveranciersrendement, grading-output, batchvoortgang, kwaliteit en medewerkerprestaties.</p>
+          <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
+          <h1>Operations &amp; Value Analytics</h1>
+          <p>Sturen op leveranciersrendement, output, kwaliteit en productiviteit — ${rangeLabel}, live uit de database.</p>
         </div>
         <div class="analytics-hero-actions">
           <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
@@ -1209,34 +1209,75 @@ function renderAnalytics() {
       </div>
       ${renderAnalyticsFilters(filters, allItems)}
 
-      <div class="analytics-kpi-grid">
-        ${renderKpiCard({ label: 'Gegraded totaal', value: formatNumber(totalCompleted), sub: `${todayCompleted} vandaag · ${weekCompleted} deze week`, tone: 'primary' })}
-        ${renderKpiCard({ label: 'Wacht op grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
-        ${renderKpiCard({ label: 'Reparatie / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} apparaten naar repair`, tone: repairCount ? 'danger' : '' })}
-        ${renderKpiCard({ label: 'Gemiddelde gradingtijd', value: formatSeconds(avgTime), sub: `op basis van ${formatNumber(totalCompleted)} gradings` })}
-        ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} van ${formatNumber(totalCompleted)} verkoopbaar als A/B` })}
-        ${renderKpiCard({ label: 'Gem. accu gezondheid', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: `${rangeLabel}` })}
-        ${renderKpiCard({ label: 'Accessoire signalen', value: formatNumber(missingAccessories), sub: 'missing adapter, rubber feet, lader' })}
-        ${renderKpiCard({
-          label: 'Rendement vs leverancier',
-          value: supplierSummary.total ? `${supplierSummary.improvedPercent}% ↑` : '-',
-          sub: supplierSummary.total
-            ? `${formatSignedNumber(supplierSummary.netDelta)} netto delta · ${formatNumber(supplierSummary.toAFromLower)} naar A · ⌀ ${formatSignedNumber(upliftAvg)}/apparaat`
-            : 'geen leveranciersgrades beschikbaar',
-          tone: 'primary',
-        })}
-      </div>
+      <section class="analytics-section analytics-section-first">
+        <div class="analytics-section-head">
+          <h2>Kerncijfers</h2>
+          <span>Output, rendement en kwaliteit in één oogopslag · ${rangeLabel}</span>
+        </div>
+        <div class="analytics-kpi-grid analytics-kpi-grid--auto">
+          ${renderKpiCard({ label: 'Gegraded totaal', value: formatNumber(totalCompleted), sub: `${todayCompleted} vandaag · ${weekCompleted} deze week`, tone: 'primary' })}
+          ${renderKpiCard({
+            label: 'Rendement vs leverancier',
+            value: supplierSummary.total ? `${supplierSummary.improvedPercent}%` : '-',
+            sub: supplierSummary.total
+              ? `${formatSignedNumber(supplierSummary.netDelta)} netto delta · ⌀ ${formatSignedNumber(upliftAvg)}/apparaat`
+              : 'geen leveranciersgrades',
+            tone: 'primary',
+          })}
+          ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} van ${formatNumber(totalCompleted)} als A/B` })}
+          ${renderKpiCard({ label: 'Reparatie / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} naar repair`, tone: repairCount ? 'danger' : '' })}
+          ${renderKpiCard({ label: 'Gem. gradingtijd', value: formatSeconds(avgTime), sub: `over ${formatNumber(totalCompleted)} gradings` })}
+          ${renderKpiCard({ label: 'Wacht op grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+        </div>
+      </section>
 
-      <div class="analytics-grid">
-        ${renderSupplierComparisonPanel(supplierComparisonItems)}
-        ${renderAnalyticsPanel('Leverancier scorecard', 'Rendement per leverancier: wie onder- of overschat en hoeveel grade-uplift je gemiddeld per apparaat haalt. Sorteer-indicatie voor inkoop.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
-        ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
-        ${renderAnalyticsPanel('Throughput trend', 'Output per dag binnen de actieve filters.', renderTrendChart(trendBuckets))}
-        ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
-        ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
-        ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken — input voor leverancierskwaliteit.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
-        ${renderAnalyticsPanel('Recent activity', 'Laatste gradings en labelprints binnen de filters.', renderRecentActivity(filteredItems), 'analytics-wide')}
-      </div>
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2>Leveranciersrendement</h2>
+          <span>Waar de marge zit: ReMarkt-grade vs leveranciersgrade</span>
+        </div>
+        <div class="analytics-grid">
+          ${renderSupplierComparisonPanel(supplierComparisonItems)}
+          ${renderAnalyticsPanel('Leverancier scorecard', 'Rendement per leverancier: wie onder- of overschat en hoeveel grade-uplift je gemiddeld per apparaat haalt. Sturing voor inkoop.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
+        </div>
+      </section>
+
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2>Productie &amp; doorlooptijd</h2>
+          <span>Output per dag, medewerkerprestaties en batchvoortgang</span>
+        </div>
+        <div class="analytics-grid">
+          ${renderAnalyticsPanel('Throughput trend', 'Output per dag binnen de actieve filters.', renderTrendChart(trendBuckets))}
+          ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
+          ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
+        </div>
+      </section>
+
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2>Kwaliteit</h2>
+          <span>Grade-mix, onderdeelimpact en conditiesignalen</span>
+        </div>
+        <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
+          ${renderKpiCard({ label: 'Gem. accu gezondheid', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: rangeLabel })}
+          ${renderKpiCard({ label: 'Accessoire signalen', value: formatNumber(missingAccessories), sub: 'adapter, rubber feet, lader' })}
+        </div>
+        <div class="analytics-grid">
+          ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
+          ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken — input voor leverancierskwaliteit.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
+        </div>
+      </section>
+
+      <section class="analytics-section">
+        <div class="analytics-section-head">
+          <h2>Activiteit</h2>
+          <span>Laatste gradings en labelprints binnen de filters</span>
+        </div>
+        <div class="analytics-grid">
+          ${renderAnalyticsPanel('Recent activity', 'Realtime feed van de laatste handelingen.', renderRecentActivity(filteredItems), 'analytics-wide')}
+        </div>
+      </section>
     </div>
   `;
 }

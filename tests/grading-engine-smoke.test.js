@@ -459,7 +459,7 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
   assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
 
   vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
-  assert.match(app.__appElement.innerHTML, /Insights Dashboard/);
+  assert.match(app.__appElement.innerHTML, /Management dashboard/);
   assert.match(app.__appElement.innerHTML, /Open Full History/);
 });
 
