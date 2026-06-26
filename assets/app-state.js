@@ -73,9 +73,11 @@ function consumeLoginResetRequest() {
   try {
     localStorage.removeItem(DEMO_STORAGE_KEYS.users);
     localStorage.removeItem(DEMO_STORAGE_KEYS.session);
+    sessionStorage.removeItem(DEMO_STORAGE_KEYS.session);
   } catch {
-    // Local storage can be blocked; the normal live refresh will still run on login.
+    // Storage can be blocked; the normal live refresh will still run on login.
   }
+
   try {
     if (window.history && typeof window.history.replaceState === 'function') {
       const cleanSearch = search
@@ -454,12 +456,20 @@ function getUserById(id) {
   return USERS.find(user => user.id === id) || null;
 }
 
+// The active login lives in sessionStorage so it survives a page refresh but
+// is automatically cleared when the tab or browser is closed (auto-logout).
 function loadSessionUser() {
   try {
-    const savedUserId = localStorage.getItem(DEMO_STORAGE_KEYS.session);
+    // Drop any legacy login that was stored in localStorage before this change.
+    localStorage.removeItem(DEMO_STORAGE_KEYS.session);
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+  try {
+    const savedUserId = sessionStorage.getItem(DEMO_STORAGE_KEYS.session);
     const user = savedUserId ? getUserById(savedUserId) : null;
     if (!user) {
-      if (savedUserId) localStorage.removeItem(DEMO_STORAGE_KEYS.session);
+      if (savedUserId) sessionStorage.removeItem(DEMO_STORAGE_KEYS.session);
       return;
     }
 
@@ -474,18 +484,19 @@ function loadSessionUser() {
 function saveSessionUser(user) {
   try {
     if (user && user.id) {
-      localStorage.setItem(DEMO_STORAGE_KEYS.session, user.id);
+      sessionStorage.setItem(DEMO_STORAGE_KEYS.session, user.id);
     }
   } catch {
-    // Local storage may be unavailable in restricted browser contexts.
+    // Session storage may be unavailable in restricted browser contexts.
   }
 }
 
 function clearSessionUser() {
   try {
+    sessionStorage.removeItem(DEMO_STORAGE_KEYS.session);
     localStorage.removeItem(DEMO_STORAGE_KEYS.session);
   } catch {
-    // Local storage may be unavailable in restricted browser contexts.
+    // Storage may be unavailable in restricted browser contexts.
   }
 }
 

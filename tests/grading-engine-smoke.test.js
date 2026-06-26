@@ -30,6 +30,11 @@ function loadAppSandbox(options = {}) {
     localStore.set(key, String(value));
   });
 
+  const sessionStore = new Map();
+  Object.entries(options.sessionStorage || {}).forEach(([key, value]) => {
+    sessionStore.set(key, String(value));
+  });
+
   const sandbox = {
     console,
     window: {
@@ -71,6 +76,17 @@ function loadAppSandbox(options = {}) {
       },
       removeItem(key) {
         localStore.delete(key);
+      },
+    },
+    sessionStorage: {
+      getItem(key) {
+        return sessionStore.has(key) ? sessionStore.get(key) : null;
+      },
+      setItem(key, value) {
+        sessionStore.set(key, String(value));
+      },
+      removeItem(key) {
+        sessionStore.delete(key);
       },
     },
     alert() {},
@@ -165,13 +181,15 @@ test('actieve sessie blijft bewaard na refresh en logout wist sessie', async () 
 
   assert.equal(vm.runInContext('STATE.currentUser.id', app), 'tim');
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
-  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), 'tim');
+  // De sessie staat in sessionStorage (wist bij tab/browser sluiten), niet in localStorage.
+  assert.equal(vm.runInContext('sessionStorage.getItem(DEMO_STORAGE_KEYS.session)', app), 'tim');
+  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
 
   await app.handleAction('logout', { dataset: {} });
 
   assert.equal(vm.runInContext('STATE.currentUser', app), null);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'login');
-  assert.equal(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
+  assert.equal(vm.runInContext('sessionStorage.getItem(DEMO_STORAGE_KEYS.session)', app), null);
 });
 
 test('login reset link wist lokale users en sessie zonder gedeelde backup te verwijderen', () => {
@@ -2451,6 +2469,49 @@ test('twee lichte productie-reparaties houden grade na reparatie en productie-la
   assert.equal(productionRows[1], 'Tijdens productie repareren');
   assert.match(productionRows.join('|'), /Missing key/);
   assert.match(productionRows.join('|'), /TP werkt niet|Touchpad werkt niet/);
+});
+
+test('keyboard defect, keyboard ontbreekt en dead battery zijn productie-reparaties', () => {
+  const app = loadAppSandbox();
+  const keyboardReasons = app.getChoiceDecision('keyboard', 'D').options[1].nextDecision.options;
+
+  assert.equal(keyboardReasons[1].label, 'Keyboard defect');
+  assert.equal(keyboardReasons[1].repairRoute, 'production');
+  assert.equal(keyboardReasons[1].repairSeverity, 'light');
+  assert.equal(keyboardReasons[2].label, 'Keyboard ontbreekt');
+  assert.equal(keyboardReasons[2].repairRoute, 'production');
+  assert.equal(keyboardReasons[2].repairSeverity, 'light');
+
+  const inferredActions = JSON.parse(vm.runInContext(`JSON.stringify([
+    createRepairAction('keyboard', 'Keyboard ontbreekt'),
+    createRepairAction('battery', 'dead battery')
+  ].map(action => ({ route: action.repairRoute, severity: action.repairSeverity })))`, app));
+  assert.deepEqual(inferredActions, [
+    { route: 'production', severity: 'light' },
+    { route: 'production', severity: 'light' },
+  ]);
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'keyboard');
+    applyComponentChoice('keyboard', 'D', false);
+    resolvePendingDecision(1);
+    resolvePendingDecision(1);
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'production');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairPolicy.lightCount', app), 1);
+  assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /Keyboard defect/);
+
+  const rows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
+  assert.equal(rows[0], 'PRODUCTIE');
+  assert.equal(rows[1], 'Tijdens productie repareren');
 });
 
 test('twee zware reparaties blijven X en krijgen niet-verkoopbaar label', () => {
