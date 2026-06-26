@@ -392,6 +392,24 @@ function dymoTextObject(name, text, bounds, fontSize, bold = false, align = 'Lef
     </ObjectInfo>`;
 }
 
+// DYMO does not word-wrap inside a text box; it keeps one line and shrinks.
+// So we split a long title into two balanced lines ourselves at the space
+// closest to the middle, which keeps the font readable.
+function wrapLabelTitleForDymo(title) {
+  const text = String(title || '').trim();
+  if (text.length <= 24 || !text.includes(' ')) return text;
+  const mid = Math.floor(text.length / 2);
+  let splitAt = -1;
+  for (let offset = 0; offset < text.length; offset++) {
+    const left = mid - offset;
+    const right = mid + offset;
+    if (left > 0 && text[left] === ' ') { splitAt = left; break; }
+    if (right < text.length && text[right] === ' ') { splitAt = right; break; }
+  }
+  if (splitAt === -1) return text;
+  return `${text.slice(0, splitAt).trim()}\n${text.slice(splitAt + 1).trim()}`;
+}
+
 function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const isMonitorLabel = type === 'monitor';
   const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : '';
@@ -418,9 +436,9 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const bounds = isMonitorLabel
     ? (monitorTitleLong
       ? [
-        { x: 170, y: 70, width: monitorRowWidth, height: 690 },
-        { x: 170, y: 800, width: monitorRowWidth, height: 300 },
-        { x: 170, y: 1110, width: monitorRowWidth, height: 300 },
+        { x: 170, y: 80, width: monitorRowWidth, height: 560 },
+        { x: 170, y: 670, width: monitorRowWidth, height: 300 },
+        { x: 170, y: 985, width: monitorRowWidth, height: 300 },
       ]
       : [
         { x: 170, y: 90, width: monitorRowWidth, height: 410 },
@@ -433,7 +451,10 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
       { x: 170, y: 680, width: 2770, height: 285 },
       { x: 170, y: 970, width: 2770, height: 310 },
     ];
-  const objects = cleanRows
+  // DYMO does not wrap, so pre-split a long monitor title into two lines.
+  const xmlRows = cleanRows.slice();
+  if (monitorTitleLong) xmlRows[0] = wrapLabelTitleForDymo(xmlRows[0]);
+  const objects = xmlRows
     .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
     .join('');
   const gradeObject = showGradeBadge
