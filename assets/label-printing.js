@@ -167,9 +167,11 @@ function getMonitorLabelRows(monitor, grade) {
   if (monitor.display) displayParts.push(monitor.display);
   if (monitor.resolution) displayParts.push(monitor.resolution);
   const videoInputs = compactMonitorVideoInputs(monitor.videoInputs);
+  // The grade is rendered separately as a large badge, so it is intentionally
+  // left out of the text rows here.
   return [
     labelValue(monitor.deviceName || `${labelValue(monitor.merk, '')} ${labelValue(monitor.model, '')}`.trim(), 'Monitor'),
-    `Grade ${displayMonitorGrade(grade)}${displayParts.length ? ' / ' + displayParts.join(' / ') : ''}`,
+    displayParts.length ? displayParts.join(' / ') : 'Scherm',
     `Video in: ${videoInputs}`
   ];
 }
@@ -360,7 +362,7 @@ function findPreferredDymoPrinter(printers) {
     || null;
 }
 
-function dymoTextObject(name, text, bounds, fontSize, bold = false) {
+function dymoTextObject(name, text, bounds, fontSize, bold = false, align = 'Left') {
   return `
     <ObjectInfo>
       <TextObject>
@@ -371,7 +373,7 @@ function dymoTextObject(name, text, bounds, fontSize, bold = false) {
         <Rotation>Rotation0</Rotation>
         <IsMirrored>False</IsMirrored>
         <IsVariable>True</IsVariable>
-        <HorizontalAlignment>Left</HorizontalAlignment>
+        <HorizontalAlignment>${align}</HorizontalAlignment>
         <VerticalAlignment>Middle</VerticalAlignment>
         <TextFitMode>ShrinkToFit</TextFitMode>
         <UseFullFontHeight>False</UseFullFontHeight>
@@ -390,8 +392,10 @@ function dymoTextObject(name, text, bounds, fontSize, bold = false) {
     </ObjectInfo>`;
 }
 
-function buildDymoLabelXml(rows, type = 'specs') {
+function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const isMonitorLabel = type === 'monitor';
+  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : '';
+  const showGradeBadge = Boolean(gradeBadge);
   const cleanRows = rows.map(row => String(row || '').trim()).slice(0, isMonitorLabel ? 3 : 4);
   const longestRow = Math.max(...cleanRows.map(row => row.length), 1);
   const tight = longestRow > 46;
@@ -403,11 +407,13 @@ function buildDymoLabelXml(rows, type = 'specs') {
       : compact
         ? [11.2, 7.8, 7.8, 6.8]
         : [13, 8.8, 8.8, 7.5]);
+  // Reserve a column on the right for the large grade badge on monitor labels.
+  const monitorRowWidth = showGradeBadge ? 1980 : 2770;
   const bounds = isMonitorLabel
     ? [
-      { x: 170, y: 90, width: 2770, height: 410 },
-      { x: 170, y: 520, width: 2770, height: 345 },
-      { x: 170, y: 885, width: 2770, height: 345 },
+      { x: 170, y: 90, width: monitorRowWidth, height: 410 },
+      { x: 170, y: 520, width: monitorRowWidth, height: 345 },
+      { x: 170, y: 885, width: monitorRowWidth, height: 345 },
     ]
     : [
       { x: 170, y: 50, width: 2770, height: 330 },
@@ -418,6 +424,9 @@ function buildDymoLabelXml(rows, type = 'specs') {
   const objects = cleanRows
     .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
     .join('');
+  const gradeObject = showGradeBadge
+    ? dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2230, y: 90, width: 710, height: 1140 }, 46, true, 'Center')
+    : '';
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -427,17 +436,17 @@ function buildDymoLabelXml(rows, type = 'specs') {
   <DrawCommands>
     <RoundRectangle X="0" Y="0" Width="1440" Height="3060" Rx="180" Ry="180" />
   </DrawCommands>
-  ${objects}
+  ${objects}${gradeObject}
 </DieCutLabel>`;
 }
 
-async function printRowsWithDymo(rows, type = 'specs') {
+async function printRowsWithDymo(rows, type = 'specs', grade = '') {
   const framework = await getReadyDymoFramework();
   validateDymoEnvironment(framework);
   const printer = findPreferredDymoPrinter(await getDymoPrinters(framework));
   if (!printer) throw new Error('No DYMO LabelWriter printer found.');
 
-  const labelXml = buildDymoLabelXml(rows, type);
+  const labelXml = buildDymoLabelXml(rows, type, grade);
   const label = framework.openLabelXml(labelXml);
   if (label && typeof label.isValidLabel === 'function' && !label.isValidLabel()) {
     throw new Error(`DYMO rejected the ${DYMO_LABEL_CONFIG.labelSize} label template.`);
@@ -454,16 +463,19 @@ async function printRowsWithDymo(rows, type = 'specs') {
   return { printerName: printer.name };
 }
 
-function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel) {
+function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel, grade = '') {
   const longestRow = Math.max(...rows.map(row => String(row || '').length), 1);
   const isMonitorLabel = type === 'monitor';
-  const scaleClass = `${isMonitorLabel ? 'monitor-label' : ''} ${longestRow > 46 ? 'tight' : longestRow > 34 ? 'compact' : ''}`.trim();
+  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : '';
+  const showGradeBadge = Boolean(gradeBadge);
+  const scaleClass = `${isMonitorLabel ? 'monitor-label' : ''} ${showGradeBadge ? 'monitor-has-grade' : ''} ${longestRow > 46 ? 'tight' : longestRow > 34 ? 'compact' : ''}`.trim();
   if (profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id) {
     const safeRows = rows.map(row => String(row || '').trim());
     const labelHtml = `
       <div class="receipt-brand">REMARKT.</div>
-      <div class="receipt-type">${type === 'problems' ? 'REPAIR LABEL' : 'SPECS LABEL'}</div>
+      <div class="receipt-type">${type === 'monitor' ? 'MONITOR LABEL' : type === 'problems' ? 'REPAIR LABEL' : 'SPECS LABEL'}</div>
       <div class="receipt-main">${escapeHtml(safeRows[0] || 'Device')}</div>
+      ${showGradeBadge ? `<div class="receipt-grade">GRADE ${escapeHtml(gradeBadge)}</div>` : ''}
       ${safeRows.slice(1).map(row => row ? `<div class="receipt-row">${escapeHtml(row)}</div>` : '').join('')}
       <div class="receipt-footer">Printed via HP Engage · ${new Date().toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}</div>
     `;
@@ -474,9 +486,12 @@ function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PRO
     };
   }
 
-  const labelHtml = rows
+  const rowsHtml = rows
     .map((row, index) => row ? `<div class="label-row row-${index + 1}">${escapeHtml(row)}</div>` : '')
     .join('');
+  const labelHtml = showGradeBadge
+    ? `<div class="monitor-label-text">${rowsHtml}</div><div class="monitor-grade-badge">${escapeHtml(gradeBadge)}</div>`
+    : rowsHtml;
 
   return {
     title: `ReMarkt ${type === 'monitor' ? 'monitor label' : type === 'problems' ? 'repair label' : 'specs label'}`,
@@ -514,8 +529,8 @@ function closePreparedPrintWindow(printWindow) {
   }
 }
 
-function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, profile = BROWSER_PRINT_PROFILES.dymoLabel) {
-  const { title, scaleClass, labelHtml } = getBrowserLabelMarkup(rows, type, profile);
+function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, profile = BROWSER_PRINT_PROFILES.dymoLabel, grade = '') {
+  const { title, scaleClass, labelHtml } = getBrowserLabelMarkup(rows, type, profile, grade);
   const pageHeightMm = profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
     ? getHpEngagePageHeightMm(rows, type)
     : profile.heightMm;
@@ -588,6 +603,29 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
         .monitor-label.tight .row-1 { font-size: 8.8pt; }
         .monitor-label.tight .row-2,
         .monitor-label.tight .row-3 { font-size: 6.7pt; }
+        .monitor-label.monitor-has-grade {
+          display: grid;
+          grid-template-rows: none;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: center;
+          column-gap: 1.4mm;
+        }
+        .monitor-label.monitor-has-grade .monitor-label-text {
+          min-width: 0;
+          display: grid;
+          grid-template-rows: 8mm 6.7mm 6.7mm;
+          align-content: center;
+        }
+        .monitor-label.monitor-has-grade.tight .monitor-label-text { grid-template-rows: repeat(3, 7.05mm); }
+        .monitor-grade-badge {
+          font-weight: 900;
+          font-size: 32pt;
+          line-height: 0.9;
+          text-align: center;
+          min-width: 11mm;
+          padding-right: 0.6mm;
+          letter-spacing: -0.02em;
+        }
         .receipt-mode {
           width: ${receiptPrintableWidthMm}mm;
           height: auto;
@@ -619,6 +657,16 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
           font-weight: 900;
           margin-bottom: 2mm;
           word-break: break-word;
+        }
+        .receipt-grade {
+          font-size: 22pt;
+          font-weight: 900;
+          line-height: 1;
+          text-align: center;
+          border: 2px solid #000;
+          border-radius: 2mm;
+          padding: 1.6mm 0;
+          margin: 0 0 2mm;
         }
         .receipt-row {
           border-top: 1px solid #000;
@@ -702,7 +750,7 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
   const fallbackWindow = options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile);
 
   try {
-    const printResult = await printRowsWithDymo(rows, 'monitor');
+    const printResult = await printRowsWithDymo(rows, 'monitor', normalizedGrade);
     closePreparedPrintWindow(fallbackWindow);
     if (!options.suppressMessage) {
       setAppMessage(`Monitor label sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');
@@ -713,7 +761,7 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
     reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
   }
 
-  if (openBrowserPrintLabel(rows, 'monitor', fallbackWindow, browserProfile)) {
+  if (openBrowserPrintLabel(rows, 'monitor', fallbackWindow, browserProfile, normalizedGrade)) {
     if (!options.suppressMessage) {
       setAppMessage(browserProfile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
         ? 'DYMO direct print is unavailable. An HP Engage print window opened automatically with 80x297 mm paper size.'
