@@ -168,10 +168,6 @@ function renderLogin() {
         <div class="login-language-row">${renderOptionalLanguageToggle()}</div>
         <h1>ReMarkt Grading</h1>
         <p>Select your account and enter your password.</p>
-        <div class="demo-security-note">
-          <strong>Demo access</strong>
-          Local demo login only. Production should use SSO and server-side roles.
-        </div>
         <div class="login-fields">
           <label class="form-label" for="loginUser">Account</label>
           <select class="form-input" id="loginUser">
