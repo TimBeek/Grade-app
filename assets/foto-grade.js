@@ -111,8 +111,8 @@
           ${reeds
             ? `<button id="opnieuw">Opnieuw</button>`
             : `<button id="maak" class="primary">Foto maken</button>
-               <label class="file"><span><button type="button" id="kies-knop">Kies bestand</button></span>
-                 <input type="file" id="kies" accept="image/*" capture="environment"></label>`}
+               <button type="button" id="kies-knop">Kies bestand</button>
+               <input type="file" id="kies" accept="image/*" style="display:none">`}
           <button id="vorige" ${state.stap === 0 ? "disabled" : ""}>Vorige</button>
           <button id="volgende" class="primary" ${reeds ? "" : "disabled"}>
             ${state.stap === STAPPEN.length - 1 ? "Analyseren" : "Volgende"}
@@ -262,10 +262,22 @@
     return { keuzes, triggers };
   }
 
+  // Grade puur uit de oorspronkelijke AI-suggesties (vóór menselijke correctie).
+  function aiGradeResult() {
+    const keuzes = {}, triggers = {};
+    (state.assessments || []).forEach((a) => {
+      if (a.letter) keuzes[a.onderdeel_id] = a.letter;
+      (a.triggers || []).forEach((t) => { triggers[t] = true; });
+    });
+    return calculateGrade(keuzes, triggers);
+  }
+
   function berekenGrade() {
     const { keuzes, triggers } = huidigeKeuzes();
     const result = calculateGrade(keuzes, triggers);
+    const aiResult = aiGradeResult();
     const review = typeof getBorderlineAReview === "function" ? getBorderlineAReview(result) : null;
+    const akkoord = aiResult.eindgrade && aiResult.eindgrade === result.eindgrade;
 
     const rows = (result.detailRows || [])
       .map((r) => `<tr><td style="padding:4px 8px">${r.naam}</td><td style="padding:4px 8px;text-align:center">${r.keuze}</td><td style="padding:4px 8px">${r.impact}</td><td style="padding:4px 8px;text-align:right">${r.punten}</td></tr>`)
@@ -276,6 +288,7 @@
         <div class="grade-uit">
           <div class="g">${result.eindgrade || "—"}</div>
           <div class="sub" style="margin-top:6px">Impact-score: ${result.score}</div>
+          <div class="sub" style="margin-top:6px">AI stelde voor: <strong>${aiResult.eindgrade || "—"}</strong> · jouw grade: <strong>${result.eindgrade || "—"}</strong> ${akkoord ? "✅ gelijk" : "✏️ aangepast"}</div>
         </div>
         ${review ? `<div class="melding" style="margin-top:12px"><strong>${review.title}.</strong> ${review.text}</div>` : ""}
         <table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:13px">
@@ -287,8 +300,93 @@
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>`;
+        <div style="margin-top:16px;border-top:1px solid var(--rand);padding-top:14px">
+          <input id="note" placeholder="Laptop-model of serienr (optioneel)" style="width:100%;padding:8px;border:1px solid var(--rand);border-radius:8px;margin-bottom:10px">
+          <div class="rij">
+            <button id="opslaan" class="primary">Opslaan voor test</button>
+            <button id="bekijk-log">Bekijk testlog</button>
+          </div>
+          <div id="log-status" class="sub" style="margin-top:8px"></div>
+        </div>
+      </div>
+      <div id="log-doel"></div>`;
+
+    document.getElementById("opslaan").onclick = () => slaOp(result, aiResult);
+    document.getElementById("bekijk-log").onclick = bekijkLog;
     document.getElementById("grade-doel").scrollIntoView({ behavior: "smooth" });
+  }
+
+  // --- Testlog: AI-suggestie vs. menselijke eindkeuze opslaan ----------------
+  async function slaOp(result, aiResult) {
+    const { keuzes, triggers } = huidigeKeuzes();
+    const aiBy = new Map((state.assessments || []).map((a) => [a.onderdeel_id, a]));
+    const onderdelen = getGradingOnderdelen().map((o) => {
+      const ai = aiBy.get(o.id) || {};
+      return {
+        id: o.id,
+        naam: o.naam,
+        ai_letter: ai.letter || null,
+        ai_triggers: ai.triggers || [],
+        ai_zekerheid: ai.zekerheid || 0,
+        mens_letter: keuzes[o.id] || null,
+        mens_triggers: (o.triggers || []).filter((t) => triggers[t.id]).map((t) => t.id),
+      };
+    });
+    const note = (document.getElementById("note") || {}).value || "";
+    const status = document.getElementById("log-status");
+    status.textContent = "Opslaan…";
+    try {
+      const res = await fetch("/api/photo-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note, ai_grade: aiResult.eindgrade, mens_grade: result.eindgrade, onderdelen }),
+      });
+      const json = await res.json();
+      status.textContent = json.ok ? "✅ Opgeslagen in testlog." : "Opslaan mislukt: " + (json.error || "onbekend");
+    } catch (e) {
+      status.textContent = "Opslaan mislukt: " + e.message;
+    }
+  }
+
+  async function bekijkLog() {
+    const doel = document.getElementById("log-doel");
+    doel.innerHTML = `<div class="kaart"><div class="spinner">Testlog laden…</div></div>`;
+    try {
+      const res = await fetch("/api/photo-log");
+      const json = await res.json();
+      if (!json.ok) {
+        doel.innerHTML = `<div class="kaart"><div class="melding fout">${json.error || "Kon testlog niet laden."}</div></div>`;
+        return;
+      }
+      const rows = (json.entries || []).map((e) => {
+        const gelijk = e.ai_grade && e.ai_grade === e.mens_grade;
+        return `<tr>
+          <td style="padding:4px 8px">${(e.ts || "").slice(0, 16).replace("T", " ")}</td>
+          <td style="padding:4px 8px">${e.note || "—"}</td>
+          <td style="padding:4px 8px;text-align:center">${e.ai_grade || "—"}</td>
+          <td style="padding:4px 8px;text-align:center">${e.mens_grade || "—"}</td>
+          <td style="padding:4px 8px;text-align:center">${gelijk ? "✅" : "✏️"}</td>
+        </tr>`;
+      }).join("");
+      doel.innerHTML = `
+        <div class="kaart">
+          <h2>Testlog</h2>
+          <p class="sub">${json.total} laptops gelogd · AI-grade gelijk aan mens: <strong>${json.grade_akkoord_pct}%</strong> (${json.grade_akkoord}/${json.total})</p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead><tr style="border-bottom:1px solid var(--rand)">
+              <th style="text-align:left;padding:4px 8px">Tijd</th>
+              <th style="text-align:left;padding:4px 8px">Notitie</th>
+              <th style="padding:4px 8px">AI</th>
+              <th style="padding:4px 8px">Mens</th>
+              <th style="padding:4px 8px">=</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      doel.scrollIntoView({ behavior: "smooth" });
+    } catch (e) {
+      doel.innerHTML = `<div class="kaart"><div class="melding fout">Kon testlog niet laden: ${e.message}</div></div>`;
+    }
   }
 
   // --- Start -----------------------------------------------------------------
