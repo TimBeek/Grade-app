@@ -2658,9 +2658,9 @@ test('herstelbare zijkant geeft A-impact en reparatielabel', async () => {
 
   vm.runInContext(`
     const calls = [];
-    printLabelFor = async function(laptop, result, type) {
-      calls.push({ type, grade: result.eindgrade, problems: result.problems.slice() });
-      return true;
+    printRowsWithDymo = async function(rows, type) {
+      calls.push({ type, rows: rows.slice() });
+      return { printerName: 'DYMO LabelWriter 450' };
     };
     window.__printCalls = calls;
     STATE.currentUser = USERS.find(user => user.id === 'tim');
@@ -2984,9 +2984,9 @@ test('expertmodus kiest direct een grade en print automatisch', async () => {
 
   vm.runInContext(`
     const calls = [];
-    printLabelFor = async function(laptop, result, type) {
-      calls.push({ sticker: laptop.sticker, grade: result.eindgrade, type });
-      return true;
+    printRowsWithDymo = async function(rows, type) {
+      calls.push({ type, rows: rows.slice() });
+      return { printerName: 'DYMO LabelWriter 450' };
     };
     window.__printCalls = calls;
     STATE.currentUser = USERS.find(user => user.id === 'tim');
@@ -3067,7 +3067,53 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);
-  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 2);
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 1);
+  assert.equal(vm.runInContext('window.__openedPrintWindows[0].closed', app), true);
+});
+
+test('automatisch printen gebruikt bij DYMO-fout een enkel Edge-vriendelijk fallbackvenster', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const openedPrintWindows = [];
+    window.open = function(url, name) {
+      if (openedPrintWindows.length > 0) return null;
+      const printWindow = {
+        name,
+        closed: false,
+        document: {
+          html: '',
+          write(value) { this.html += value; },
+          close() {}
+        },
+        close() { this.closed = true; },
+        focus() {},
+        print() {}
+      };
+      openedPrintWindows.push(printWindow);
+      return printWindow;
+    };
+    window.__openedPrintWindows = openedPrintWindows;
+    printRowsWithDymo = async function() {
+      throw new Error('DYMO Connect Web Service is not responding.');
+    };
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('7771198');
+    startGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.triggers.pixel_lcd = true;
+    finishGrading();
+  `, app);
+
+  await app.handleAction('confirm_save', {});
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 1);
+  assert.match(vm.runInContext('window.__openedPrintWindows[0].document.html', app), /label-sheet/);
+  assert.match(vm.runInContext('window.__openedPrintWindows[0].document.html', app), /REPARATIE/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /browser print window/);
 });
 
 test('grading-test afronden muteert geen voorraad of historie', () => {

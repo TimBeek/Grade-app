@@ -171,7 +171,7 @@ const ONDERDELEN = [
 ];
 
 const STRAFPUNTEN = { A: 0, B: 1, C: 4, D: 999 };
-const GRADING_RULES_VERSION = 'demo-2026-06-25-repair-grade-after-fix-v1';
+const GRADING_RULES_VERSION = 'demo-2026-07-03-edge-print-production-repair-v1';
 
 const GRADING_IMPACTS = {
   bovenkap: { A: 'a-plus', B: 'a', C: 'c', D: 'x' },
@@ -378,8 +378,8 @@ const CHOICE_DECISIONS = {
             text: 'Kies de exacte reden voor het reparatielabel.',
             options: [
               { label: 'Toets werkt niet', detail: 'Een of meerdere toetsen reageren niet', impact: 'x', repairIssue: 'Toets werkt niet', repairRoute: 'production', repairSeverity: 'light' },
-              { label: 'Keyboard defect', detail: 'Keyboard werkt niet betrouwbaar', impact: 'x', repairIssue: 'Keyboard defect', repairRoute: 'direct', repairSeverity: 'heavy' },
-              { label: 'Keyboard ontbreekt', detail: 'Keyboard mist volledig of is niet bruikbaar', impact: 'x', repairIssue: 'Keyboard ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy' },
+              { label: 'Keyboard defect', detail: 'Keyboard werkt niet betrouwbaar', impact: 'x', repairIssue: 'Keyboard defect', repairRoute: 'production', repairSeverity: 'light' },
+              { label: 'Keyboard ontbreekt', detail: 'Keyboard mist volledig of is niet bruikbaar', impact: 'x', repairIssue: 'Keyboard ontbreekt', repairRoute: 'production', repairSeverity: 'light' },
             ],
           },
         },
@@ -511,11 +511,11 @@ function inferRepairMetadata(issue, componentId = '') {
     return { repairRoute: REPAIR_LABEL_TYPES.reject, repairSeverity: REPAIR_SEVERITIES.reject };
   }
 
-  if (/missing key|toets.*ontbreekt|meerdere toetsen|toets werkt niet|touchpad|usb|accu|battery|batterij|rechtmaken|uitdeuken|open\/verbogen|sluit niet goed/.test(text)) {
+  if (/missing key|toets.*ontbreekt|meerdere toetsen|toets werkt niet|keyboard defect|keyboard ontbreekt|keyboard missing|dead battery|missing battery|battery missing|touchpad|usb|accu|battery|batterij|rechtmaken|uitdeuken|open\/verbogen|sluit niet goed/.test(text)) {
     return { repairRoute: REPAIR_LABEL_TYPES.production, repairSeverity: REPAIR_SEVERITIES.light };
   }
 
-  if (/lcd|pixel|screen|scherm|beeld|flikker|flicker|cracked glass|geen beeld|scharnier|hinge|keyboard defect|keyboard ontbreekt/.test(text)
+  if (/lcd|pixel|screen|scherm|beeld|flikker|flicker|cracked glass|geen beeld|scharnier|hinge/.test(text)
     || ['lcd', 'scharnieren'].includes(component)) {
     return { repairRoute: REPAIR_LABEL_TYPES.direct, repairSeverity: REPAIR_SEVERITIES.heavy };
   }

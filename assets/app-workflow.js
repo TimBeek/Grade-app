@@ -2201,27 +2201,26 @@ async function confirmSaveWithAutomaticLabels() {
 
   const printTypes = ['specs'];
   if (needsProblemLabel(l, g.result)) printTypes.push('problems');
-  const preparedWindows = {};
+  const printJobs = printTypes.map(type => createLaptopLabelPrintJob(l, g.result, type));
+  let preparedWindow = null;
   if (typeof window !== 'undefined' && typeof window.open === 'function') {
-    printTypes.forEach(type => {
-      preparedWindows[type] = createPreparedPrintWindow(type);
-    });
+    preparedWindow = createPreparedPrintWindow(printTypes.length > 1 ? 'labels' : printTypes[0], printJobs[0] && printJobs[0].browserProfile);
   }
 
-  for (const type of printTypes) {
-    const printed = await printLabelFor(l, g.result, type, {
-      preparedWindow: preparedWindows[type],
-      suppressMessage: true,
-    });
-    if (!printed) {
-      setAppMessage('Automatic label printing failed. The grading was not saved, so you can confirm again.');
-      render();
-      return;
-    }
+  const printResult = await printLabelJobsWithDymoFallback(
+    printJobs,
+    { preparedWindow }
+  );
+  if (!printResult.ok) {
+    setAppMessage(`Automatic label printing failed. ${printResult.fallbackReason || 'Controleer DYMO Connect en pop-ups in Edge.'} The grading was not saved, so you can confirm again.`);
+    render();
+    return;
   }
 
   saveGrading();
-  setAppMessage(printTypes.length > 1
+  setAppMessage(printResult.fallbackUsed
+    ? `${printTypes.length > 1 ? 'Specs and repair labels' : 'Specs label'} opened in one browser print window. Check Edge/DYMO print settings on this device.`
+    : printTypes.length > 1
     ? 'Specs and repair labels printed. Grading saved.'
     : 'Specs label printed. Grading saved.',
     'success');

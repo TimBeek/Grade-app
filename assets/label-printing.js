@@ -486,7 +486,11 @@ async function printRowsWithDymo(rows, type = 'specs', grade = '') {
     throw new Error(`DYMO rejected the ${DYMO_LABEL_CONFIG.labelSize} label template.`);
   }
 
-  if (label && typeof label.print === 'function') {
+  if (typeof framework.printLabelAsync === 'function') {
+    await framework.printLabelAsync(printer.name, '', labelXml, '');
+  } else if (label && typeof label.printAsync === 'function') {
+    await label.printAsync(printer.name);
+  } else if (label && typeof label.print === 'function') {
     label.print(printer.name);
   } else if (typeof framework.printLabel === 'function') {
     framework.printLabel(printer.name, '', labelXml, '');
@@ -535,6 +539,7 @@ function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PRO
 }
 
 function createPreparedPrintWindow(type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel) {
+  if (typeof window === 'undefined' || typeof window.open !== 'function') return null;
   const printWindow = window.open('', `remarktLabelPrint_${type}`, `width=${profile.windowWidth},height=${profile.windowHeight}`);
   if (!printWindow) return null;
   printWindow.document.write(`
@@ -570,7 +575,9 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
     : profile.heightMm;
   const receiptPrintableWidthMm = profile.printableWidthMm || profile.widthMm;
   const receiptLeftOffsetMm = profile.leftOffsetMm || 0;
-  const printWindow = preparedWindow || window.open('', `remarktLabelPrint_${type}`, `width=${profile.windowWidth},height=${profile.windowHeight}`);
+  const printWindow = preparedWindow || (typeof window !== 'undefined' && typeof window.open === 'function'
+    ? window.open('', `remarktLabelPrint_${type}`, `width=${profile.windowWidth},height=${profile.windowHeight}`)
+    : null);
   if (!printWindow) {
     setAppMessage('Pop-up blocked. Allow pop-ups for this page to print labels.');
     render();
@@ -772,6 +779,320 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
   `);
   printWindow.document.close();
   return true;
+}
+
+function openBrowserPrintJobs(jobs, preparedWindow = null) {
+  const normalizedJobs = (jobs || []).filter(job => job && Array.isArray(job.rows) && job.rows.length);
+  if (!normalizedJobs.length) return false;
+  if (normalizedJobs.length === 1) {
+    const job = normalizedJobs[0];
+    return openBrowserPrintLabel(job.rows, job.type, preparedWindow, job.browserProfile, job.grade || '');
+  }
+
+  const profile = normalizedJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel;
+  const entries = normalizedJobs.map(job => {
+    const jobProfile = job.browserProfile || profile;
+    return {
+      ...getBrowserLabelMarkup(job.rows, job.type, jobProfile, job.grade || ''),
+      rows: job.rows,
+      type: job.type,
+      profile: jobProfile,
+    };
+  });
+  const pageHeightMm = Math.max(...entries.map(entry => (
+    entry.profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
+      ? getHpEngagePageHeightMm(entry.rows, entry.type)
+      : entry.profile.heightMm
+  )));
+  const receiptPrintableWidthMm = profile.printableWidthMm || profile.widthMm;
+  const receiptLeftOffsetMm = profile.leftOffsetMm || 0;
+  const printWindow = preparedWindow || (typeof window !== 'undefined' && typeof window.open === 'function'
+    ? window.open('', 'remarktLabelPrint_batch', `width=${profile.windowWidth},height=${profile.windowHeight}`)
+    : null);
+  if (!printWindow) {
+    setAppMessage('Pop-up blocked. Allow pop-ups for this page to print labels.');
+    render();
+    return false;
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="nl">
+    <head>
+      <meta charset="utf-8">
+      <title>ReMarkt labels</title>
+      <style>
+        @page { size: ${profile.widthMm}mm ${pageHeightMm}mm; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body {
+          width: ${profile.widthMm}mm;
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          color: #000;
+          font-family: Arial, Helvetica, sans-serif;
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
+        .label-sheet {
+          width: ${profile.widthMm}mm;
+          min-height: ${pageHeightMm}mm;
+          margin: 0;
+          padding: 0;
+          break-after: page;
+          page-break-after: always;
+        }
+        .label-sheet:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+        .label {
+          width: ${DYMO_LABEL_CONFIG.widthMm}mm;
+          height: ${DYMO_LABEL_CONFIG.heightMm}mm;
+          padding: 1.1mm 1.4mm 1.1mm 3mm;
+          display: grid;
+          grid-template-rows: 6.4mm 5.4mm 5.4mm 5.5mm;
+          align-content: center;
+          overflow: hidden;
+        }
+        .label-row {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          line-height: 0.98;
+          letter-spacing: 0;
+        }
+        .row-1 { font-size: 11pt; font-weight: 800; }
+        .row-2 { font-size: 8.1pt; font-weight: 700; }
+        .row-3 { font-size: 8.1pt; font-weight: 800; }
+        .row-4 { font-size: 7pt; font-weight: 700; }
+        .compact .row-1 { font-size: 9.5pt; }
+        .compact .row-2, .compact .row-3 { font-size: 7.2pt; }
+        .compact .row-4 { font-size: 6.4pt; }
+        .tight { grid-template-rows: repeat(4, 5.55mm); }
+        .tight .label-row { line-height: 1; }
+        .tight .row-1 { font-size: 8.7pt; }
+        .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
+        .monitor-label {
+          grid-template-rows: 8mm 6.7mm 6.7mm;
+        }
+        .monitor-label .row-1 { font-size: 11pt; font-weight: 800; }
+        .monitor-label .row-2,
+        .monitor-label .row-3 { font-size: 8.4pt; font-weight: 800; }
+        .monitor-label.compact .row-1 { font-size: 9.5pt; }
+        .monitor-label.compact .row-2,
+        .monitor-label.compact .row-3 { font-size: 7.4pt; }
+        .monitor-label.tight { grid-template-rows: repeat(3, 7.05mm); }
+        .monitor-label.tight .row-1 { font-size: 8.8pt; }
+        .monitor-label.tight .row-2,
+        .monitor-label.tight .row-3 { font-size: 6.7pt; }
+        .monitor-label.monitor-has-grade {
+          display: grid;
+          grid-template-rows: none;
+          grid-template-columns: minmax(0, 1fr) 13mm;
+          align-items: stretch;
+          column-gap: 0;
+        }
+        .monitor-label.monitor-has-grade .monitor-label-text {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 0.7mm;
+          padding-right: 1.4mm;
+        }
+        .monitor-label.monitor-has-grade .row-1 {
+          white-space: normal;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.04;
+          font-size: 10.5pt;
+        }
+        .monitor-label.monitor-has-grade .row-2,
+        .monitor-label.monitor-has-grade .row-3 {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .monitor-grade-box {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 0.3mm;
+          border-left: 0.4mm solid #000;
+          padding-left: 0.6mm;
+        }
+        .monitor-grade-caption {
+          font-size: 5.4pt;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          line-height: 1;
+        }
+        .monitor-grade-value {
+          font-weight: 900;
+          font-size: 26pt;
+          line-height: 0.85;
+          letter-spacing: -0.02em;
+        }
+        .receipt-mode {
+          width: ${receiptPrintableWidthMm}mm;
+          height: auto;
+          min-height: ${pageHeightMm}mm;
+          margin: 0 0 0 ${receiptLeftOffsetMm}mm;
+          padding: 3.2mm 0 3mm;
+          display: block;
+          background: #fff;
+        }
+        .receipt-brand {
+          font-size: 12.8pt;
+          font-weight: 900;
+          letter-spacing: 0;
+          color: #000;
+          margin-bottom: 1mm;
+        }
+        .receipt-type {
+          display: inline-block;
+          border: 1px solid #000;
+          border-radius: 1mm;
+          padding: 0.7mm 1.2mm;
+          font-size: 6.8pt;
+          font-weight: 800;
+          margin-bottom: 2.8mm;
+        }
+        .receipt-main {
+          font-size: 9.5pt;
+          line-height: 1.1;
+          font-weight: 900;
+          margin-bottom: 2mm;
+          word-break: break-word;
+        }
+        .receipt-grade {
+          font-size: 22pt;
+          font-weight: 900;
+          line-height: 1;
+          text-align: center;
+          border: 2px solid #000;
+          border-radius: 2mm;
+          padding: 1.6mm 0;
+          margin: 0 0 2mm;
+        }
+        .receipt-row {
+          border-top: 1px solid #000;
+          padding: 1.8mm 0;
+          font-size: 7.6pt;
+          line-height: 1.22;
+          font-weight: 800;
+          word-break: break-word;
+        }
+        .receipt-footer {
+          border-top: 1px dashed #000;
+          margin-top: 3.2mm;
+          padding-top: 1.8mm;
+          font-size: 6.2pt;
+          line-height: 1.25;
+        }
+        @media screen {
+          body { width: 100vw; min-height: 100vh; background: #f3f3f3; }
+          .label-sheet { display: grid; place-items: center; margin: 12px auto; }
+          .label, .receipt-mode { background: #fff; border: 1px solid #ddd; box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+        }
+      </style>
+    </head>
+    <body>
+      ${entries.map(entry => `<section class="label-sheet"><div class="label ${entry.scaleClass}">${entry.labelHtml}</div></section>`).join('')}
+      <script>
+        (() => {
+          let printed = false;
+          const printLabel = () => {
+            if (printed) return;
+            printed = true;
+            window.focus();
+            setTimeout(() => window.print(), 80);
+          };
+          window.addEventListener('load', () => setTimeout(printLabel, 180), { once: true });
+          setTimeout(printLabel, 700);
+        })();
+      <\/script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  return true;
+}
+
+function createLaptopLabelPrintJob(laptop, result, type = 'specs', options = {}) {
+  const browserProfile = getBrowserPrintProfile(options);
+  return {
+    rows: getLabelRows(laptop, result, type, options),
+    type,
+    browserProfile,
+    grade: '',
+    audit: {
+      action: 'print_label',
+      entityType: 'laptop',
+      entityId: laptop && laptop.sticker,
+      details: { type, hideGrade: Boolean(options.hideGrade), browserProfile: browserProfile.id },
+    },
+  };
+}
+
+function describeDymoPrintError(error) {
+  const message = String(error && error.message || error || '').trim();
+  if (/web service|not running|not responding/i.test(message)) {
+    return 'DYMO Connect Web Service draait niet of reageert niet op deze pc.';
+  }
+  if (/no dymo|no .*labelwriter|printer found/i.test(message)) {
+    return 'Geen aangesloten DYMO LabelWriter gevonden op deze pc.';
+  }
+  if (/browser|supported/i.test(message)) {
+    return 'Deze browser wordt door DYMO Connect niet goed ondersteund.';
+  }
+  return message || 'DYMO direct print is niet beschikbaar op deze pc.';
+}
+
+async function printLabelJobsWithDymoFallback(jobs, options = {}) {
+  const printJobs = (jobs || []).filter(Boolean);
+  if (!printJobs.length) return { ok: true, fallbackUsed: false };
+
+  printJobs.forEach(job => {
+    if (job.audit) {
+      logAudit(job.audit.action, job.audit.entityType, job.audit.entityId, job.audit.details);
+    }
+  });
+
+  const preparedWindow = options.preparedWindow || createPreparedPrintWindow(
+    printJobs.length > 1 ? 'labels' : printJobs[0].type,
+    printJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel
+  );
+  let fallbackIndex = -1;
+  let fallbackReason = '';
+
+  for (let index = 0; index < printJobs.length; index++) {
+    const job = printJobs[index];
+    try {
+      await printRowsWithDymo(job.rows, job.type, job.grade || '');
+    } catch (error) {
+      fallbackIndex = index;
+      fallbackReason = describeDymoPrintError(error);
+      reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
+      break;
+    }
+  }
+
+  if (fallbackIndex === -1) {
+    closePreparedPrintWindow(preparedWindow);
+    return { ok: true, fallbackUsed: false };
+  }
+
+  const fallbackJobs = printJobs.slice(fallbackIndex);
+  if (openBrowserPrintJobs(fallbackJobs, preparedWindow)) {
+    return { ok: true, fallbackUsed: true, fallbackReason, fallbackCount: fallbackJobs.length };
+  }
+
+  return { ok: false, fallbackUsed: true, fallbackReason, fallbackCount: fallbackJobs.length };
 }
 
 async function printLabelFor(laptop, result, type = 'specs', options = {}) {
