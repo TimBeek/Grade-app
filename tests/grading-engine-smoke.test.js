@@ -1730,8 +1730,8 @@ test('databasematch vult resolutie/scherm/poorten en normaliseert decimale scher
   `, app);
 
   assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '1920x1080');
-  // Decimale maat (23.8") wordt genormaliseerd naar hele inch die in de select bestaat.
-  assert.equal(vm.runInContext('__mmFields.mm_display.value', app), '23"');
+  // Decimale maat (23.8") wordt genormaliseerd naar kale inch die als <option value> bestaat.
+  assert.equal(vm.runInContext('__mmFields.mm_display.value', app), '23');
   assert.equal(vm.runInContext('__mmPorts.HDMI.select.value', app), '2');
   assert.equal(vm.runInContext('__mmPorts.DisplayPort.select.value', app), '1');
   assert.equal(vm.runInContext('__mmFields.mm_resolution.dataset.autoFilled', app), 'true');
@@ -1757,7 +1757,8 @@ test('automatisch ingevulde poorten worden gewist bij wisselen naar onbekend mod
   assert.equal(vm.runInContext('__mmPorts.HDMI.select.value', app), '0');
   assert.equal(vm.runInContext('__mmPorts.DisplayPort.select.value', app), '0');
   assert.equal(vm.runInContext('__mmPorts.VGA.select.value', app), '0');
-  assert.equal(vm.runInContext('STATE.monitorManualAutoKey', app), null);
+  // Onbekend model krijgt een 'raw:'-contextsleutel (niet meer null).
+  assert.equal(vm.runInContext('STATE.monitorManualAutoKey', app), 'raw:e233');
 });
 
 test('handmatig gekozen poort blijft behouden bij herhaalde sync van hetzelfde model', () => {
@@ -1810,6 +1811,59 @@ test('validatiefout bij handmatige monitor wist de ingevulde velden niet', async
   assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '1920x1080');
   assert.equal(app.__appElement.innerHTML, before);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
+});
+
+test('al geprinte monitor opent reprint-popup en print opnieuw met vastgelegde grade', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_reprint',
+      nummer: 'RP',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '1-7-2026',
+      monitors: [{
+        sticker: 'MON-RP-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell',
+        model: 'P2422H',
+        display: '24"',
+        resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort',
+        batchId: 'monitor_batch_reprint',
+        batchNummer: 'RP',
+      }],
+    });
+    rebuildMonitorIndex();
+    rebuildMonitorLabelPrintIndexes();
+    globalThis.reprintCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) {
+      reprintCalls.push({ sticker: monitor.sticker, grade });
+      return true;
+    };
+    recordMonitorLabelPrint(getMonitorBySticker('MON-RP-1'), 'B');
+  `, app);
+
+  // Scannen van een al-geprinte monitor loopt niet dood maar opent de pop-up.
+  vm.runInContext("selectMonitorForLabel('MON-RP-1');", app);
+  assert.equal(vm.runInContext('STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker', app), 'MON-RP-1');
+  assert.match(app.__appElement.innerHTML, /Dit monitorlabel is al geprint/);
+  assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_confirm"/);
+  assert.match(app.__appElement.innerHTML, /grade B/);
+
+  // Bevestigen => opnieuw printen met de eerder vastgelegde grade (B).
+  await vm.runInContext("handleAction('monitor_reprint_confirm', { dataset: {} });", app);
+  assert.equal(vm.runInContext('reprintCalls.length', app), 1);
+  assert.equal(vm.runInContext('reprintCalls[0].grade', app), 'B');
+  assert.equal(vm.runInContext('STATE.monitorReprintPrompt', app), null);
+  assert.equal(vm.runInContext("STATE.auditLogs.some(log => log.action === 'monitor_label_reprinted')", app), true);
+
+  // Annuleren sluit de pop-up zonder te printen.
+  vm.runInContext("STATE.monitorReprintPrompt = { sticker: 'MON-RP-1' };", app);
+  await vm.runInContext("handleAction('monitor_reprint_cancel', { dataset: {} });", app);
+  assert.equal(vm.runInContext('STATE.monitorReprintPrompt', app), null);
+  assert.equal(vm.runInContext('reprintCalls.length', app), 1);
 });
 
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
@@ -1966,7 +2020,7 @@ test('monitor handmatige invoer gebruikt database autocomplete en vult specs aut
     fields.mm_model.value = 'ZZZ999';
     syncMonitorManualDatabaseAssist();
     filled + ' -> ' + fields.mm_series.value + '|' + fields.mm_display.value + '|' + fields.mm_resolution.value;
-  `, app), 'Compaq|23"|1920x1080 -> ||');
+  `, app), 'Compaq|23|1920x1080 -> ||');
 });
 
 test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezelfde barcode', async () => {

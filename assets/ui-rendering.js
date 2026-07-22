@@ -89,6 +89,7 @@ function render() {
     html += renderAppMessage();
     if (STATE.pendingDecision) html += renderDecisionModal(STATE.pendingDecision);
     if (STATE.supplierNotice) html += renderSupplierNoticeModal(STATE.supplierNotice);
+    if (STATE.monitorReprintPrompt) html += renderMonitorReprintModal(STATE.monitorReprintPrompt);
     if (STATE.imagePreview) html += renderImagePreviewModal(STATE.imagePreview);
     if (STATE.currentScreen === 'password_change') html += renderPasswordChange();
     else if (STATE.currentScreen === 'home') html += renderHome();
@@ -138,6 +139,48 @@ function renderSupplierNoticeModal(notice) {
         </div>
         <div class="modal-actions">
           <button class="btn btn-primary" data-action="confirm_supplier_notice" type="button">Gelezen, doorgaan</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderMonitorReprintModal(prompt) {
+  const sticker = prompt && prompt.sticker ? prompt.sticker : '';
+  const record = typeof getLatestMonitorLabelPrintForSticker === 'function' ? getLatestMonitorLabelPrintForSticker(sticker) : null;
+  const monitor = typeof getMonitorBySticker === 'function' ? getMonitorBySticker(sticker) : null;
+  const device = (monitor && monitor.deviceName)
+    || (record && record.deviceName)
+    || (record && `${record.merk || ''} ${record.model || ''}`.trim())
+    || 'Deze monitor';
+  const gradeRaw = record ? record.grade : (STATE.monitorSelectedGrade || '');
+  const grade = gradeRaw ? displayMonitorGrade(normalizeMonitorGrade(gradeRaw)) : '';
+  let printedAt = '';
+  if (record && record.printedAt) {
+    const date = new Date(record.printedAt);
+    if (!Number.isNaN(date.getTime())) {
+      printedAt = date.toLocaleString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+  }
+  const who = record && record.user_naam ? record.user_naam : '';
+  const details = [
+    `<li><strong>Apparaat:</strong> ${escapeHtml(device)}</li>`,
+    `<li><strong>Barcode:</strong> ${escapeHtml(sticker)}</li>`,
+    grade ? `<li><strong>Grade:</strong> ${escapeHtml(grade)}</li>` : '',
+    printedAt ? `<li><strong>Geprint op:</strong> ${escapeHtml(printedAt)}${who ? ` door ${escapeHtml(who)}` : ''}</li>` : '',
+  ].filter(Boolean).join('');
+  return `
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor al geprint">
+      <div class="supplier-notice-modal">
+        <div class="supplier-notice-kicker">Al geprint</div>
+        <h3>Dit monitorlabel is al geprint</h3>
+        <p>Deze monitor is al gegradeerd en geprint. Controleer de gegevens en kies of je hetzelfde label nog een keer wilt printen.</p>
+        <div class="supplier-notice-box">
+          <ul>${details}</ul>
+        </div>
+        <div class="modal-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" data-action="monitor_reprint_confirm" type="button">Opnieuw printen${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
+          <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Annuleren</button>
         </div>
       </div>
     </div>
@@ -797,8 +840,11 @@ function renderMonitorDisplaySizeOptions(selectedDisplay) {
   const selectedValue = selected ? selected[0] : '';
   const options = ['<option value="">Kies schermformaat</option>'];
   for (let inch = 17; inch <= 55; inch += 1) {
-    const value = `${inch}"`;
-    options.push(`<option value="${value}" ${selectedValue === String(inch) ? 'selected' : ''}>${inch} inch</option>`);
+    // Waarde is de kale inch (zonder "-teken): een letterlijke " in een
+    // dubbel-quoted attribuut breekt het attribuut af, waardoor de waarde
+    // "24 in plaats van 24" werd en autofill/opslag misging. formatDisplay()
+    // maakt er bij opslaan weer 24" van.
+    options.push(`<option value="${inch}" ${selectedValue === String(inch) ? 'selected' : ''}>${inch} inch</option>`);
   }
   return options.join('');
 }

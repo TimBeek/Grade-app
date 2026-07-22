@@ -421,13 +421,35 @@ function monitorManualMatchKey(match) {
   return key || null;
 }
 
-// Sleutel van het databasemodel dat hoort bij een reeds opgeslagen monitor.
-// Gebruikt om de correctie-flow te "seeden": zolang het model niet echt
-// verandert, blijven de bestaande (echte) gegevens staan.
+// Context-sleutel van het huidige model. Een databasematch krijgt "db:<model>",
+// een onbekend model "raw:<modelnummer>". Zolang deze sleutel gelijk blijft,
+// laten we de al ingevulde/gecorrigeerde gegevens met rust; verandert hij, dan
+// is het een ander model en frissen we alles op (zodat niets blijft hangen).
+function monitorManualAssistKey(match, model) {
+  if (match) return 'db:' + (monitorManualMatchKey(match) || '');
+  const raw = typeof normalizeMonitorLookupKey === 'function'
+    ? normalizeMonitorLookupKey(model)
+    : String(model || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return raw ? 'raw:' + raw : null;
+}
+
+// Sleutel die hoort bij een reeds opgeslagen monitor. Gebruikt om de
+// correctie-flow te "seeden": zolang het model niet echt verandert, blijven de
+// bestaande (echte) gegevens staan.
 function monitorManualMatchKeyForMonitor(monitor) {
-  if (!monitor || typeof findMonitorManualDatabaseMatch !== 'function') return null;
-  const match = findMonitorManualDatabaseMatch(monitor.merk || '', monitor.serie || '', monitor.modelNumber || monitor.model || '');
-  return monitorManualMatchKey(match);
+  if (!monitor) return null;
+  const merk = monitor.merk || '';
+  const series = monitor.serie || '';
+  const model = monitor.modelNumber || monitor.model || '';
+  const match = typeof findMonitorManualDatabaseMatch === 'function' ? findMonitorManualDatabaseMatch(merk, series, model) : null;
+  return monitorManualAssistKey(match, model);
+}
+
+// Zet alle video-in poorten terug naar 0 (bij een modelwissel). Onbekend model
+// = handmatig terrein, dus de poorten zijn daarna niet meer 'auto'.
+function resetMonitorManualPorts() {
+  applyMonitorManualVideoInputsToPicker('');
+  STATE.monitorManualPortsAutoFilled = false;
 }
 
 function syncMonitorManualDatabaseAssist() {
@@ -438,21 +460,20 @@ function syncMonitorManualDatabaseAssist() {
   updateMonitorManualSeriesSuggestions(merk, series);
   updateMonitorManualModelSuggestions(merk, series, model);
   const match = typeof findMonitorManualDatabaseMatch === 'function' ? findMonitorManualDatabaseMatch(merk, series, model) : null;
-  if (!match) {
-    // Geen match (meer): oude automatisch ingevulde gegevens én poorten wissen
-    // zodat er niets van een vorig model blijft hangen.
-    clearAutoFilledMonitorManualFields();
-    STATE.monitorManualAutoKey = null;
-    updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
-    return;
-  }
-  const key = monitorManualMatchKey(match);
-  // Alleen (opnieuw) automatisch invullen wanneer een ANDER databasemodel
-  // gevonden wordt. Blijft het hetzelfde model, dan laten we handmatige
-  // correcties (bv. poorten) met rust.
+  const key = monitorManualAssistKey(match, model);
+  // Alleen ingrijpen wanneer de model-CONTEXT wijzigt. Zolang je binnen
+  // hetzelfde (database- of onbekende) model blijft, laten we handmatige
+  // correcties (poorten, resolutie) met rust.
   if (key !== STATE.monitorManualAutoKey) {
     STATE.monitorManualAutoKey = key;
-    applyMonitorManualDatabaseMatch(match);
+    if (match) {
+      applyMonitorManualDatabaseMatch(match);
+    } else {
+      // Ander/onbekend model: automatisch ingevulde specs wissen én de video-in
+      // poorten terugzetten, zodat niets van het vorige model blijft hangen.
+      clearAutoFilledMonitorManualFields();
+      resetMonitorManualPorts();
+    }
   }
   updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
@@ -493,6 +514,8 @@ function setAutoFilledFormValue(id, value) {
 }
 
 function clearAutoFilledMonitorManualFields() {
+  // Alleen de automatisch ingevulde tekstvelden wissen. De video-in poorten
+  // worden apart via resetMonitorManualPorts() teruggezet bij een modelwissel.
   ['mm_series', 'mm_resolution', 'mm_display'].forEach(id => {
     const field = document.getElementById(id);
     if (field && field.dataset && field.dataset.autoFilled === 'true') {
@@ -500,11 +523,6 @@ function clearAutoFilledMonitorManualFields() {
       field.dataset.autoFilled = 'false';
     }
   });
-  // Automatisch ingevulde video-in poorten ook terugzetten naar 0. Handmatig
-  // door de medewerker gekozen poorten blijven staan (die zijn niet 'auto').
-  if (STATE.monitorManualPortsAutoFilled) {
-    applyMonitorManualVideoInputsToPicker('');
-  }
   updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
 
@@ -522,10 +540,11 @@ function applyMonitorManualDatabaseMatch(match) {
     if (parts.modelNumber && modelField && !readFormValue('mm_model')) setAutoFilledFormValue('mm_model', parts.modelNumber);
   }
   setAutoFilledFormValue('mm_resolution', match.resolution || '');
-  // Schermformaat als hele inch normaliseren zodat de waarde overeenkomt met een
-  // bestaande optie in de selectlijst (bv. "23.8" -> 23", "24 inch" -> 24").
+  // Schermformaat als kale inch zetten zodat het overeenkomt met de <option
+  // value> (bv. "23.8" -> 23, "24 inch" -> 24). formatDisplay() maakt er bij
+  // opslaan weer 24" van.
   const displayInch = match.displaySize ? (String(match.displaySize).match(/\d{2}/) || [''])[0] : '';
-  setAutoFilledFormValue('mm_display', displayInch ? `${displayInch}"` : '');
+  setAutoFilledFormValue('mm_display', displayInch);
   applyMonitorManualVideoInputsToPicker(match.videoInputs || '');
   updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
@@ -873,6 +892,8 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'monitor_manual_submit',
   'monitor_scan_reset',
   'monitor_identity_reset',
+  'monitor_reprint_confirm',
+  'monitor_reprint_cancel',
   'scan',
   'back_scan',
   'login_password',
@@ -1024,11 +1045,25 @@ async function handleAction(action, el) {
       STATE.monitorManualAutoKey = monitorManualMatchKeyForMonitor(STATE.currentMonitor);
       STATE.monitorManualPortsAutoFilled = false;
       break;
+    case 'monitor_reprint_confirm': {
+      const reprintSticker = STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker;
+      await reprintMonitorLabel(reprintSticker);
+      return;
+    }
+    case 'monitor_reprint_cancel':
+      STATE.monitorReprintPrompt = null;
+      STATE.currentMonitor = null;
+      STATE.monitorSelectedGrade = null;
+      STATE.currentScreen = 'monitor_label_scan';
+      STATE.homeTab = 'monitor';
+      setAppMessage('Opnieuw printen geannuleerd.');
+      break;
     case 'monitor_scan_reset':
       STATE.currentMonitor = null;
       STATE.monitorPrintInProgress = false;
       STATE.monitorSelectedGrade = null;
       STATE.monitorScanSearch = '';
+      STATE.monitorReprintPrompt = null;
       break;
     case 'monitor_identity_reset':
       if (STATE.currentMonitor) {
@@ -1722,12 +1757,15 @@ function selectMonitorForLabel(sticker) {
   STATE.monitorScanSearch = '';
 
   if (isMonitorLabelPrinted(monitor.sticker)) {
-    setAppMessage(`Monitor label was already printed for barcode ${cleanSticker}.`);
-    STATE.currentMonitor = null;
+    // Niet doodlopen: toon een duidelijke pop-up met de optie om het bestaande
+    // label opnieuw te printen.
+    STATE.monitorReprintPrompt = { sticker: monitor.sticker };
+    setAppMessage(null);
     render();
     return false;
   }
 
+  STATE.monitorReprintPrompt = null;
   setAppMessage(null);
   render();
   return true;
@@ -1778,8 +1816,8 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   STATE.monitorScanSearch = '';
 
   if (isMonitorLabelPrinted(monitor.sticker)) {
-    setAppMessage(`Monitor label was already printed for barcode ${cleanSticker}.`);
-    STATE.currentMonitor = null;
+    // Al geprint: toon de opnieuw-printen pop-up i.p.v. doodlopen.
+    STATE.monitorReprintPrompt = { sticker: monitor.sticker };
     STATE.monitorSelectedGrade = null;
     render();
     return false;
@@ -1841,6 +1879,78 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     if (typeof closePreparedPrintWindow === 'function') closePreparedPrintWindow(preparedWindow);
     setAppMessage('Monitorlabel printen is niet voltooid. Probeer opnieuw; de monitor blijft geselecteerd.', 'warning');
     STATE.currentMonitor = monitor;
+    return false;
+  } finally {
+    STATE.monitorPrintInProgress = false;
+    render();
+  }
+}
+
+// Print een reeds geprint monitorlabel bewust opnieuw (na bevestiging in de
+// pop-up). Gebruikt de eerder vastgelegde grade; verandert geen voorraad of
+// telling, maar legt wel een audit-regel vast.
+async function reprintMonitorLabel(sticker) {
+  const cleanSticker = String(sticker || '').trim();
+  STATE.monitorReprintPrompt = null;
+  if (STATE.monitorPrintInProgress) {
+    setAppMessage('Monitorlabel wordt al verwerkt. Wacht even tot printen klaar is.');
+    render();
+    return false;
+  }
+  if (!cleanSticker) {
+    setAppMessage('Geen barcode om opnieuw te printen.');
+    render();
+    return false;
+  }
+
+  const record = typeof getLatestMonitorLabelPrintForSticker === 'function' ? getLatestMonitorLabelPrintForSticker(cleanSticker) : null;
+  const liveMonitor = getMonitorBySticker(cleanSticker);
+  if (!liveMonitor && !record) {
+    setAppMessage(`Monitor ${cleanSticker} kon niet worden gevonden om opnieuw te printen.`);
+    render();
+    return false;
+  }
+  const target = liveMonitor || {
+    sticker: cleanSticker,
+    deviceName: record.deviceName,
+    merk: record.merk,
+    model: record.model,
+    serie: record.serie,
+    modelNumber: record.modelNumber,
+    serial: record.serial,
+    videoInputs: record.videoInputs,
+    batchId: record.batchId,
+    batchNummer: record.batchNummer,
+  };
+  const grade = normalizeMonitorGrade((record && record.grade) || STATE.monitorSelectedGrade);
+
+  STATE.currentScreen = 'monitor_label_scan';
+  STATE.homeTab = 'monitor';
+  STATE.currentMonitor = target;
+  STATE.monitorSelectedGrade = grade;
+
+  const preparedWindow = typeof window !== 'undefined' && typeof window.open === 'function'
+    ? createPreparedPrintWindow('monitor')
+    : null;
+  STATE.monitorPrintInProgress = true;
+  setAppMessage(`Monitorlabel ${displayMonitorGrade(grade)} wordt opnieuw geprint...`, 'info');
+  render();
+
+  try {
+    const printed = await printMonitorLabelFor(target, grade, { preparedWindow, suppressMessage: true });
+    if (!printed) {
+      setAppMessage(`Opnieuw printen voor barcode ${cleanSticker} lukte niet. Probeer opnieuw of print via het browservenster.`, 'warning');
+      return false;
+    }
+    logAudit('monitor_label_reprinted', 'monitor', cleanSticker, { grade, batchNummer: target.batchNummer || '' });
+    STATE.currentMonitor = null;
+    STATE.monitorSelectedGrade = null;
+    setAppMessage(`Monitorlabel opnieuw geprint voor ${target.deviceName || cleanSticker} met grade ${displayMonitorGrade(grade)}.`, 'success');
+    return true;
+  } catch (error) {
+    reportAppError('Monitor reprint failed', error);
+    if (typeof closePreparedPrintWindow === 'function') closePreparedPrintWindow(preparedWindow);
+    setAppMessage('Opnieuw printen is niet voltooid. Probeer opnieuw.', 'warning');
     return false;
   } finally {
     STATE.monitorPrintInProgress = false;

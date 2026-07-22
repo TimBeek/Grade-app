@@ -31,6 +31,7 @@ const STATE = {
   monitorManualContext: null,
   monitorManualAutoKey: null,
   monitorManualPortsAutoFilled: false,
+  monitorReprintPrompt: null,
   appMessage: null,
   manualMode: false,
   importResult: null,
@@ -704,6 +705,22 @@ function displayMonitorGrade(value) {
 function isMonitorLabelPrinted(sticker) {
   if (!MONITOR_LABEL_PRINTED_STICKERS.size && STATE.monitorLabelPrints.length) rebuildMonitorLabelPrintIndexes();
   return MONITOR_LABEL_PRINTED_STICKERS.has(getCanonicalMonitorSticker(sticker));
+}
+
+// Meest recente monitor-labelprint voor een barcode (voor de opnieuw-printen
+// pop-up en het opnieuw printen zelf). ISO-datums sorteren chronologisch.
+function getLatestMonitorLabelPrintForSticker(sticker) {
+  const target = String(sticker || '').trim();
+  if (!target) return null;
+  const code = normalizeStickerCode(target);
+  let best = null;
+  (STATE.monitorLabelPrints || []).forEach(item => {
+    if (!item) return;
+    const s = String(item.sticker || '');
+    if (s !== target && normalizeStickerCode(s) !== code) return;
+    if (!best || String(item.printedAt || '') >= String(best.printedAt || '')) best = item;
+  });
+  return best;
 }
 
 function getOpenMonitors() {
