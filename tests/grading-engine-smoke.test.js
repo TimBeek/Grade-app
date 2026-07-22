@@ -1845,12 +1845,16 @@ test('al geprinte monitor opent reprint-popup en print opnieuw met vastgelegde g
     recordMonitorLabelPrint(getMonitorBySticker('MON-RP-1'), 'B');
   `, app);
 
-  // Scannen van een al-geprinte monitor loopt niet dood maar opent de pop-up.
+  // Scannen van een al-geprinte monitor loopt niet dood maar opent de LOSSE pop-up.
   vm.runInContext("selectMonitorForLabel('MON-RP-1');", app);
   assert.equal(vm.runInContext('STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker', app), 'MON-RP-1');
-  assert.match(app.__appElement.innerHTML, /already been graded and printed/);
-  assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_confirm"/);
-  assert.match(app.__appElement.innerHTML, /data-action="monitor_regrade"/);
+  // Kritiek: currentMonitor is null zodat het gradescherm NIET over de pop-up ligt.
+  assert.equal(vm.runInContext('STATE.currentMonitor', app), null);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-monitor-print-grade/);
+  assert.match(app.__appElement.innerHTML, /You already scanned this monitor/);
+  assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_confirm"[^>]*>Print again/);
+  assert.match(app.__appElement.innerHTML, /data-action="monitor_regrade"[^>]*>Grade again/);
+  assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_cancel"[^>]*>Back/);
   assert.match(app.__appElement.innerHTML, /grade B/);
 
   // Bevestigen => opnieuw printen met de eerder vastgelegde grade (B).

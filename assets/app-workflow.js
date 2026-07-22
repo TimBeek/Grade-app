@@ -1783,8 +1783,10 @@ function selectMonitorForLabel(sticker) {
   STATE.monitorRegradeSticker = null;
 
   if (isMonitorLabelPrinted(monitor.sticker)) {
-    // Niet doodlopen: toon een duidelijke waarschuwing met de keuze om opnieuw
-    // te graden of hetzelfde label opnieuw te printen.
+    // Niet doodlopen: toon een LOSSE waarschuwing-pop-up. currentMonitor MOET
+    // hier null zijn, anders rendert het gradescherm (hogere z-index) eroverheen
+    // en zie je de pop-up niet.
+    STATE.currentMonitor = null;
     STATE.monitorReprintPrompt = { sticker: monitor.sticker };
     setAppMessage(null);
     render();
@@ -1849,7 +1851,9 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   );
 
   if (isMonitorLabelPrinted(monitor.sticker) && !isRegrade) {
-    // Al geprint: toon de duidelijke waarschuwing/pop-up i.p.v. doodlopen.
+    // Al geprint: toon de LOSSE waarschuwing-pop-up i.p.v. doodlopen.
+    // currentMonitor null houden, anders dekt het gradescherm de pop-up af.
+    STATE.currentMonitor = null;
     STATE.monitorReprintPrompt = { sticker: monitor.sticker };
     STATE.monitorSelectedGrade = null;
     render();

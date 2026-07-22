@@ -1057,6 +1057,13 @@ NL_DYNAMIC_PATTERNS.push(
   [new RegExp("^across (.+?) gradings$"), 'over $1 gradings'],
 );
 
+Object.assign(NL_COPY, {
+  'Note — already scanned': 'Let op — al gescand',
+  'You already scanned this monitor': 'Je hebt deze monitor al gescand',
+  'This monitor has already been graded and a label was printed. What do you want to do?': 'Deze monitor is al gegradeerd en er is een label geprint. Wat wil je doen?',
+  'Print again': 'Nogmaals printen',
+});
+
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt', 'data-preview-label'];
 
 function normalizeLanguagePreference(value) {

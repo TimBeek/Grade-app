@@ -170,18 +170,18 @@ function renderMonitorReprintModal(prompt) {
     printedAt ? `<li><strong>Printed on:</strong> ${escapeHtml(printedAt)}${who ? ` by ${escapeHtml(who)}` : ''}</li>` : '',
   ].filter(Boolean).join('');
   return `
-    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor already graded">
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor already scanned">
       <div class="supplier-notice-modal">
-        <div class="supplier-notice-kicker">Note — already completed</div>
-        <h3>This monitor has already been graded and printed</h3>
-        <p>This monitor has already been reviewed and completed. Do you want to print the same label again, or grade the monitor again (choose a new grade)?</p>
+        <div class="supplier-notice-kicker">Note — already scanned</div>
+        <h3>You already scanned this monitor</h3>
+        <p>This monitor has already been graded and a label was printed. What do you want to do?</p>
         <div class="supplier-notice-box">
           <ul>${details}</ul>
         </div>
         <div class="modal-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-primary" data-action="monitor_regrade" type="button">Grade again</button>
-          <button class="btn btn-secondary" data-action="monitor_reprint_confirm" type="button">Print same label${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
-          <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" data-action="monitor_reprint_confirm" type="button">Print again${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
+          <button class="btn btn-secondary" data-action="monitor_regrade" type="button">Grade again</button>
+          <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Back</button>
         </div>
       </div>
     </div>
