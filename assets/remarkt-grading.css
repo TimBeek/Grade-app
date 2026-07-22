@@ -598,6 +598,16 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 /* Onbekende poorten: bewerkbare kiezer krijgt de volle breedte in de video-banner. */
 .monitor-grade-video-banner-editable { grid-template-columns: 1fr; align-items: stretch; gap: 12px; }
 .monitor-grade-port-editor { width: 100%; }
+/* Compacte poortkiezer op het gradescherm zodat de grade-knoppen bereikbaar blijven. */
+.monitor-grade-port-editor .monitor-manual-port-picker { gap: 6px; }
+.monitor-grade-port-editor .monitor-manual-port-option { padding: 7px 9px; gap: 4px; }
+.monitor-grade-port-editor .monitor-manual-port-option span { font-size: 12px; }
+.monitor-grade-port-editor .monitor-manual-port-count-button { min-height: 30px; }
+/* Belangrijk: laat het monitor-gradescherm ALTIJD scrollen als de inhoud (bv. de
+   bewerkbare poortkiezer) hoger is dan het venster. Zonder dit worden de
+   grade-knoppen onderaan afgekapt en kan een medewerker niet verder. Overschrijft
+   de inline overflow:visible. */
+.monitor-grade-modal { overflow-y: auto !important; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .monitor-grade-button.grade-A { --grade-color: #F6C400; --grade-border: #BA7517; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #FEF7EA; }
 .monitor-grade-button.grade-B { --grade-color: #1473E6; --grade-border: #185FA5; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #F2F8FE; }
 .monitor-grade-button.grade-C { --grade-color: #EF3E86; --grade-border: #993556; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #FDF3F7; }
