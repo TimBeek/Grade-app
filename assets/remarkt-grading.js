@@ -13,6 +13,22 @@ async function initApp() {
   render();
 }
 
+// Voorkom dat een automatische (achtergrond) herlaad het scherm opnieuw
+// opbouwt terwijl iemand een formulier invult. De ingevulde waarden (merk,
+// model, poortcorrecties op "Monitor handmatig invoeren") staan alleen in de
+// DOM en nog niet in STATE, dus een render() zou ze wissen. STATE wordt wel
+// bijgewerkt; de view herbouwt vanzelf zodra de gebruiker verdergaat.
+function liveRenderWouldDisruptInput() {
+  if (typeof STATE !== 'undefined' && STATE && STATE.currentScreen === 'monitor_manual') return true;
+  if (typeof document === 'undefined') return false;
+  const el = document.activeElement;
+  if (!el || el === document.body) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+
 function installSharedStateRefresh() {
   if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
 
@@ -23,7 +39,7 @@ function installSharedStateRefresh() {
     try {
       // Goedkope check: herlaad alleen volledig als de serverdata wijzigde.
       const applied = await syncSharedStateIfChanged();
-      if (applied) render();
+      if (applied && !liveRenderWouldDisruptInput()) render();
     } finally {
       refreshInFlight = false;
     }
@@ -52,7 +68,7 @@ function installLiveUserSync() {
     try {
       // Lichte meta-check; alleen een volledige herlaad als er iets veranderde.
       const changed = await syncSharedStateIfChanged();
-      if (changed) render();
+      if (changed && !liveRenderWouldDisruptInput()) render();
     } finally {
       syncInFlight = false;
     }

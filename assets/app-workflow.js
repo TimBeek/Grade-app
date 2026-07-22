@@ -1729,12 +1729,23 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
 
     recordMonitorLabelPrint(monitor, normalizedGrade);
     const savedLive = await saveSharedDemoState();
+    // Kwam deze monitor uit "Monitor handmatig invoeren"? Dan hoort hij in de
+    // handmatige batch. Breng de medewerker meteen terug naar een leeg
+    // invoerscherm zodat hij de volgende kan invoeren zonder stappen terug.
+    const cameFromManualEntry = Boolean(monitor && monitor.batchId === 'monitor_manual');
     STATE.currentMonitor = null;
     STATE.monitorSelectedGrade = null;
     if (canUseSharedDemoState() && savedLive === false) {
       setAppMessage(`Monitorlabel is geprint voor ${monitor.deviceName || monitor.model || monitor.sticker}, maar live opslaan lukte niet. Refresh of probeer opnieuw voordat je verdergaat.`, 'warning');
     } else {
       setAppMessage(`Monitorlabel geprint voor ${monitor.deviceName || monitor.model || monitor.sticker} met grade ${displayMonitorGrade(normalizedGrade)}.`, 'success');
+    }
+    if (cameFromManualEntry) {
+      STATE.currentScreen = 'monitor_manual';
+      STATE.homeTab = 'monitor';
+      STATE.monitorManualContext = null;
+      STATE.manualError = '';
+      STATE.monitorScanSearch = '';
     }
     return true;
   } catch (error) {

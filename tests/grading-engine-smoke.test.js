@@ -1656,6 +1656,11 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   assert.match(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /Video in: 2x HDMI \/ DP \/ VGA/);
   assert.doesNotMatch(vm.runInContext('monitorPrintCalls[0].rows.join(" | ")', app), /SN |Barcode/);
   assert.equal(vm.runInContext('STATE.monitorLabelPrints[0].grade', app), 'A');
+
+  // Na het graden keert een handmatig ingevoerde monitor terug naar een leeg
+  // invoerscherm zodat de volgende meteen ingevoerd kan worden.
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
+  assert.equal(vm.runInContext('STATE.currentMonitor', app), null);
 });
 
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
