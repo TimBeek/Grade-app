@@ -170,16 +170,17 @@ function renderMonitorReprintModal(prompt) {
     printedAt ? `<li><strong>Geprint op:</strong> ${escapeHtml(printedAt)}${who ? ` door ${escapeHtml(who)}` : ''}</li>` : '',
   ].filter(Boolean).join('');
   return `
-    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor al geprint">
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor al gegradeerd">
       <div class="supplier-notice-modal">
-        <div class="supplier-notice-kicker">Al geprint</div>
-        <h3>Dit monitorlabel is al geprint</h3>
-        <p>Deze monitor is al gegradeerd en geprint. Controleer de gegevens en kies of je hetzelfde label nog een keer wilt printen.</p>
+        <div class="supplier-notice-kicker">Let op — al afgerond</div>
+        <h3>Deze monitor is al gegradeerd en geprint</h3>
+        <p>Deze monitor is eerder al beoordeeld en afgerond. Wil je hetzelfde label nog eens printen, of de monitor opnieuw graden (nieuwe grade kiezen)?</p>
         <div class="supplier-notice-box">
           <ul>${details}</ul>
         </div>
         <div class="modal-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-primary" data-action="monitor_reprint_confirm" type="button">Opnieuw printen${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
+          <button class="btn btn-primary" data-action="monitor_regrade" type="button">Opnieuw graden</button>
+          <button class="btn btn-secondary" data-action="monitor_reprint_confirm" type="button">Zelfde label printen${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
           <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Annuleren</button>
         </div>
       </div>
@@ -278,8 +279,34 @@ function preloadImageAsset(src) {
   img.src = src;
 }
 
+// Logisch "vorige scherm" per pagina, zodat elke pagina een consistente
+// ← Terug-knop krijgt. Grading/resultaat/apparaat-info gaan via back_scan terug
+// naar het scanscherm (dat wist ook de lopende grading). Onbekende/vaste
+// schermen (home, login, wachtwoord wijzigen) geven null: geen terug-knop.
+function getScreenBackAction(screen) {
+  const map = {
+    sticker_scan: 'home',
+    scan: 'home',
+    manual: 'home',
+    monitor_label_scan: 'home',
+    monitor_manual: 'monitor_label_scan',
+    test_start: 'home',
+    import: 'home',
+    accounts: 'home',
+    explain: 'home',
+    analytics: 'home',
+    history: 'analytics',
+    laptop_info: 'back_scan',
+    grading_beginner: 'back_scan',
+    grading_expert: 'back_scan',
+    result: 'back_scan',
+  };
+  return map[screen] || null;
+}
+
 function renderTopbar() {
   const u = STATE.currentUser;
+  const backAction = getScreenBackAction(STATE.currentScreen);
   return `
     <div class="topbar">
       <div>
@@ -289,7 +316,8 @@ function renderTopbar() {
       <div class="topbar-actions">
         ${renderOptionalLanguageToggle()}
         ${renderThemeToggle()}
-        ${STATE.currentScreen !== 'home' ? '<button class="btn-icon" data-action="home">← Home</button>' : ''}
+        ${backAction ? `<button class="btn-icon" data-action="${backAction}">← Terug</button>` : ''}
+        ${backAction && backAction !== 'home' ? '<button class="btn-icon" data-action="home">Home</button>' : ''}
         <button class="btn-icon" data-action="logout">Sign out</button>
       </div>
     </div>
@@ -667,11 +695,12 @@ function renderMonitorGradeChoiceModal(monitor) {
   const modelName = stripMonitorBrandFromModel(monitor.model || deviceName, brandName) || deviceName;
   const canChangeIdentity = Array.isArray(monitor.identityOptions) && monitor.identityOptions.length > 1;
   const supplierNotice = getMonitorDeviceErrorNotice(monitor);
-  const portVisuals = renderMonitorPortVisuals(monitor.videoInputs);
+  const knownPorts = typeof getMonitorEffectiveVideoInputs === 'function' ? getMonitorEffectiveVideoInputs(monitor) : (monitor.videoInputs || '');
+  const portVisuals = renderMonitorPortVisuals(knownPorts);
   const isPrinting = STATE.monitorPrintInProgress === true;
   return `
     <div class="monitor-grade-overlay image-preview-overlay" role="dialog" aria-modal="true" aria-label="Monitor grade kiezen" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1300;background:rgba(23,23,23,0.72);display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;overscroll-behavior:contain;">
-      <div class="monitor-grade-modal image-preview-modal" style="display:block;width:920px;max-width:calc(100% - 32px);max-height:calc(100vh - 32px);margin:0;background:#fff;border:1px solid #E9E9E9;border-top:6px solid #E30613;border-radius:10px;box-shadow:0 24px 80px rgba(0,0,0,0.34);overflow:visible;">
+      <div class="monitor-grade-modal image-preview-modal" style="display:block;width:920px;max-width:calc(100% - 32px);max-height:calc(100vh - 32px);margin:0;border-radius:10px;box-shadow:0 24px 80px rgba(0,0,0,0.34);overflow:visible;">
         <div class="monitor-grade-modal-head">
           <div>
             <span class="ops-section-title">Monitor Grade</span>
@@ -693,13 +722,17 @@ function renderMonitorGradeChoiceModal(monitor) {
             <span>Model</span>
             <strong>${escapeHtml(modelName)}</strong>
           </div>
-          <div class="monitor-grade-fact important monitor-grade-video-banner">
+          <div class="monitor-grade-fact important monitor-grade-video-banner${portVisuals ? '' : ' monitor-grade-video-banner-editable'}">
             <div class="monitor-grade-video-copy">
               <span>Video in</span>
               <strong>Poorten</strong>
-              <small>${portVisuals ? 'Controleer het type en aantal aansluitingen.' : 'Geen video-in bekend.'}</small>
+              <small>${portVisuals ? 'Controleer het type en aantal aansluitingen.' : 'Onbekend — klik hieronder de juiste aansluitingen aan; ze komen op het label.'}</small>
             </div>
-            ${portVisuals}
+            ${portVisuals ? portVisuals : `
+              <div class="monitor-grade-port-editor" data-monitor-grade-port-editor="true">
+                ${renderMonitorManualPortPicker('')}
+              </div>
+            `}
           </div>
         </div>
         ${supplierNotice ? `

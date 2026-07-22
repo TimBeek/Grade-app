@@ -894,6 +894,7 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'monitor_identity_reset',
   'monitor_reprint_confirm',
   'monitor_reprint_cancel',
+  'monitor_regrade',
   'scan',
   'back_scan',
   'login_password',
@@ -1050,13 +1051,33 @@ async function handleAction(action, el) {
       await reprintMonitorLabel(reprintSticker);
       return;
     }
+    case 'monitor_regrade': {
+      // Opnieuw graden: ga terug naar het gradescherm en sta toe dat het
+      // bestaande label overschreven wordt met een nieuwe grade.
+      const regradeSticker = STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker;
+      STATE.monitorReprintPrompt = null;
+      const regradeMonitor = regradeSticker ? getMonitorBySticker(regradeSticker) : null;
+      if (!regradeMonitor) {
+        setAppMessage(`Monitor ${regradeSticker || ''} kon niet worden gevonden om opnieuw te graden.`);
+        break;
+      }
+      STATE.monitorRegradeSticker = regradeSticker;
+      STATE.currentMonitor = regradeMonitor;
+      STATE.currentScreen = 'monitor_label_scan';
+      STATE.homeTab = 'monitor';
+      STATE.monitorSelectedGrade = null;
+      STATE.monitorPrintInProgress = false;
+      setAppMessage('Kies opnieuw een grade — het bestaande label wordt overschreven.', 'info');
+      break;
+    }
     case 'monitor_reprint_cancel':
       STATE.monitorReprintPrompt = null;
+      STATE.monitorRegradeSticker = null;
       STATE.currentMonitor = null;
       STATE.monitorSelectedGrade = null;
       STATE.currentScreen = 'monitor_label_scan';
       STATE.homeTab = 'monitor';
-      setAppMessage('Opnieuw printen geannuleerd.');
+      setAppMessage('Geannuleerd.');
       break;
     case 'monitor_scan_reset':
       STATE.currentMonitor = null;
@@ -1064,6 +1085,7 @@ async function handleAction(action, el) {
       STATE.monitorSelectedGrade = null;
       STATE.monitorScanSearch = '';
       STATE.monitorReprintPrompt = null;
+      STATE.monitorRegradeSticker = null;
       break;
     case 'monitor_identity_reset':
       if (STATE.currentMonitor) {
@@ -1755,10 +1777,14 @@ function selectMonitorForLabel(sticker) {
   STATE.currentMonitor = monitor;
   STATE.monitorSelectedGrade = null;
   STATE.monitorScanSearch = '';
+  // Veiligheid: een verse scan mag nooit blijven hangen op een oude
+  // "bezig met printen"-status of een half afgebroken opnieuw-graden.
+  STATE.monitorPrintInProgress = false;
+  STATE.monitorRegradeSticker = null;
 
   if (isMonitorLabelPrinted(monitor.sticker)) {
-    // Niet doodlopen: toon een duidelijke pop-up met de optie om het bestaande
-    // label opnieuw te printen.
+    // Niet doodlopen: toon een duidelijke waarschuwing met de keuze om opnieuw
+    // te graden of hetzelfde label opnieuw te printen.
     STATE.monitorReprintPrompt = { sticker: monitor.sticker };
     setAppMessage(null);
     render();
@@ -1815,8 +1841,15 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   STATE.monitorSelectedGrade = normalizedGrade;
   STATE.monitorScanSearch = '';
 
-  if (isMonitorLabelPrinted(monitor.sticker)) {
-    // Al geprint: toon de opnieuw-printen pop-up i.p.v. doodlopen.
+  // Bewust opnieuw graden? Dan de "al geprint"-blokkade overslaan en het
+  // bestaande label overschrijven met de nieuwe grade.
+  const isRegrade = Boolean(STATE.monitorRegradeSticker) && (
+    STATE.monitorRegradeSticker === monitor.sticker ||
+    normalizeStickerCode(STATE.monitorRegradeSticker) === normalizeStickerCode(monitor.sticker)
+  );
+
+  if (isMonitorLabelPrinted(monitor.sticker) && !isRegrade) {
+    // Al geprint: toon de duidelijke waarschuwing/pop-up i.p.v. doodlopen.
     STATE.monitorReprintPrompt = { sticker: monitor.sticker };
     STATE.monitorSelectedGrade = null;
     render();
@@ -1829,6 +1862,16 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     STATE.monitorSelectedGrade = null;
     render();
     return false;
+  }
+
+  // Onbekende poorten? Neem de handmatig aangeklikte poorten mee op het label
+  // en leer ze voor volgende monitoren van hetzelfde model.
+  if (!normalizeMonitorVideoInputs(monitor.videoInputs)) {
+    const chosenPorts = readMonitorManualVideoInputs();
+    if (chosenPorts) {
+      monitor.videoInputs = chosenPorts;
+      if (typeof learnMonitorPorts === 'function') learnMonitorPorts(monitor, chosenPorts);
+    }
   }
 
   const preparedWindow = typeof window !== 'undefined' && typeof window.open === 'function'
@@ -1850,7 +1893,13 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
       return false;
     }
 
-    recordMonitorLabelPrint(monitor, normalizedGrade);
+    // Opnieuw graden werkt het bestaande record bij; anders een nieuw record.
+    if (isRegrade) {
+      upsertMonitorLabelPrint(monitor, normalizedGrade);
+      STATE.monitorRegradeSticker = null;
+    } else {
+      recordMonitorLabelPrint(monitor, normalizedGrade);
+    }
     const savedLive = await saveSharedDemoState();
     // Kwam deze monitor uit "Monitor handmatig invoeren"? Dan hoort hij in de
     // handmatige batch. Breng de medewerker meteen terug naar een leeg

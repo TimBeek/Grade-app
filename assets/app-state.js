@@ -32,6 +32,7 @@ const STATE = {
   monitorManualAutoKey: null,
   monitorManualPortsAutoFilled: false,
   monitorReprintPrompt: null,
+  monitorRegradeSticker: null,
   appMessage: null,
   manualMode: false,
   importResult: null,
@@ -1084,6 +1085,44 @@ function enrichMonitorWithPortDatabase(monitor) {
   };
 }
 
+// Effectieve video-in poorten van een monitor: eigen waarde, anders een match
+// uit de (evt. geleerde) poortdatabase. Zo tonen we op het gradescherm ook
+// poorten die eerder handmatig zijn aangeleerd voor hetzelfde model.
+function getMonitorEffectiveVideoInputs(monitor) {
+  if (!monitor) return '';
+  const direct = normalizeMonitorVideoInputs(monitor.videoInputs);
+  if (direct) return direct;
+  const match = findMonitorPortDatabaseMatch(monitor);
+  return match ? normalizeMonitorVideoInputs(match.videoInputs) : '';
+}
+
+// "Leer" de handmatig gekozen poorten voor dit model: voeg ze toe aan de
+// (in-sessie) poortdatabase, zodat een volgende monitor van hetzelfde model ze
+// automatisch toont. Persistente/team-brede opslag is een mogelijke uitbreiding.
+function learnMonitorPorts(monitor, ports) {
+  const clean = normalizeMonitorVideoInputs(ports);
+  // Merk + model opslaan (net als de echte DB-entries) zodat de merkfilter bij
+  // het opzoeken klopt en een volgende monitor van dit model de match vindt.
+  const model = sanitizeExternalText(
+    monitor && (monitor.deviceName || `${monitor.merk || ''} ${monitor.model || ''}`.trim() || monitor.model),
+    180,
+  );
+  if (!clean || !model) return false;
+  const entry = normalizeMonitorPortDatabaseEntry({
+    model,
+    displaySize: (String((monitor && monitor.display) || '').match(/\d{2}/) || [''])[0],
+    resolution: (monitor && monitor.resolution) || '',
+    videoInputs: clean,
+  });
+  if (!entry) return false;
+  const idx = MONITOR_PORT_DATABASE.findIndex(existing => existing.lookupKey === entry.lookupKey);
+  if (idx >= 0) MONITOR_PORT_DATABASE[idx] = entry;
+  else MONITOR_PORT_DATABASE.push(entry);
+  rebuildMonitorPortDatabaseIndex();
+  logAudit('monitor_ports_learned', 'monitor', String((monitor && monitor.sticker) || ''), { model, ports: clean });
+  return true;
+}
+
 function normalizeMonitorIdentityOption(option) {
   if (!option || !option.deviceName) return null;
   const deviceName = sanitizeExternalText(option.deviceName, 180);
@@ -1418,6 +1457,22 @@ function recordMonitorLabelPrint(monitor, grade) {
   MONITOR_LABEL_PRINTED_STICKERS.add(sticker);
   MONITOR_LABEL_PRINTED_STICKERS.add(normalizeStickerCode(sticker));
   logAudit('monitor_label_printed', 'monitor', sticker, { batchNummer: monitor.batchNummer || '', grade: item.grade });
+  return true;
+}
+
+// Werk het bestaande labelprint-record bij (opnieuw graden), of maak een nieuw
+// aan als er nog geen is. Zo overschrijft een her-grade netjes de oude grade.
+function upsertMonitorLabelPrint(monitor, grade) {
+  if (!monitor || !monitor.sticker) return false;
+  const existing = getLatestMonitorLabelPrintForSticker(monitor.sticker);
+  if (!existing) return recordMonitorLabelPrint(monitor, grade);
+  existing.grade = normalizeMonitorGrade(grade);
+  existing.deviceName = sanitizeExternalText(monitor.deviceName, 180) || existing.deviceName;
+  existing.videoInputs = normalizeMonitorVideoInputs(monitor.videoInputs) || existing.videoInputs;
+  existing.printedAt = new Date().toISOString();
+  existing.user_id = STATE.currentUser ? STATE.currentUser.id : existing.user_id;
+  existing.user_naam = STATE.currentUser ? STATE.currentUser.naam : existing.user_naam;
+  logAudit('monitor_label_regraded', 'monitor', String(monitor.sticker), { grade: existing.grade });
   return true;
 }
 

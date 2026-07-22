@@ -1848,8 +1848,9 @@ test('al geprinte monitor opent reprint-popup en print opnieuw met vastgelegde g
   // Scannen van een al-geprinte monitor loopt niet dood maar opent de pop-up.
   vm.runInContext("selectMonitorForLabel('MON-RP-1');", app);
   assert.equal(vm.runInContext('STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker', app), 'MON-RP-1');
-  assert.match(app.__appElement.innerHTML, /Dit monitorlabel is al geprint/);
+  assert.match(app.__appElement.innerHTML, /al gegradeerd en geprint/);
   assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_confirm"/);
+  assert.match(app.__appElement.innerHTML, /data-action="monitor_regrade"/);
   assert.match(app.__appElement.innerHTML, /grade B/);
 
   // Bevestigen => opnieuw printen met de eerder vastgelegde grade (B).
@@ -1864,6 +1865,86 @@ test('al geprinte monitor opent reprint-popup en print opnieuw met vastgelegde g
   await vm.runInContext("handleAction('monitor_reprint_cancel', { dataset: {} });", app);
   assert.equal(vm.runInContext('STATE.monitorReprintPrompt', app), null);
   assert.equal(vm.runInContext('reprintCalls.length', app), 1);
+});
+
+test('opnieuw graden overschrijft grade en blijft niet hangen op grade-klik', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_regrade',
+      nummer: 'RG',
+      leverancier: 'Monitor supplier import',
+      geimporteerd: '1-7-2026',
+      monitors: [{
+        sticker: 'MON-RG-1',
+        deviceName: 'Dell P2422H Monitor',
+        merk: 'Dell', model: 'P2422H',
+        display: '24"', resolution: '1920x1080',
+        videoInputs: 'HDMI / DisplayPort',
+        batchId: 'monitor_batch_regrade', batchNummer: 'RG',
+      }],
+    });
+    rebuildMonitorIndex();
+    rebuildMonitorLabelPrintIndexes();
+    globalThis.printCalls = [];
+    printMonitorLabelFor = async function(monitor, grade) { printCalls.push({ sticker: monitor.sticker, grade }); return true; };
+    recordMonitorLabelPrint(getMonitorBySticker('MON-RG-1'), 'A');
+  `, app);
+
+  // Al geprint => scan opent de waarschuwing (geen dead-end).
+  vm.runInContext("selectMonitorForLabel('MON-RG-1');", app);
+  assert.equal(vm.runInContext('STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker', app), 'MON-RG-1');
+
+  // "Opnieuw graden" => terug naar gradescherm met regrade-toestemming.
+  await vm.runInContext("handleAction('monitor_regrade', { dataset: {} });", app);
+  assert.equal(vm.runInContext('STATE.monitorRegradeSticker', app), 'MON-RG-1');
+  assert.equal(vm.runInContext('STATE.monitorReprintPrompt', app), null);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_label_scan');
+
+  // Nieuwe grade klikken print echt (geen popup-loop/hang) en overschrijft grade.
+  const printed = await vm.runInContext("scanAndPrintMonitorLabel('MON-RG-1', 'C');", app);
+  assert.equal(printed, true);
+  assert.equal(vm.runInContext('printCalls.length', app), 1);
+  assert.equal(vm.runInContext('printCalls[0].grade', app), 'C');
+  assert.equal(vm.runInContext("getLatestMonitorLabelPrintForSticker('MON-RG-1').grade", app), 'C');
+  assert.equal(vm.runInContext('STATE.monitorRegradeSticker', app), null);
+  assert.equal(vm.runInContext('STATE.monitorPrintInProgress', app), false);
+  // Geen dubbel record: nog steeds precies 1 printrecord voor deze barcode.
+  assert.equal(vm.runInContext("STATE.monitorLabelPrints.filter(p => p.sticker === 'MON-RG-1').length", app), 1);
+});
+
+test('elke pagina heeft een logische terug-actie in de topbar', () => {
+  const app = loadAppSandbox();
+  const cases = {
+    sticker_scan: 'home', scan: 'home', monitor_label_scan: 'home',
+    monitor_manual: 'monitor_label_scan', import: 'home', accounts: 'home',
+    analytics: 'home', history: 'analytics', laptop_info: 'back_scan',
+    result: 'back_scan', home: null, login: null, password_change: null,
+  };
+  for (const [screen, expected] of Object.entries(cases)) {
+    assert.equal(vm.runInContext(`getScreenBackAction(${JSON.stringify(screen)})`, app), expected);
+  }
+  vm.runInContext("STATE.currentUser = USERS.find(u => u.id === 'tim'); STATE.currentScreen = 'import';", app);
+  assert.match(vm.runInContext('renderTopbar()', app), /data-action="home"[^>]*>← Terug/);
+  vm.runInContext("STATE.currentScreen = 'home';", app);
+  assert.doesNotMatch(vm.runInContext('renderTopbar()', app), /← Terug/);
+});
+
+test('monitor zonder poortinfo toont bewerkbare poortkiezer op het gradescherm', () => {
+  const app = loadAppSandbox();
+  const html = vm.runInContext(`
+    STATE.currentUser = USERS.find(u => u.id === 'tim');
+    renderMonitorGradeChoiceModal({ sticker: 'X1', deviceName: 'Onbekend Model Z', merk: 'OnbekendMerk', model: 'Model Z', videoInputs: '' });
+  `, app);
+  assert.match(html, /data-monitor-grade-port-editor/);
+  assert.match(html, /data-monitor-video-port-count-button/);
+
+  // Met bekende poorten juist read-only visuals en geen editor.
+  const html2 = vm.runInContext("renderMonitorGradeChoiceModal({ sticker: 'X2', deviceName: 'Dell P2422H', merk: 'Dell', model: 'P2422H', videoInputs: 'HDMI / DisplayPort' });", app);
+  assert.doesNotMatch(html2, /data-monitor-grade-port-editor/);
+  assert.match(html2, /monitor-port-visuals/);
 });
 
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {

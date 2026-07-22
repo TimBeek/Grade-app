@@ -595,6 +595,9 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .monitor-grade-info-panel span { color: #353535; font-size: 12px; line-height: 1.35; }
 .monitor-grade-button em { grid-area: action; align-self: end; font-style: normal; color: var(--grade-text); font-size: 12px; font-weight: 900; }
 .monitor-grade-print-note { margin-top: 12px; color: var(--remarkt-muted); font-size: 13px; }
+/* Onbekende poorten: bewerkbare kiezer krijgt de volle breedte in de video-banner. */
+.monitor-grade-video-banner-editable { grid-template-columns: 1fr; align-items: stretch; gap: 12px; }
+.monitor-grade-port-editor { width: 100%; }
 .monitor-grade-button.grade-A { --grade-color: #F6C400; --grade-border: #BA7517; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #FEF7EA; }
 .monitor-grade-button.grade-B { --grade-color: #1473E6; --grade-border: #185FA5; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #F2F8FE; }
 .monitor-grade-button.grade-C { --grade-color: #EF3E86; --grade-border: #993556; --grade-ink: #171717; --grade-text: #fff; --grade-soft: #FDF3F7; }
