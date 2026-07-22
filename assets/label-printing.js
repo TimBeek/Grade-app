@@ -474,6 +474,23 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
 </DieCutLabel>`;
 }
 
+// Max. wachttijd op de DYMO Connect-service. Als de service geïnstalleerd is
+// maar niet reageert, zou een DYMO-await anders eeuwig blijven hangen ("Working..."
+// blijft staan, geen label, niets opgeslagen). Na deze tijd valt de app terug op
+// het browser-printvenster, dat altijd werkt.
+const DYMO_PRINT_TIMEOUT_MS = 9000;
+
+function withPrintTimeout(promise, ms = DYMO_PRINT_TIMEOUT_MS, label = 'DYMO print timed out') {
+  if (typeof setTimeout !== 'function') return promise;
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== null) clearTimeout(timer);
+  });
+}
+
 async function printRowsWithDymo(rows, type = 'specs', grade = '') {
   const framework = await getReadyDymoFramework();
   validateDymoEnvironment(framework);
@@ -1102,7 +1119,7 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
   const fallbackWindow = options.preparedWindow || createPreparedPrintWindow(type, browserProfile);
 
   try {
-    const printResult = await printRowsWithDymo(rows, type);
+    const printResult = await withPrintTimeout(printRowsWithDymo(rows, type));
     closePreparedPrintWindow(fallbackWindow);
     if (!options.suppressMessage) {
       setAppMessage(`${type === 'problems' ? 'Repair label' : 'Specs label'} sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');
@@ -1134,7 +1151,7 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
   const fallbackWindow = options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile);
 
   try {
-    const printResult = await printRowsWithDymo(rows, 'monitor', normalizedGrade);
+    const printResult = await withPrintTimeout(printRowsWithDymo(rows, 'monitor', normalizedGrade));
     closePreparedPrintWindow(fallbackWindow);
     if (!options.suppressMessage) {
       setAppMessage(`Monitor label sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');

@@ -1947,6 +1947,22 @@ test('monitor zonder poortinfo toont bewerkbare poortkiezer op het gradescherm',
   assert.match(html2, /monitor-port-visuals/);
 });
 
+test('withPrintTimeout laat een hangende DYMO-print niet eeuwig blokkeren', async () => {
+  const app = loadAppSandbox();
+  // Een DYMO-print die nooit reageert -> na de timeout wordt hij afgewezen,
+  // zodat de app kan terugvallen op het browser-printvenster.
+  const result = await vm.runInContext(`
+    (async () => {
+      try { await withPrintTimeout(new Promise(() => {}), 20, 'timeout'); return 'resolved'; }
+      catch (e) { return 'rejected:' + e.message; }
+    })()
+  `, app);
+  assert.equal(result, 'rejected:timeout');
+  // Een snelle print lost gewoon normaal op.
+  const ok = await vm.runInContext("withPrintTimeout(Promise.resolve('printed'), 1000)", app);
+  assert.equal(ok, 'printed');
+});
+
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
   const app = loadAppSandbox();
 
