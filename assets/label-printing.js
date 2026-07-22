@@ -43,6 +43,20 @@ function labelValue(value, fallback = '-') {
   return clean || fallback;
 }
 
+// Verwijdert een dubbel merk aan het begin van een labeltitel, bv.
+// "HP HP EliteBook 840" -> "HP EliteBook 840". Voorkomt dat het merk twee keer
+// achter elkaar op het label komt (import-/correctie-data die het merk al in
+// het modelveld heeft staan).
+function dedupeLabelBrand(text) {
+  const clean = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  if (!clean) return clean;
+  const words = clean.split(' ');
+  while (words.length > 1 && words[0].toLowerCase() === words[1].toLowerCase()) {
+    words.splice(1, 1);
+  }
+  return words.join(' ');
+}
+
 function formatBatteryForLabel(value) {
   const clean = String(value || '').trim();
   if (!clean) return '';
@@ -136,7 +150,7 @@ function getSpecsLabelRows(laptop, result, options = {}) {
   if (gpu) row4Parts.push(gpu);
 
   return [
-    `${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim(),
+    dedupeLabelBrand(`${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim()),
     `${labelValue(laptop.processor)} / ${labelValue(laptop.ram)} / ${labelValue(laptop.ssd)}`,
     options.hideGrade ? `Grade ...... / Touch ${touch}` : `Grade ${grade} / Touch ${touch}`,
     row4Parts.join(' / ')
@@ -169,8 +183,9 @@ function getMonitorLabelRows(monitor, grade) {
   const videoInputs = compactMonitorVideoInputs(monitor.videoInputs);
   // The grade is rendered separately as a large badge, so it is intentionally
   // left out of the text rows here.
+  const title = monitor.deviceName || `${labelValue(monitor.merk, '')} ${labelValue(monitor.model, '')}`.trim();
   return [
-    labelValue(monitor.deviceName || `${labelValue(monitor.merk, '')} ${labelValue(monitor.model, '')}`.trim(), 'Monitor'),
+    labelValue(dedupeLabelBrand(title), 'Monitor'),
     displayParts.length ? displayParts.join(' / ') : 'Scherm',
     `Video in: ${videoInputs}`
   ];

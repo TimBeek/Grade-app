@@ -1967,6 +1967,24 @@ test('withPrintTimeout laat een hangende DYMO-print niet eeuwig blokkeren', asyn
   assert.equal(ok, 'printed');
 });
 
+test('labeltitel zet het merk niet twee keer neer (HP HP)', () => {
+  const app = loadAppSandbox();
+  // Monitor: merk staat al in deviceName én model.
+  const monRows = app.getMonitorLabelRows({ deviceName: 'HP HP E233', merk: 'HP', model: 'HP E233', display: '23"', resolution: '1920x1080', videoInputs: 'HDMI' }, 'A');
+  assert.equal(monRows[0], 'HP E233');
+  // Monitor zonder deviceName: de merk+model-fallback dupliceert het merk.
+  const monRows2 = app.getMonitorLabelRows({ deviceName: '', merk: 'HP', model: 'HP EliteDisplay E233', videoInputs: 'HDMI' }, 'A');
+  assert.equal(monRows2[0], 'HP EliteDisplay E233');
+  // Laptop: idem.
+  const lapRows = app.getSpecsLabelRows({ merk: 'HP', model: 'HP EliteBook 840', processor: 'i5', ram: '8GB', ssd: '256GB', battery: '' }, { eindgrade: 'A' });
+  assert.equal(lapRows[0], 'HP EliteBook 840');
+  // Correcte namen blijven ongewijzigd.
+  const monRows3 = app.getMonitorLabelRows({ deviceName: 'Dell U2415', merk: 'Dell', model: 'U2415', videoInputs: 'HDMI' }, 'A');
+  assert.equal(monRows3[0], 'Dell U2415');
+  // Opbouw van de monitornaam ontdubbelt ook.
+  assert.equal(app.buildMonitorDeviceName('HP', '', 'HP E233'), 'HP E233');
+});
+
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
   const app = loadAppSandbox();
 

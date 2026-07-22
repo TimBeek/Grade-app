@@ -815,11 +815,26 @@ function buildMonitorManualModelName(brand = '', series = '', modelNumber = '') 
   return [cleanSeries, cleanModel].filter(Boolean).join(' ').trim();
 }
 
+// Verwijdert een aan het begin herhaald woord (merk), bv. "HP HP EliteDisplay"
+// -> "HP EliteDisplay", "Dell Dell U2415" -> "Dell U2415". Houdt het eerste
+// (net gespelde) woord aan. Voorkomt dubbele merknamen op labels en in namen.
+function dedupeLeadingBrand(text) {
+  const clean = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  if (!clean) return clean;
+  const words = clean.split(' ');
+  while (words.length > 1 && words[0].toLowerCase() === words[1].toLowerCase()) {
+    words.splice(1, 1);
+  }
+  return words.join(' ');
+}
+
 function buildMonitorDeviceName(brand = '', series = '', modelNumber = '') {
-  return [sanitizeExternalText(brand, 80), buildMonitorManualModelName(brand, series, modelNumber)]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  return dedupeLeadingBrand(
+    [sanitizeExternalText(brand, 80), buildMonitorManualModelName(brand, series, modelNumber)]
+      .filter(Boolean)
+      .join(' ')
+      .trim(),
+  );
 }
 
 function getMonitorManualBrandSuggestions(query = '', limit = 12) {
