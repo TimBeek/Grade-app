@@ -934,7 +934,7 @@ function guardPasswordChangeAction(action) {
   STATE.pendingDecision = null;
   STATE.supplierNotice = null;
   STATE.imagePreview = null;
-  setAppMessage('Kies eerst een eigen wachtwoord voordat je verdergaat.');
+  setAppMessage('Choose your own password before you continue.');
   render();
   return true;
 }
@@ -1031,7 +1031,7 @@ async function handleAction(action, el) {
       break;
     case 'monitor_manual_from_current':
       if (!STATE.currentMonitor) {
-        setAppMessage('Scan of selecteer eerst een monitor die je wilt corrigeren.');
+        setAppMessage('Scan or select a monitor to correct first.');
         break;
       }
       STATE.currentScreen = 'monitor_manual';
@@ -1058,7 +1058,7 @@ async function handleAction(action, el) {
       STATE.monitorReprintPrompt = null;
       const regradeMonitor = regradeSticker ? getMonitorBySticker(regradeSticker) : null;
       if (!regradeMonitor) {
-        setAppMessage(`Monitor ${regradeSticker || ''} kon niet worden gevonden om opnieuw te graden.`);
+        setAppMessage(`Monitor ${regradeSticker || ''} could not be found to grade again.`);
         break;
       }
       STATE.monitorRegradeSticker = regradeSticker;
@@ -1067,7 +1067,7 @@ async function handleAction(action, el) {
       STATE.homeTab = 'monitor';
       STATE.monitorSelectedGrade = null;
       STATE.monitorPrintInProgress = false;
-      setAppMessage('Kies opnieuw een grade — het bestaande label wordt overschreven.', 'info');
+      setAppMessage('Choose a grade again — the existing label will be overwritten.', 'info');
       break;
     }
     case 'monitor_reprint_cancel':
@@ -1077,7 +1077,7 @@ async function handleAction(action, el) {
       STATE.monitorSelectedGrade = null;
       STATE.currentScreen = 'monitor_label_scan';
       STATE.homeTab = 'monitor';
-      setAppMessage('Geannuleerd.');
+      setAppMessage('Cancelled.');
       break;
     case 'monitor_scan_reset':
       STATE.currentMonitor = null;
@@ -1435,12 +1435,12 @@ async function submitMonitorManualEntry() {
   if (!merk || !modelNumber) {
     // Toon de fout zonder het formulier te herbouwen, anders raakt de
     // medewerker alle al ingevulde gegevens kwijt.
-    showMonitorManualError('Merk en modelnummer zijn verplicht.');
+    showMonitorManualError('Brand and model number are required.');
     return false;
   }
 
   if (isMonitorLabelPrinted(sticker)) {
-    showMonitorManualError(`Voor barcode ${sticker} is al een monitorlabel geprint. Gebruik een nieuwe barcode of verwijder eerst het bestaande resultaat.`);
+    showMonitorManualError(`A monitor label has already been printed for barcode ${sticker}. Use a new barcode or remove the existing result first.`);
     return false;
   }
 
@@ -1467,8 +1467,8 @@ async function submitMonitorManualEntry() {
   STATE.manualError = '';
   STATE.monitorManualContext = null;
   setAppMessage(sourceMonitor
-    ? `Monitorgegevens voor barcode ${monitor.sticker} zijn gecorrigeerd. Kies nu de definitieve grade.`
-    : `Handmatige monitor ${monitor.deviceName} is toegevoegd. Kies nu de definitieve grade.`,
+    ? `Monitor details for barcode ${monitor.sticker} have been corrected. Now choose the final grade.`
+    : `Manual monitor ${monitor.deviceName} has been added. Now choose the final grade.`,
     'success');
   await saveSharedDemoState();
   render();
@@ -1487,7 +1487,7 @@ function buildSupplierNoticeForComponent(component, laptop = STATE.currentLaptop
   const notes = issues.join(', ');
   return {
     sticker: laptop.sticker,
-    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Apparaat',
+    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Device',
     componentId: component.id,
     componentName: component.naam,
     issues,
@@ -1508,7 +1508,7 @@ function buildSupplierNoticeForExpert(laptop = STATE.currentLaptop) {
   if (!issues.length) return null;
   return {
     sticker: laptop.sticker,
-    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Apparaat',
+    device: `${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.sticker || 'Device',
     componentId: 'expert',
     componentName: '',
     issues,
@@ -1561,14 +1561,14 @@ async function selectLaptop(sticker) {
 
 async function setCurrentLaptopTouchOverride(value) {
   if (!STATE.currentLaptop) {
-    setAppMessage('Scan eerst een laptop voordat je de touchstatus aanpast.');
+    setAppMessage('Scan a laptop before you change the touch status.');
     render();
     return false;
   }
   const requested = normalizeTouchOverride(value);
   const listValue = isTouchscreenFromDisplay(STATE.currentLaptop) ? 'yes' : 'no';
   const override = setLaptopTouchOverride(STATE.currentLaptop, requested && requested !== listValue ? requested : '');
-  const effectiveTouch = isTouchscreenLaptop(STATE.currentLaptop) ? 'ja' : 'nee';
+  const effectiveTouch = isTouchscreenLaptop(STATE.currentLaptop) ? 'yes' : 'no';
   logAudit('update_touch_override', 'laptop', STATE.currentLaptop.sticker, {
     touchOverride: override || 'list',
     effectiveTouch,
@@ -1576,8 +1576,8 @@ async function setCurrentLaptopTouchOverride(value) {
   await saveSharedDemoState();
   setAppMessage(
     override
-      ? `Touchstatus aangepast naar ${effectiveTouch}. Labels en grading gebruiken deze keuze.`
-      : `Touchstatus staat weer op de leverancierslijst (${effectiveTouch}).`,
+      ? `Touch status changed to ${effectiveTouch}. Labels and grading use this choice.`
+      : `Touch status is back on the supplier list (${effectiveTouch}).`,
     'success'
   );
   render();
@@ -1623,9 +1623,9 @@ function confirmCompletedLaptopReprint(laptop) {
   const sticker = laptop && laptop.sticker ? laptop.sticker : '-';
   const device = `${laptop && laptop.merk ? laptop.merk : ''} ${laptop && laptop.model ? laptop.model : ''}`.trim();
   return confirm(
-    `Deze laptop is al gescand en gegradeerd.\n\n` +
-    `Barcode: ${sticker}${device ? `\nApparaat: ${device}` : ''}\n\n` +
-    `Weet je zeker dat je het label opnieuw wilt printen?`
+    `This laptop has already been scanned and graded.\n\n` +
+    `Barcode: ${sticker}${device ? `\nDevice: ${device}` : ''}\n\n` +
+    `Are you sure you want to print the label again?`
   );
 }
 
@@ -1652,7 +1652,7 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
     STATE.pendingDecision = null;
     STATE.supplierNotice = null;
     STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
-    setAppMessage(`Opnieuw printen voor ${laptop.sticker || cleanSticker} geannuleerd.`);
+    setAppMessage(`Reprint for ${laptop.sticker || cleanSticker} cancelled.`);
     render();
     return false;
   }
@@ -1799,12 +1799,12 @@ function selectMonitorForLabel(sticker) {
 
 function chooseMonitorIdentityForLabel(optionIndex) {
   if (!STATE.currentMonitor) {
-    setAppMessage('Scan or selecteer eerst een monitor.');
+    setAppMessage('Scan or select a monitor first.');
     render();
     return false;
   }
   if (!applyMonitorIdentityChoice(STATE.currentMonitor, optionIndex)) {
-    setAppMessage('Deze monitornaam kon niet worden gekozen. Probeer opnieuw.');
+    setAppMessage('This monitor name could not be selected. Try again.');
     render();
     return false;
   }
@@ -1818,7 +1818,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   const cleanSticker = String(sticker || '').trim();
   const normalizedGrade = normalizeMonitorGrade(grade);
   if (STATE.monitorPrintInProgress) {
-    setAppMessage('Monitorlabel wordt al verwerkt. Wacht even tot printen en opslaan klaar zijn.');
+    setAppMessage('The monitor label is already being processed. Please wait until printing and saving are finished.');
     render();
     return false;
   }
@@ -1857,7 +1857,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   }
 
   if (monitorNeedsIdentityChoice(monitor)) {
-    setAppMessage('Kies eerst welke monitornaam hoort bij deze sticker. Daarna kun je de grade kiezen.');
+    setAppMessage('First choose which monitor name belongs to this sticker. Then you can choose the grade.');
     STATE.currentMonitor = monitor;
     STATE.monitorSelectedGrade = null;
     render();
@@ -1878,7 +1878,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     ? createPreparedPrintWindow('monitor')
     : null;
   STATE.monitorPrintInProgress = true;
-  setAppMessage(`Monitorlabel ${displayMonitorGrade(normalizedGrade)} wordt geprint en opgeslagen...`, 'info');
+  setAppMessage(`Monitor label ${displayMonitorGrade(normalizedGrade)} is being printed and saved...`, 'info');
   render();
 
   try {
@@ -1888,7 +1888,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     });
 
     if (!printed) {
-      setAppMessage(`Monitorlabel voor barcode ${cleanSticker} kon niet automatisch worden geprint. Probeer opnieuw of print via het browservenster.`, 'warning');
+      setAppMessage(`The monitor label for barcode ${cleanSticker} could not be printed automatically. Try again or print via the browser window.`, 'warning');
       STATE.currentMonitor = monitor;
       return false;
     }
@@ -1908,9 +1908,9 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     STATE.currentMonitor = null;
     STATE.monitorSelectedGrade = null;
     if (canUseSharedDemoState() && savedLive === false) {
-      setAppMessage(`Monitorlabel is geprint voor ${monitor.deviceName || monitor.model || monitor.sticker}, maar live opslaan lukte niet. Refresh of probeer opnieuw voordat je verdergaat.`, 'warning');
+      setAppMessage(`The monitor label was printed for ${monitor.deviceName || monitor.model || monitor.sticker}, but live saving failed. Refresh or try again before you continue.`, 'warning');
     } else {
-      setAppMessage(`Monitorlabel geprint voor ${monitor.deviceName || monitor.model || monitor.sticker} met grade ${displayMonitorGrade(normalizedGrade)}.`, 'success');
+      setAppMessage(`Monitor label printed for ${monitor.deviceName || monitor.model || monitor.sticker} with grade ${displayMonitorGrade(normalizedGrade)}.`, 'success');
     }
     if (cameFromManualEntry) {
       STATE.currentScreen = 'monitor_manual';
@@ -1926,7 +1926,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
   } catch (error) {
     reportAppError('Monitor label print failed', error);
     if (typeof closePreparedPrintWindow === 'function') closePreparedPrintWindow(preparedWindow);
-    setAppMessage('Monitorlabel printen is niet voltooid. Probeer opnieuw; de monitor blijft geselecteerd.', 'warning');
+    setAppMessage('Monitor label printing was not completed. Try again; the monitor stays selected.', 'warning');
     STATE.currentMonitor = monitor;
     return false;
   } finally {
@@ -1942,12 +1942,12 @@ async function reprintMonitorLabel(sticker) {
   const cleanSticker = String(sticker || '').trim();
   STATE.monitorReprintPrompt = null;
   if (STATE.monitorPrintInProgress) {
-    setAppMessage('Monitorlabel wordt al verwerkt. Wacht even tot printen klaar is.');
+    setAppMessage('The monitor label is already being processed. Please wait until printing is finished.');
     render();
     return false;
   }
   if (!cleanSticker) {
-    setAppMessage('Geen barcode om opnieuw te printen.');
+    setAppMessage('No barcode to reprint.');
     render();
     return false;
   }
@@ -1955,7 +1955,7 @@ async function reprintMonitorLabel(sticker) {
   const record = typeof getLatestMonitorLabelPrintForSticker === 'function' ? getLatestMonitorLabelPrintForSticker(cleanSticker) : null;
   const liveMonitor = getMonitorBySticker(cleanSticker);
   if (!liveMonitor && !record) {
-    setAppMessage(`Monitor ${cleanSticker} kon niet worden gevonden om opnieuw te printen.`);
+    setAppMessage(`Monitor ${cleanSticker} could not be found to reprint.`);
     render();
     return false;
   }
@@ -1982,24 +1982,24 @@ async function reprintMonitorLabel(sticker) {
     ? createPreparedPrintWindow('monitor')
     : null;
   STATE.monitorPrintInProgress = true;
-  setAppMessage(`Monitorlabel ${displayMonitorGrade(grade)} wordt opnieuw geprint...`, 'info');
+  setAppMessage(`Monitor label ${displayMonitorGrade(grade)} is being reprinted...`, 'info');
   render();
 
   try {
     const printed = await printMonitorLabelFor(target, grade, { preparedWindow, suppressMessage: true });
     if (!printed) {
-      setAppMessage(`Opnieuw printen voor barcode ${cleanSticker} lukte niet. Probeer opnieuw of print via het browservenster.`, 'warning');
+      setAppMessage(`Reprint for barcode ${cleanSticker} failed. Try again or print via the browser window.`, 'warning');
       return false;
     }
     logAudit('monitor_label_reprinted', 'monitor', cleanSticker, { grade, batchNummer: target.batchNummer || '' });
     STATE.currentMonitor = null;
     STATE.monitorSelectedGrade = null;
-    setAppMessage(`Monitorlabel opnieuw geprint voor ${target.deviceName || cleanSticker} met grade ${displayMonitorGrade(grade)}.`, 'success');
+    setAppMessage(`Monitor label reprinted for ${target.deviceName || cleanSticker} with grade ${displayMonitorGrade(grade)}.`, 'success');
     return true;
   } catch (error) {
     reportAppError('Monitor reprint failed', error);
     if (typeof closePreparedPrintWindow === 'function') closePreparedPrintWindow(preparedWindow);
-    setAppMessage('Opnieuw printen is niet voltooid. Probeer opnieuw.', 'warning');
+    setAppMessage('Reprint was not completed. Try again.', 'warning');
     return false;
   } finally {
     STATE.monitorPrintInProgress = false;
@@ -2033,30 +2033,30 @@ async function changeOwnPassword() {
   const password = passwordInput ? String(passwordInput.value || '') : '';
   const confirmation = confirmInput ? String(confirmInput.value || '') : '';
   if (password.length < 8) {
-    setAppMessage('Gebruik minimaal 8 tekens voor je nieuwe wachtwoord.');
+    setAppMessage('Use at least 8 characters for your new password.');
     render();
     return;
   }
   if (password !== confirmation) {
-    setAppMessage('De twee wachtwoorden zijn niet hetzelfde.');
+    setAppMessage('The two passwords are not the same.');
     render();
     return;
   }
   if (password === FIRST_LOGIN_PASSWORD) {
-    setAppMessage('Kies een eigen wachtwoord, niet opnieuw het startwachtwoord.');
+    setAppMessage('Choose your own password, not the start password again.');
     render();
     return;
   }
 
   const user = USERS.find(u => u.id === STATE.currentUser.id);
   if (!user) {
-    setAppMessage('Account kon niet worden bijgewerkt. Log opnieuw in.');
+    setAppMessage('Account could not be updated. Log in again.');
     render();
     return;
   }
   const passwordHash = await hashDemoPassword(password);
   if (user.passwordHash === passwordHash && user.mustChangePassword !== true) {
-    setAppMessage('Kies een nieuw wachtwoord dat anders is dan je huidige wachtwoord.');
+    setAppMessage('Choose a new password that is different from your current password.');
     render();
     return;
   }
@@ -2071,7 +2071,7 @@ async function changeOwnPassword() {
   await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id: user.id } });
   STATE.currentScreen = 'home';
   STATE.homeTab = 'workflow';
-  setAppMessage('Je wachtwoord is opgeslagen.', 'success');
+  setAppMessage('Your password has been saved.', 'success');
   render();
 }
 
@@ -2280,7 +2280,7 @@ async function completeExpertRepairGrade() {
   if (!STATE.currentGrading || STATE.currentGrading.modus !== 'expert') return false;
   const repairText = normalizeText(document.getElementById('expertRepairText') && document.getElementById('expertRepairText').value);
   if (!repairText) {
-    setAppMessage('Vul eerst de reparatie of beschadiging in voor X.');
+    setAppMessage('First enter the repair or damage for X.');
     render();
     return false;
   }
@@ -2362,13 +2362,13 @@ function finishGrading() {
       };
       STATE.currentGrading.result.redenen.unshift({
         type: repairPolicy.labelType === 'production' ? 'warn' : 'bad',
-        text: `${repairPolicy.reason}: specs-label toont grade na reparatie.`,
+        text: `${repairPolicy.reason}: specs label shows grade after repair.`,
       });
     } else {
       STATE.currentGrading.result.eindgrade = 'D';
       STATE.currentGrading.result.redenen.unshift({
         type: 'bad',
-        text: `${repairPolicy.reason}: apparaat blijft X / niet verkoopbaar.`,
+        text: `${repairPolicy.reason}: device stays X / not sellable.`,
       });
     }
   }
@@ -2470,7 +2470,7 @@ async function confirmSaveWithAutomaticLabels() {
     { preparedWindow }
   );
   if (!printResult.ok) {
-    setAppMessage(`Automatic label printing failed. ${printResult.fallbackReason || 'Controleer DYMO Connect en pop-ups in Edge.'} The grading was not saved, so you can confirm again.`);
+    setAppMessage(`Automatic label printing failed. ${printResult.fallbackReason || 'Check DYMO Connect and pop-ups in Edge.'} The grading was not saved, so you can confirm again.`);
     render();
     return;
   }

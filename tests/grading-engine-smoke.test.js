@@ -1041,8 +1041,8 @@ test('afgeronde laptop kan via dezelfde scan opnieuw worden geprint', async () =
   await app.selectLaptop('8460024');
 
   assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
-  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /al gescand en gegradeerd/);
-  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /opnieuw wilt printen/);
+  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /already been scanned and graded/);
+  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /print the label again/);
   assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
   assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
@@ -1085,7 +1085,7 @@ test('afgeronde laptop print niet opnieuw als bevestiging wordt geweigerd', asyn
   assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
   assert.equal(vm.runInContext('window.__printCalls.length', app), 0);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /geannuleerd/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /cancelled/);
 });
 
 test('kleine leveranciersmelding verschijnt inline bij het passende grading-onderdeel', async () => {
@@ -1227,7 +1227,7 @@ test('Class D waarschuwing toont reden uit leverancierslijst', async () => {
   await app.selectLaptop('5460901');
 
   assert.match(app.__appElement.innerHTML, /Supplier marked this device as Class D/);
-  assert.match(app.__appElement.innerHTML, /Reden uit leverancierslijst/);
+  assert.match(app.__appElement.innerHTML, /Reason from supplier list/);
   assert.match(app.__appElement.innerHTML, /Gebarsten scherm/);
   assert.match(app.__appElement.innerHTML, /Missing rubber feet/);
 });
@@ -1495,7 +1495,7 @@ test('monitor labelscan vraagt keuze bij afwijkende device name en account devic
   `, app);
 
   vm.runInContext(`selectMonitorForLabel('8808680');`, app);
-  assert.match(app.__appElement.innerHTML, /Kies de juiste monitornaam/);
+  assert.match(app.__appElement.innerHTML, /Choose the correct monitor name/);
   assert.match(app.__appElement.innerHTML, /HP EliteDisplay E243i/);
   assert.match(app.__appElement.innerHTML, /HP EliteDisplay E231 W23&quot;/);
   assert.doesNotMatch(app.__appElement.innerHTML, /data-monitor-print-grade="A"/);
@@ -1504,7 +1504,7 @@ test('monitor labelscan vraagt keuze bij afwijkende device name en account devic
   assert.equal(vm.runInContext('monitorPrintCalls.length', app), 0);
 
   vm.runInContext(`chooseMonitorIdentityForLabel(1);`, app);
-  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+  assert.match(app.__appElement.innerHTML, /Choose the grade/);
   assert.match(app.__appElement.innerHTML, /HP EliteDisplay E231 W23&quot;/);
   assert.match(app.__appElement.innerHTML, /DisplayPort \/ DVI \/ VGA/);
   assert.equal(vm.runInContext('STATE.currentMonitor.deviceName', app), 'HP EliteDisplay E231 W23"');
@@ -1555,8 +1555,8 @@ test('monitor labelscan print gekozen grade en bewaart monitorhistorie', async (
   assert.doesNotMatch(app.__appElement.innerHTML, /data-monitor-print-grade="C"/);
 
   vm.runInContext(`selectMonitorForLabel('MON-100');`, app);
-  assert.match(app.__appElement.innerHTML, /Kies de grade/);
-  assert.match(app.__appElement.innerHTML, /Lichte gebruikssporen/);
+  assert.match(app.__appElement.innerHTML, /Choose the grade/);
+  assert.match(app.__appElement.innerHTML, /Light signs of use/);
   assert.match(app.__appElement.innerHTML, /Pixel line, dead pixels/);
   assert.match(app.__appElement.innerHTML, /data-monitor-print-grade="C"/);
 
@@ -1620,7 +1620,7 @@ test('monitor grade info opent uitleg zonder label te printen', async () => {
 
   assert.equal(vm.runInContext('monitorPrintCalls.length', app), 0);
   assert.equal(vm.runInContext('STATE.monitorGradeInfoOpen', app), 'B');
-  assert.match(app.__appElement.innerHTML, /Duidelijke gebruikssporen/);
+  assert.match(app.__appElement.innerHTML, /Clear signs of use/);
   assert.match(app.__appElement.innerHTML, /monitor-grade-video-banner/);
   assert.match(app.__appElement.innerHTML, /monitor-port-art/);
   assert.doesNotMatch(app.__appElement.innerHTML, /monitor-grade-info[^>]*title=/);
@@ -1678,16 +1678,16 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
 
   vm.runInContext('render();', app);
   assert.match(app.__appElement.innerHTML, /workflow-monitor-manual-entry-ai\.png/);
-  assert.match(app.__appElement.innerHTML, /monitoren zonder betrouwbare scan/);
-  assert.match(app.__appElement.innerHTML, /Merk en modelnummer zijn verplicht/);
-  assert.match(app.__appElement.innerHTML, /Kies schermformaat/);
+  assert.match(app.__appElement.innerHTML, /monitors without a reliable scan/);
+  assert.match(app.__appElement.innerHTML, /Brand and model number are required/);
+  assert.match(app.__appElement.innerHTML, /Choose screen size/);
   assert.match(app.__appElement.innerHTML, /17 inch/);
   assert.match(app.__appElement.innerHTML, /55 inch/);
   assert.match(app.__appElement.innerHTML, /list="monitorManualBrandSuggestions"/);
   assert.match(app.__appElement.innerHTML, /list="monitorManualSeriesSuggestions"/);
   assert.match(app.__appElement.innerHTML, /list="monitorManualModelSuggestions"/);
-  assert.match(app.__appElement.innerHTML, /Modelnummer \*/);
-  assert.match(app.__appElement.innerHTML, /Labelnaam/);
+  assert.match(app.__appElement.innerHTML, /Model number \*/);
+  assert.match(app.__appElement.innerHTML, /Label name/);
   assert.match(app.__appElement.innerHTML, /data-monitor-video-port="HDMI"/);
   assert.match(app.__appElement.innerHTML, /data-monitor-video-port="DisplayPort"/);
   assert.match(app.__appElement.innerHTML, /data-monitor-video-port="Thunderbolt"/);
@@ -1702,7 +1702,7 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   assert.equal(vm.runInContext('STATE.currentMonitor.deviceName', app), 'Dell P2422H');
   assert.equal(vm.runInContext('STATE.currentMonitor.display', app), '24"');
   assert.equal(vm.runInContext('STATE.currentMonitor.videoInputs', app), '2x HDMI / DisplayPort / VGA');
-  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+  assert.match(app.__appElement.innerHTML, /Choose the grade/);
 
   await app.scanAndPrintMonitorLabel('MON-MAN-1', 'A');
 
@@ -1803,8 +1803,8 @@ test('validatiefout bij handmatige monitor wist de ingevulde velden niet', async
   const before = app.__appElement.innerHTML;
   await vm.runInContext('submitMonitorManualEntry()', app);
 
-  assert.equal(vm.runInContext('STATE.manualError', app), 'Merk en modelnummer zijn verplicht.');
-  assert.equal(vm.runInContext('__mmFields.mm_error.textContent', app), 'Merk en modelnummer zijn verplicht.');
+  assert.equal(vm.runInContext('STATE.manualError', app), 'Brand and model number are required.');
+  assert.equal(vm.runInContext('__mmFields.mm_error.textContent', app), 'Brand and model number are required.');
   assert.equal(vm.runInContext('__mmFields.mm_error.hidden', app), false);
   // Geen render() => ingevulde velden intact en scherm niet herbouwd.
   assert.equal(vm.runInContext('__mmFields.mm_model.value', app), 'E233');
@@ -1848,7 +1848,7 @@ test('al geprinte monitor opent reprint-popup en print opnieuw met vastgelegde g
   // Scannen van een al-geprinte monitor loopt niet dood maar opent de pop-up.
   vm.runInContext("selectMonitorForLabel('MON-RP-1');", app);
   assert.equal(vm.runInContext('STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker', app), 'MON-RP-1');
-  assert.match(app.__appElement.innerHTML, /al gegradeerd en geprint/);
+  assert.match(app.__appElement.innerHTML, /already been graded and printed/);
   assert.match(app.__appElement.innerHTML, /data-action="monitor_reprint_confirm"/);
   assert.match(app.__appElement.innerHTML, /data-action="monitor_regrade"/);
   assert.match(app.__appElement.innerHTML, /grade B/);
@@ -1927,9 +1927,9 @@ test('elke pagina heeft een logische terug-actie in de topbar', () => {
     assert.equal(vm.runInContext(`getScreenBackAction(${JSON.stringify(screen)})`, app), expected);
   }
   vm.runInContext("STATE.currentUser = USERS.find(u => u.id === 'tim'); STATE.currentScreen = 'import';", app);
-  assert.match(vm.runInContext('renderTopbar()', app), /data-action="home"[^>]*>← Terug/);
+  assert.match(vm.runInContext('renderTopbar()', app), /data-action="home"[^>]*>← Back/);
   vm.runInContext("STATE.currentScreen = 'home';", app);
-  assert.doesNotMatch(vm.runInContext('renderTopbar()', app), /← Terug/);
+  assert.doesNotMatch(vm.runInContext('renderTopbar()', app), /← Back/);
 });
 
 test('monitor zonder poortinfo toont bewerkbare poortkiezer op het gradescherm', () => {
@@ -1986,7 +1986,7 @@ test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', a
 
   assert.equal(vm.runInContext('STATE.monitorPrintInProgress', app), true);
   assert.equal(vm.runInContext('STATE.monitorSelectedGrade', app), 'B');
-  assert.match(app.__appElement.innerHTML, /Monitorlabel wordt geprint en live opgeslagen/);
+  assert.match(app.__appElement.innerHTML, /The monitor label is being printed and saved live/);
   assert.match(app.__appElement.innerHTML, /data-monitor-print-grade="B"[^>]*disabled/);
 
   assert.equal(await app.scanAndPrintMonitorLabel('MON-BUSY-1', 'C'), false);
@@ -2039,8 +2039,8 @@ test('monitorlabel printfout laat monitor opnieuw proberen zonder vast te hangen
   assert.equal(vm.runInContext('STATE.currentMonitor.sticker', app), 'MON-FAIL-1');
   assert.equal(vm.runInContext('STATE.monitorLabelPrints.length', app), 0);
   assert.equal(vm.runInContext('monitorPrintCalls.length', app), 1);
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /niet voltooid/);
-  assert.match(app.__appElement.innerHTML, /Kies de grade/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /was not completed/);
+  assert.match(app.__appElement.innerHTML, /Choose the grade/);
 });
 
 test('monitor handmatige invoer gebruikt database autocomplete en vult specs automatisch', () => {
@@ -2134,11 +2134,11 @@ test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezel
     selectMonitorForLabel('MON-FIX-1');
   `, app);
 
-  assert.match(app.__appElement.innerHTML, /Gegevens corrigeren/);
+  assert.match(app.__appElement.innerHTML, /Correct details/);
 
   await app.handleAction('monitor_manual_from_current', { dataset: {} });
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
-  assert.match(app.__appElement.innerHTML, /Monitorgegevens corrigeren/);
+  assert.match(app.__appElement.innerHTML, /Correct monitor details/);
   assert.match(app.__appElement.innerHTML, /MON-FIX-1/);
 
   vm.runInContext(`
@@ -2173,7 +2173,7 @@ test('monitor labelscan kan verkeerde leveranciersgegevens corrigeren voor dezel
   assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').model", app), 'B24-8T W24"');
   assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').videoInputs", app), 'DisplayPort / DVI / HDMI');
   assert.equal(vm.runInContext("getMonitorBySticker('MON-FIX-1').leverancier_class", app), 'Class B');
-  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.match(app.__appElement.innerHTML, /Diepere kras op voet/);
 
   await app.scanAndPrintMonitorLabel('MON-FIX-1', 'B');
@@ -2214,9 +2214,9 @@ test('monitor grade popup toont merk groot en waarschuwt bij grote problemen', (
     selectMonitorForLabel('MON-X-1');
   `, app);
 
-  assert.match(app.__appElement.innerHTML, /<span>Merk<\/span>\s*<strong>HP<\/strong>/);
+  assert.match(app.__appElement.innerHTML, /<span>Brand<\/span>\s*<strong>HP<\/strong>/);
   assert.match(app.__appElement.innerHTML, /<span>Model<\/span>\s*<strong>EliteDisplay E243i<\/strong>/);
-  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.match(app.__appElement.innerHTML, /Device Errors/);
   assert.match(app.__appElement.innerHTML, /Pixel line/);
   assert.doesNotMatch(app.__appElement.innerHTML, /X-grade in Excel/);
@@ -2279,7 +2279,7 @@ test('monitor grade popup toont alleen waarschuwing wanneer Device Errors gevuld
     selectMonitorForLabel('MON-B-1');
   `, app);
 
-  assert.match(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.match(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.match(app.__appElement.innerHTML, /Device Errors/);
   assert.match(app.__appElement.innerHTML, /Diepere kras op voet/);
   assert.match(app.__appElement.innerHTML, /monitor-port-count[^>]*>1x<\/strong><span>DP</);
@@ -2287,16 +2287,16 @@ test('monitor grade popup toont alleen waarschuwing wanneer Device Errors gevuld
   assert.doesNotMatch(app.__appElement.innerHTML, /B-grade in Excel/);
 
   vm.runInContext(`selectMonitorForLabel('MON-B-2');`, app);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Device Errors/);
 
   vm.runInContext(`selectMonitorForLabel('MON-FUNC-1');`, app);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Functional unit/);
   assert.doesNotMatch(app.__appElement.innerHTML, /not refurbished/);
 
   vm.runInContext(`selectMonitorForLabel('MON-A-1');`, app);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Let op: melding leverancier/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Note: supplier notice/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Device Errors/);
 });
 
@@ -2375,8 +2375,8 @@ test('touchcorrectie wordt bewaard in gedeelde state en historie', async () => {
   for (let index = 0; index < lcdIndex; index++) {
     await app.handleAction('next_q', { dataset: {} });
   }
-  assert.match(app.__appElement.innerHTML, /Touch ja/);
-  assert.match(app.__appElement.innerHTML, /Touch nee/);
+  assert.match(app.__appElement.innerHTML, /Touch yes/);
+  assert.match(app.__appElement.innerHTML, /Touch no/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Volgens lijst \(/);
 
   await app.handleAction('set_touch_override', { dataset: { touchOverride: 'no' } });

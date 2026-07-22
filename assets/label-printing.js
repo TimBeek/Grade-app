@@ -1042,15 +1042,15 @@ function createLaptopLabelPrintJob(laptop, result, type = 'specs', options = {})
 function describeDymoPrintError(error) {
   const message = String(error && error.message || error || '').trim();
   if (/web service|not running|not responding/i.test(message)) {
-    return 'DYMO Connect Web Service draait niet of reageert niet op deze pc.';
+    return 'The DYMO Connect Web Service is not running or not responding on this PC.';
   }
   if (/no dymo|no .*labelwriter|printer found/i.test(message)) {
-    return 'Geen aangesloten DYMO LabelWriter gevonden op deze pc.';
+    return 'No connected DYMO LabelWriter found on this PC.';
   }
   if (/browser|supported/i.test(message)) {
-    return 'Deze browser wordt door DYMO Connect niet goed ondersteund.';
+    return 'This browser is not properly supported by DYMO Connect.';
   }
-  return message || 'DYMO direct print is niet beschikbaar op deze pc.';
+  return message || 'DYMO direct printing is not available on this PC.';
 }
 
 async function printLabelJobsWithDymoFallback(jobs, options = {}) {

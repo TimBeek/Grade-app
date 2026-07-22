@@ -11,7 +11,7 @@ function renderComponentNotice(ond) {
   if (!supplierIssues.length && !touchscreenNote && !touchControl) return '';
   return `
     <div class="component-notice component-notice-inline">
-      ${supplierIssues.length ? `<strong>Leveranciersmelding</strong><ul>${supplierIssues.map(issue => `<li>${escapeHtml(ond.naam)} = ${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}
+      ${supplierIssues.length ? `<strong>Supplier notice</strong><ul>${supplierIssues.map(issue => `<li>${escapeHtml(ond.naam)} = ${escapeHtml(issue)}</li>`).join('')}</ul>` : ''}
       ${touchscreenNote ? `<strong>${supplierIssues.length ? 'Touchscreen' : 'Touchscreen'}</strong>This laptop has touch glass. Check scratches, pressure marks and touch response carefully.` : ''}
       ${touchControl}
     </div>
@@ -30,7 +30,7 @@ function renderExpertSupplierInlineNotice(laptop = STATE.currentLaptop) {
   if (!uniqueRows.length) return '';
   return `
     <div class="component-notice component-notice-inline expert-supplier-inline">
-      <strong>Leveranciersmelding</strong>
+      <strong>Supplier notice</strong>
       <ul>${uniqueRows.map(row => `<li>${escapeHtml(row)}</li>`).join('')}</ul>
     </div>
   `;
@@ -39,11 +39,11 @@ function renderExpertSupplierInlineNotice(laptop = STATE.currentLaptop) {
 function renderSupplierDReasonList(laptop) {
   const issues = splitSupplierIssues(laptop);
   if (!issues.length) {
-    return '<div class="repair-alert-reasons">Geen specifieke reden uit de leverancierslijst gevonden.</div>';
+    return '<div class="repair-alert-reasons">No specific reason found in the supplier list.</div>';
   }
   return `
     <div class="repair-alert-reasons">
-      <span>Reden uit leverancierslijst</span>
+      <span>Reason from supplier list</span>
       <ul>${issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}</ul>
     </div>
   `;
@@ -57,12 +57,12 @@ function renderTouchOverrideControls(laptop, context = 'info') {
   return `
     <div class="touch-override-panel${contextClass}">
       <div class="touch-override-copy">
-        <span class="touch-override-title">Touchstatus</span>
-        <span class="touch-override-status">${effectiveTouch ? 'Touch: ja' : 'Touch: nee'} · ${override ? 'handmatig aangepast' : 'volgens lijst'}</span>
+        <span class="touch-override-title">Touch status</span>
+        <span class="touch-override-status">${effectiveTouch ? 'Touch: yes' : 'Touch: no'} · ${override ? 'manually adjusted' : 'from list'}</span>
       </div>
-      <div class="touch-override-actions" role="group" aria-label="Touchstatus corrigeren">
-        <button class="touch-option ${effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="yes" type="button">Touch ja</button>
-        <button class="touch-option ${!effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="no" type="button">Touch nee</button>
+      <div class="touch-override-actions" role="group" aria-label="Correct touch status">
+        <button class="touch-option ${effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="yes" type="button">Touch yes</button>
+        <button class="touch-option ${!effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="no" type="button">Touch no</button>
       </div>
     </div>
   `;
@@ -129,16 +129,16 @@ function renderSupplierNoticeModal(notice) {
     : splitSupplierIssues({ meldingen: notice.notes || '' });
   const componentName = notice.componentName || '';
   return `
-    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Leveranciersmelding">
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Supplier notice">
       <div class="supplier-notice-modal">
-        <div class="supplier-notice-kicker">Leveranciersmelding</div>
-        <h3>${componentName ? escapeHtml(componentName) + ': ' : ''}controleer deze melding</h3>
-        <p>${escapeHtml(notice.device || 'Dit apparaat')} heeft een leveranciersmelding${componentName ? ' voor dit onderdeel' : ''}. Bevestig dat je dit hebt gelezen voordat je hier de ReMarkt keuze maakt.</p>
+        <div class="supplier-notice-kicker">Supplier notice</div>
+        <h3>${componentName ? escapeHtml(componentName) + ': ' : ''}review this notice</h3>
+        <p>${escapeHtml(notice.device || 'This device')} has a supplier notice${componentName ? ' for this part' : ''}. Confirm that you have read this before making the ReMarkt choice here.</p>
         <div class="supplier-notice-box">
           ${notes.length ? `<ul>${notes.map(note => `<li>${componentName ? `<strong>${escapeHtml(componentName)}</strong> = ` : ''}${escapeHtml(note)}</li>`).join('')}</ul>` : escapeHtml(notice.notes || '-')}
         </div>
         <div class="modal-actions">
-          <button class="btn btn-primary" data-action="confirm_supplier_notice" type="button">Gelezen, doorgaan</button>
+          <button class="btn btn-primary" data-action="confirm_supplier_notice" type="button">Read, continue</button>
         </div>
       </div>
     </div>
@@ -152,7 +152,7 @@ function renderMonitorReprintModal(prompt) {
   const device = (monitor && monitor.deviceName)
     || (record && record.deviceName)
     || (record && `${record.merk || ''} ${record.model || ''}`.trim())
-    || 'Deze monitor';
+    || 'This monitor';
   const gradeRaw = record ? record.grade : (STATE.monitorSelectedGrade || '');
   const grade = gradeRaw ? displayMonitorGrade(normalizeMonitorGrade(gradeRaw)) : '';
   let printedAt = '';
@@ -164,24 +164,24 @@ function renderMonitorReprintModal(prompt) {
   }
   const who = record && record.user_naam ? record.user_naam : '';
   const details = [
-    `<li><strong>Apparaat:</strong> ${escapeHtml(device)}</li>`,
+    `<li><strong>Device:</strong> ${escapeHtml(device)}</li>`,
     `<li><strong>Barcode:</strong> ${escapeHtml(sticker)}</li>`,
     grade ? `<li><strong>Grade:</strong> ${escapeHtml(grade)}</li>` : '',
-    printedAt ? `<li><strong>Geprint op:</strong> ${escapeHtml(printedAt)}${who ? ` door ${escapeHtml(who)}` : ''}</li>` : '',
+    printedAt ? `<li><strong>Printed on:</strong> ${escapeHtml(printedAt)}${who ? ` by ${escapeHtml(who)}` : ''}</li>` : '',
   ].filter(Boolean).join('');
   return `
-    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor al gegradeerd">
+    <div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-label="Monitor already graded">
       <div class="supplier-notice-modal">
-        <div class="supplier-notice-kicker">Let op — al afgerond</div>
-        <h3>Deze monitor is al gegradeerd en geprint</h3>
-        <p>Deze monitor is eerder al beoordeeld en afgerond. Wil je hetzelfde label nog eens printen, of de monitor opnieuw graden (nieuwe grade kiezen)?</p>
+        <div class="supplier-notice-kicker">Note — already completed</div>
+        <h3>This monitor has already been graded and printed</h3>
+        <p>This monitor has already been reviewed and completed. Do you want to print the same label again, or grade the monitor again (choose a new grade)?</p>
         <div class="supplier-notice-box">
           <ul>${details}</ul>
         </div>
         <div class="modal-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-primary" data-action="monitor_regrade" type="button">Opnieuw graden</button>
-          <button class="btn btn-secondary" data-action="monitor_reprint_confirm" type="button">Zelfde label printen${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
-          <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Annuleren</button>
+          <button class="btn btn-primary" data-action="monitor_regrade" type="button">Grade again</button>
+          <button class="btn btn-secondary" data-action="monitor_reprint_confirm" type="button">Print same label${grade ? ` (grade ${escapeHtml(grade)})` : ''}</button>
+          <button class="btn btn-secondary" data-action="monitor_reprint_cancel" type="button">Cancel</button>
         </div>
       </div>
     </div>
@@ -228,19 +228,19 @@ function renderLogin() {
 }
 
 function renderPasswordChange() {
-  const userName = STATE.currentUser && STATE.currentUser.naam ? STATE.currentUser.naam : 'je account';
+  const userName = STATE.currentUser && STATE.currentUser.naam ? STATE.currentUser.naam : 'your account';
   return `
     <div class="screen" style="max-width: 560px;">
       <div class="login-card">
-        <h1>Nieuw wachtwoord</h1>
-        <p>${escapeHtml(userName)}, kies een eigen wachtwoord voordat je verdergaat.</p>
+        <h1>New password</h1>
+        <p>${escapeHtml(userName)}, choose your own password before you continue.</p>
         <div class="login-fields">
-          <label class="form-label" for="newOwnPassword">Nieuw wachtwoord</label>
-          <input type="password" class="form-input" id="newOwnPassword" placeholder="Minimaal 8 tekens" autocomplete="new-password">
-          <label class="form-label" for="confirmOwnPassword">Herhaal wachtwoord</label>
-          <input type="password" class="form-input" id="confirmOwnPassword" placeholder="Nogmaals hetzelfde wachtwoord" autocomplete="new-password">
-          <button class="btn btn-primary" data-action="change_own_password">Wachtwoord opslaan</button>
-          <div class="field-help">Na het opslaan blijft dit wachtwoord bewaard voor de volgende live tunnels.</div>
+          <label class="form-label" for="newOwnPassword">New password</label>
+          <input type="password" class="form-input" id="newOwnPassword" placeholder="At least 8 characters" autocomplete="new-password">
+          <label class="form-label" for="confirmOwnPassword">Repeat password</label>
+          <input type="password" class="form-input" id="confirmOwnPassword" placeholder="The same password again" autocomplete="new-password">
+          <button class="btn btn-primary" data-action="change_own_password">Save password</button>
+          <div class="field-help">After saving, this password is kept for the next live tunnels.</div>
         </div>
       </div>
     </div>
@@ -316,7 +316,7 @@ function renderTopbar() {
       <div class="topbar-actions">
         ${renderOptionalLanguageToggle()}
         ${renderThemeToggle()}
-        ${backAction ? `<button class="btn-icon" data-action="${backAction}">← Terug</button>` : ''}
+        ${backAction ? `<button class="btn-icon" data-action="${backAction}">← Back</button>` : ''}
         ${backAction && backAction !== 'home' ? '<button class="btn-icon" data-action="home">Home</button>' : ''}
         <button class="btn-icon" data-action="logout">Sign out</button>
       </div>
@@ -372,8 +372,8 @@ function renderDecisionModal(decision) {
             <button class="decision-option ${option.image ? 'has-image' : ''}" data-decision-option="${index}" type="button">
               ${option.image ? `
                 <span class="decision-image-wrap">
-                  <img src="${escapeHtml(option.image)}" alt="${escapeHtml(option.label)} voorbeeld" loading="eager" decoding="async" fetchpriority="high" width="640" height="426">
-                  <span class="decision-zoom-action" data-image-preview="true" data-preview-src="${escapeHtml(option.image)}" data-preview-label="${escapeHtml(option.label)}" role="button" aria-label="Zoom afbeelding" title="Zoom afbeelding" onpointerdown="openImagePreviewFromElement(this); return false;" ontouchstart="openImagePreviewFromElement(this); return false;" onclick="openImagePreviewFromElement(this); return false;">
+                  <img src="${escapeHtml(option.image)}" alt="${escapeHtml(option.label)} example" loading="eager" decoding="async" fetchpriority="high" width="640" height="426">
+                  <span class="decision-zoom-action" data-image-preview="true" data-preview-src="${escapeHtml(option.image)}" data-preview-label="${escapeHtml(option.label)}" role="button" aria-label="Zoom image" title="Zoom image" onpointerdown="openImagePreviewFromElement(this); return false;" ontouchstart="openImagePreviewFromElement(this); return false;" onclick="openImagePreviewFromElement(this); return false;">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="M15 15l5 5"></path></svg>
                     <span>Zoom</span>
                   </span>
@@ -525,9 +525,9 @@ function renderWorkflowIntroBanner(type) {
     },
     'monitor-manual': {
       image: 'assets/workflow-monitor-manual-entry-ai.png',
-      title: 'Handmatige invoer',
-      text: 'Gebruik dit voor losse monitoren of wanneer de scan niet klopt. Vul merk en model verplicht in, controleer video-in en optionele specificaties en kies daarna de juiste grade voor het label.',
-      steps: ['Vul merk en model in', 'Controleer video-in', 'Kies grade', 'Print label'],
+      title: 'Manual entry',
+      text: 'Use this for loose monitors or when the scan is incorrect. Enter brand and model (required), check video in and optional specifications, then choose the correct grade for the label.',
+      steps: ['Enter brand and model', 'Check video in', 'Choose grade', 'Print label'],
     },
     manual: {
       image: 'assets/workflow-manual-entry-banner.png',
@@ -563,26 +563,26 @@ function getMonitorGradeOptions() {
     {
       grade: 'A',
       label: 'A-grade',
-      title: 'Lichte gebruikssporen',
-      detail: 'Kleine krasjes of lichte sporen. De monitor is netjes en volledig hardwaretechnisch in orde.',
+      title: 'Light signs of use',
+      detail: 'Small scratches or light marks. The monitor is tidy and fully sound in terms of hardware.',
     },
     {
       grade: 'B',
       label: 'B-grade',
-      title: 'Duidelijke gebruikssporen',
-      detail: 'Meer gebruikssporen dan A-grade, zoals diepere krassen en/of kleine deukjes.',
+      title: 'Clear signs of use',
+      detail: 'More signs of use than A-grade, such as deeper scratches and/or small dents.',
     },
     {
       grade: 'C',
       label: 'C-grade',
-      title: 'Forse gebruikssporen',
-      detail: 'Diepere krassen, grotere deuken of mogelijke breuken in de kappen. De monitor werkt hardwaretechnisch 100%.',
+      title: 'Heavy signs of use',
+      detail: 'Deeper scratches, larger dents or possible cracks in the housing. The monitor works 100% in terms of hardware.',
     },
     {
       grade: 'D',
       label: 'X-grade',
-      title: 'Defect of reparatie',
-      detail: 'Pixel line, dead pixels, cracked screen, schermflikkering, barsten groter dan een duim, no power of defecte videopoorten.',
+      title: 'Defective or repair',
+      detail: 'Pixel line, dead pixels, cracked screen, screen flicker, cracks larger than a thumb, no power or faulty video ports.',
     },
   ];
 }
@@ -640,8 +640,8 @@ function getMonitorDeviceErrorNotice(monitor) {
   const signals = getMonitorDeviceErrorSignals(monitor);
   if (!signals.length) return null;
   return {
-    title: 'Let op: melding leverancier',
-    detail: 'Controleer deze Device Errors voordat je de definitieve ReMarkt grade kiest.',
+    title: 'Note: supplier notice',
+    detail: 'Check these Device Errors before you choose the final ReMarkt grade.',
     signals,
   };
 }
@@ -660,26 +660,26 @@ function renderMonitorIdentityChoiceModal(monitor) {
   if (options.length < 2) return '';
   const currentName = monitor.deviceName || `${monitor.merk || ''} ${monitor.model || ''}`.trim() || 'Monitor';
   return `
-    <div class="monitor-grade-overlay" role="dialog" aria-modal="true" aria-label="Juiste monitornaam kiezen">
+    <div class="monitor-grade-overlay" role="dialog" aria-modal="true" aria-label="Choose the correct monitor name">
       <div class="monitor-grade-modal monitor-identity-modal">
         <div class="monitor-grade-modal-head">
           <div>
-            <span class="ops-section-title">Monitor Controle</span>
-            <h3>Kies de juiste monitornaam</h3>
+            <span class="ops-section-title">Monitor Check</span>
+            <h3>Choose the correct monitor name</h3>
             <p>${escapeHtml(currentName)} · Barcode ${escapeHtml(monitor.sticker)}</p>
           </div>
-          <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button">Andere monitor</button>
+          <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button">Other monitor</button>
         </div>
         <div class="monitor-identity-warning">
-          Deze sticker heeft twee verschillende monitornamen in de leverancierslijst. Kies welke monitor fysiek op de werktafel staat voordat je de grade kiest.
+          This barcode has two different monitor names in the supplier list. Choose which monitor is physically on the workbench before you choose the grade.
         </div>
         <div class="monitor-identity-options">
           ${options.map((option, index) => `
             <button class="monitor-identity-option" data-monitor-identity-choice="${index}" type="button">
               <span class="monitor-identity-source">${escapeHtml(option.source)}</span>
               <strong>${escapeHtml(option.deviceName)}</strong>
-              <span class="monitor-identity-meta">Model ${escapeHtml(option.model || option.deviceName)} · Video in ${escapeHtml(option.videoInputs || 'onbekend')}</span>
-              ${option.monitorDatabaseModel ? `<small>Match database: ${escapeHtml(option.monitorDatabaseModel)}</small>` : ''}
+              <span class="monitor-identity-meta">Model ${escapeHtml(option.model || option.deviceName)} · Video in ${escapeHtml(option.videoInputs || 'unknown')}</span>
+              ${option.monitorDatabaseModel ? `<small>Database match: ${escapeHtml(option.monitorDatabaseModel)}</small>` : ''}
             </button>
           `).join('')}
         </div>
@@ -691,7 +691,7 @@ function renderMonitorIdentityChoiceModal(monitor) {
 function renderMonitorGradeChoiceModal(monitor) {
   if (!monitor) return '';
   const deviceName = monitor.deviceName || `${monitor.merk} ${monitor.model}`.trim() || 'Monitor';
-  const brandName = monitor.merk || deviceName.split(' ')[0] || 'Onbekend';
+  const brandName = monitor.merk || deviceName.split(' ')[0] || 'Unknown';
   const modelName = stripMonitorBrandFromModel(monitor.model || deviceName, brandName) || deviceName;
   const canChangeIdentity = Array.isArray(monitor.identityOptions) && monitor.identityOptions.length > 1;
   const supplierNotice = getMonitorDeviceErrorNotice(monitor);
@@ -699,23 +699,23 @@ function renderMonitorGradeChoiceModal(monitor) {
   const portVisuals = renderMonitorPortVisuals(knownPorts);
   const isPrinting = STATE.monitorPrintInProgress === true;
   return `
-    <div class="monitor-grade-overlay image-preview-overlay" role="dialog" aria-modal="true" aria-label="Monitor grade kiezen" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1300;background:rgba(23,23,23,0.72);display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;overscroll-behavior:contain;">
+    <div class="monitor-grade-overlay image-preview-overlay" role="dialog" aria-modal="true" aria-label="Choose monitor grade" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1300;background:rgba(23,23,23,0.72);display:flex;align-items:center;justify-content:center;padding:16px;overflow:hidden;overscroll-behavior:contain;">
       <div class="monitor-grade-modal image-preview-modal" style="display:block;width:920px;max-width:calc(100% - 32px);max-height:calc(100vh - 32px);margin:0;border-radius:10px;box-shadow:0 24px 80px rgba(0,0,0,0.34);overflow:visible;">
         <div class="monitor-grade-modal-head">
           <div>
             <span class="ops-section-title">Monitor Grade</span>
-            <h3>Kies de grade</h3>
+            <h3>Choose the grade</h3>
             <p>Barcode ${escapeHtml(monitor.sticker)}</p>
           </div>
           <div class="monitor-grade-actions">
-            ${canChangeIdentity ? `<button class="btn btn-secondary" data-action="monitor_identity_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Andere naam kiezen</button>` : ''}
-            <button class="btn btn-secondary" data-action="monitor_manual_from_current" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Gegevens corrigeren</button>
-            <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Andere monitor</button>
+            ${canChangeIdentity ? `<button class="btn btn-secondary" data-action="monitor_identity_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Choose different name</button>` : ''}
+            <button class="btn btn-secondary" data-action="monitor_manual_from_current" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Correct details</button>
+            <button class="btn btn-secondary" data-action="monitor_scan_reset" type="button" ${isPrinting ? 'disabled aria-disabled="true"' : ''}>Other monitor</button>
           </div>
         </div>
         <div class="monitor-grade-overview">
           <div class="monitor-grade-fact monitor-grade-fact-hero">
-            <span>Merk</span>
+            <span>Brand</span>
             <strong>${escapeHtml(brandName)}</strong>
           </div>
           <div class="monitor-grade-fact">
@@ -725,8 +725,8 @@ function renderMonitorGradeChoiceModal(monitor) {
           <div class="monitor-grade-fact important monitor-grade-video-banner${portVisuals ? '' : ' monitor-grade-video-banner-editable'}">
             <div class="monitor-grade-video-copy">
               <span>Video in</span>
-              <strong>Poorten</strong>
-              <small>${portVisuals ? 'Controleer het type en aantal aansluitingen.' : 'Onbekend — klik hieronder de juiste aansluitingen aan; ze komen op het label.'}</small>
+              <strong>Ports</strong>
+              <small>${portVisuals ? 'Check the type and number of connections.' : 'Unknown — click the correct connections below; they will appear on the label.'}</small>
             </div>
             ${portVisuals ? portVisuals : `
               <div class="monitor-grade-port-editor" data-monitor-grade-port-editor="true">
@@ -746,8 +746,8 @@ function renderMonitorGradeChoiceModal(monitor) {
           </div>
         ` : ''}
         <div class="monitor-grade-section-head">
-          <strong>Kies definitieve ReMarkt grade</strong>
-          <span>${isPrinting ? 'Monitorlabel wordt geprint en live opgeslagen.' : 'Na de keuze wordt het monitorlabel direct geprint.'}</span>
+          <strong>Choose final ReMarkt grade</strong>
+          <span>${isPrinting ? 'The monitor label is being printed and saved live.' : 'After your choice the monitor label is printed immediately.'}</span>
         </div>
         <div class="monitor-grade-rule-grid">
           ${getMonitorGradeOptions().map(option => `
@@ -759,11 +759,11 @@ function renderMonitorGradeChoiceModal(monitor) {
                 <strong>${escapeHtml(option.title)}</strong>
                 <span>${escapeHtml(option.detail)}</span>
               </span>
-              <em>${isPrinting && STATE.monitorSelectedGrade === option.grade ? 'Bezig...' : 'Print label'}</em>
+              <em>${isPrinting && STATE.monitorSelectedGrade === option.grade ? 'Working...' : 'Print label'}</em>
             </button>
           `).join('')}
         </div>
-        <p class="monitor-grade-print-note">${isPrinting ? 'Even wachten tot het printvenster en live opslaan klaar zijn.' : 'Na het kiezen van de grade print de app automatisch het monitorlabel.'}</p>
+        <p class="monitor-grade-print-note">${isPrinting ? 'Please wait until the print dialog and live saving are finished.' : 'After you choose the grade, the app automatically prints the monitor label.'}</p>
       </div>
     </div>
   `;
@@ -833,13 +833,13 @@ function getMonitorManualPortSelections(videoInputs) {
 function renderMonitorManualPortPicker(videoInputs) {
   const selections = getMonitorManualPortSelections(videoInputs);
   return `
-    <div class="monitor-manual-port-picker" aria-label="Video-in poorten kiezen">
+    <div class="monitor-manual-port-picker" aria-label="Choose video in ports">
       ${selections.map(selection => `
         <div class="monitor-manual-port-option">
           <span>${escapeHtml(selection.label)}</span>
           <div class="monitor-manual-port-row">
             <input type="hidden" data-monitor-video-port-count-select data-monitor-video-port="${escapeHtml(selection.port)}" value="${escapeHtml(String(selection.count))}">
-            <div class="monitor-manual-port-buttons" role="group" aria-label="${escapeHtml(`${selection.label} aantal`)}">
+            <div class="monitor-manual-port-buttons" role="group" aria-label="${escapeHtml(`${selection.label} count`)}">
               ${[0, 1, 2].map(count => `
                 <button class="monitor-manual-port-count-button ${selection.count === count ? 'active' : ''}" type="button" data-monitor-video-port-count-button data-port="${escapeHtml(selection.port)}" data-count="${count}" aria-pressed="${selection.count === count ? 'true' : 'false'}">${count}x</button>
               `).join('')}
@@ -871,7 +871,7 @@ function renderMonitorManualDatabaseLists(merkValue = '', serieValue = '', model
 function renderMonitorDisplaySizeOptions(selectedDisplay) {
   const selected = String(selectedDisplay || '').match(/\d{2}/);
   const selectedValue = selected ? selected[0] : '';
-  const options = ['<option value="">Kies schermformaat</option>'];
+  const options = ['<option value="">Choose screen size</option>'];
   for (let inch = 17; inch <= 55; inch += 1) {
     // Waarde is de kale inch (zonder "-teken): een letterlijke " in een
     // dubbel-quoted attribuut breekt het attribuut af, waardoor de waarde
@@ -1202,9 +1202,9 @@ function renderMonitorWorkflowDashboard(data) {
           <button class="action-card manual-work" data-action="monitor_manual">
             <div class="action-icon">${uiIcon('manualEntry')}</div>
             <div class="action-text">
-              <p class="action-title">Handmatige invoer</p>
-              <p class="action-desc">Voer merk, model en monitorspecificaties handmatig in en kies daarna de grade.</p>
-              <p class="action-sub">Voor losse monitoren of correcties</p>
+              <p class="action-title">Manual entry</p>
+              <p class="action-desc">Enter brand, model and monitor specifications manually, then choose the grade.</p>
+              <p class="action-sub">For loose monitors or corrections</p>
             </div>
           </button>
         </div>
@@ -1375,7 +1375,7 @@ function renderExplain() {
     <div class="screen explain-screen">
       <div class="explain-hero">
         <div>
-          <div class="explain-eyebrow">Simpel uitgelegd</div>
+          <div class="explain-eyebrow">Explained simply</div>
           <h1>How grading works</h1>
           <p>
             The app scores visible condition, functional risk and customer impact. Light wear counts softly.
@@ -1529,7 +1529,7 @@ function renderStickerScan() {
                     <button class="batch-select" data-sticker-label="${escapeHtml(l.sticker)}">
                       <div class="batch-info">
                         <div class="batch-num">${escapeHtml(l.merk)} ${escapeHtml(l.model)}</div>
-                        <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · ${escapeHtml(l.display || '-')}${l.battery ? ' · accu ' + escapeHtml(l.battery) : ''}</div>
+                        <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · ${escapeHtml(l.display || '-')}${l.battery ? ' · battery ' + escapeHtml(l.battery) : ''}</div>
                       </div>
                     </button>
                     <span class="badge badge-active">Blank grade</span>
@@ -1543,8 +1543,8 @@ function renderStickerScan() {
       </div>
 
       <div class="card">
-        <h3>Opnieuw Printen</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">Zoek of scan een afgerond apparaat om het label nogmaals te printen.</p>
+        <h3>Reprint</h3>
+        <p class="card-sub" style="margin-bottom: 14px;">Search or scan a completed device to print the label again.</p>
         ${filteredCompleted.length ? `
           <div class="batch-list">
             ${filteredCompleted.map(l => {
@@ -1557,12 +1557,12 @@ function renderStickerScan() {
                       <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${historyItem ? `grade ${escapeHtml(displayGrade(normalizeSupplierGrade(historyItem.grade)))}` : 'blank grade'} · batch ${escapeHtml(l.batchNummer || '-')}</div>
                     </div>
                   </button>
-                  <span class="badge badge-active">Herprint</span>
+                  <span class="badge badge-active">Reprint</span>
                 </div>
               `;
             }).join('')}
           </div>
-        ` : `<p class="card-sub">Nog geen afgeronde apparaten gevonden${query ? ' voor deze zoekopdracht' : ''}.</p>`}
+        ` : `<p class="card-sub">No completed devices found yet${query ? ' for this search' : ''}.</p>`}
       </div>
     </div>
   `;
@@ -1582,9 +1582,9 @@ function renderMonitorLabelScan() {
       ${selectedMonitor ? (monitorNeedsIdentityChoice(selectedMonitor) ? renderMonitorIdentityChoiceModal(selectedMonitor) : renderMonitorGradeChoiceModal(selectedMonitor)) : ''}
       <div class="card">
         <h3>Label Scan</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">Scan eerst de monitor. Daarna kies je A, B, C of X in de pop-up en print de app direct het monitorlabel.</p>
+        <p class="card-sub" style="margin-bottom: 14px;">Scan the monitor first. Then choose A, B, C or X in the pop-up and the app prints the monitor label immediately.</p>
         <div class="nav-buttons" style="border-top: 0; padding: 0 0 12px;">
-          <button class="btn btn-secondary" data-action="monitor_manual" type="button">Monitor handmatig invoeren</button>
+          <button class="btn btn-secondary" data-action="monitor_manual" type="button">Enter monitor manually</button>
         </div>
         <input type="text" class="scan-input" id="scanInput" placeholder="Scan or type monitor barcode..." autofocus inputmode="numeric">
         <div class="scan-tools">
@@ -1593,7 +1593,7 @@ function renderMonitorLabelScan() {
       </div>
 
       <div class="card">
-        <h3>Monitoren Te Labelen</h3>
+        <h3>Monitors to Label</h3>
         <p class="card-sub" style="margin-bottom: 14px;">${filteredMonitors.length} shown of ${availableMonitors.length} waiting${completedCount ? ` · ${completedCount} printed` : ''}</p>
         ${availableMonitors.length ? MONITOR_BATCHES.map(batch => {
           const batchMonitors = batch.monitors.filter(monitor => !isMonitorLabelPrinted(monitor.sticker) && monitorMatchesScanQuery(monitor, query));
@@ -1610,7 +1610,7 @@ function renderMonitorLabelScan() {
                     <button class="batch-select" data-monitor-select="${escapeHtml(monitor.sticker)}">
                       <div class="batch-info">
                         <div class="batch-num">${escapeHtml(monitor.deviceName || `${monitor.merk} ${monitor.model}`.trim() || 'Monitor')}</div>
-                        <div class="batch-meta">Barcode ${escapeHtml(monitor.sticker)} · SN ${escapeHtml(monitor.serial || '-')} · ${escapeHtml(monitor.display || '-')} · ${escapeHtml(monitor.resolution || '-')} · Video in ${escapeHtml(monitor.videoInputs || 'onbekend')}</div>
+                        <div class="batch-meta">Barcode ${escapeHtml(monitor.sticker)} · SN ${escapeHtml(monitor.serial || '-')} · ${escapeHtml(monitor.display || '-')} · ${escapeHtml(monitor.resolution || '-')} · Video in ${escapeHtml(monitor.videoInputs || 'unknown')}</div>
                       </div>
                     </button>
                     <span class="badge badge-active">Scan first</span>
@@ -1666,7 +1666,7 @@ function renderScan() {
                     <button class="batch-select" data-sticker="${escapeHtml(l.sticker)}">
                       <div class="batch-info">
                         <div class="batch-num">${escapeHtml(l.merk)} ${escapeHtml(l.model)}</div>
-                        <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · ${escapeHtml(l.display || '-')}${l.battery ? ' · accu ' + escapeHtml(l.battery) : ''}</div>
+                        <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · ${escapeHtml(l.display || '-')}${l.battery ? ' · battery ' + escapeHtml(l.battery) : ''}</div>
                       </div>
                     </button>
                     <span class="badge badge-active">${escapeHtml(l.leverancier_class || '-')}</span>
@@ -1680,8 +1680,8 @@ function renderScan() {
       </div>
 
       <div class="card">
-        <h3>Afgerond / Herprint</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">Als een label fout is geprint, scan dezelfde barcode opnieuw of kies hieronder opnieuw printen.</p>
+        <h3>Completed / Reprint</h3>
+        <p class="card-sub" style="margin-bottom: 14px;">If a label was printed incorrectly, scan the same barcode again or choose reprint below.</p>
         ${filteredCompleted.length ? `
           <div class="batch-list">
             ${filteredCompleted.map(l => {
@@ -1695,12 +1695,12 @@ function renderScan() {
                       <div class="batch-meta">Barcode ${escapeHtml(l.sticker)} · grade ${escapeHtml(grade)} · batch ${escapeHtml(l.batchNummer || '-')}</div>
                     </div>
                   </button>
-                  <span class="badge badge-active">Herprint</span>
+                  <span class="badge badge-active">Reprint</span>
                 </div>
               `;
             }).join('')}
           </div>
-        ` : `<p class="card-sub">Nog geen afgeronde apparaten gevonden${query ? ' voor deze zoekopdracht' : ''}.</p>`}
+        ` : `<p class="card-sub">No completed devices found yet${query ? ' for this search' : ''}.</p>`}
       </div>
     </div>
   `;
@@ -1792,28 +1792,28 @@ function renderMonitorManualEntry() {
     <div class="screen">
       ${renderWorkflowIntroBanner('monitor-manual')}
       <div class="card">
-        <h3>${isCorrection ? 'Monitorgegevens corrigeren' : 'Monitor handmatig invoeren'}</h3>
-        <p class="card-sub" style="margin-bottom: 16px;">Gebruik dit voor monitoren zonder betrouwbare scan of voor correcties op leverancierdata. Merk en modelnummer zijn verplicht; serie helpt voor een net label en betere databasematch.</p>
-        ${isCorrection ? `<div class="soft-note" style="margin-bottom: 14px;">Je corrigeert de gegevens voor barcode ${escapeHtml(stickerValue)}. De barcode blijft hetzelfde; merk, model en specificaties worden overschreven.</div>` : ''}
+        <h3>${isCorrection ? 'Correct monitor details' : 'Enter monitor manually'}</h3>
+        <p class="card-sub" style="margin-bottom: 16px;">Use this for monitors without a reliable scan or for corrections to supplier data. Brand and model number are required; series helps produce a tidy label and a better database match.</p>
+        ${isCorrection ? `<div class="soft-note" style="margin-bottom: 14px;">You are correcting the details for barcode ${escapeHtml(stickerValue)}. The barcode stays the same; brand, model and specifications are overwritten.</div>` : ''}
         <div class="form-error" id="mm_error"${STATE.manualError ? '' : ' hidden'}>${escapeHtml(STATE.manualError || '')}</div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Merk *</label>
-            <input type="text" class="form-input" id="mm_merk" list="monitorManualBrandSuggestions" autocomplete="off" placeholder="bijv. Dell" value="${escapeHtml(merkValue)}">
+            <label class="form-label">Brand *</label>
+            <input type="text" class="form-input" id="mm_merk" list="monitorManualBrandSuggestions" autocomplete="off" placeholder="e.g. Dell" value="${escapeHtml(merkValue)}">
           </div>
           <div class="form-group">
-            <label class="form-label">Serie</label>
-            <input type="text" class="form-input" id="mm_series" list="monitorManualSeriesSuggestions" autocomplete="off" placeholder="bijv. EliteDisplay of UltraSharp" value="${escapeHtml(serieValue)}">
+            <label class="form-label">Series</label>
+            <input type="text" class="form-input" id="mm_series" list="monitorManualSeriesSuggestions" autocomplete="off" placeholder="e.g. EliteDisplay or UltraSharp" value="${escapeHtml(serieValue)}">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Modelnummer *</label>
-            <input type="text" class="form-input" id="mm_model" list="monitorManualModelSuggestions" autocomplete="off" placeholder="bijv. E243i of P2422H" value="${escapeHtml(modelValue)}">
+            <label class="form-label">Model number *</label>
+            <input type="text" class="form-input" id="mm_model" list="monitorManualModelSuggestions" autocomplete="off" placeholder="e.g. E243i or P2422H" value="${escapeHtml(modelValue)}">
           </div>
           <div class="form-group">
-            <label class="form-label">Labelnaam</label>
+            <label class="form-label">Label name</label>
             <input type="text" class="form-input" id="mm_device_preview" value="${escapeHtml(typeof buildMonitorDeviceName === 'function' ? buildMonitorDeviceName(merkValue, serieValue, modelValue) : `${merkValue} ${modelValue}`.trim())}" readonly>
           </div>
         </div>
@@ -1821,38 +1821,38 @@ function renderMonitorManualEntry() {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Barcode</label>
-            <input type="text" class="form-input" id="mm_sticker" placeholder="optioneel" value="${escapeHtml(stickerValue)}" ${isCorrection ? 'readonly' : ''}>
+            <input type="text" class="form-input" id="mm_sticker" placeholder="optional" value="${escapeHtml(stickerValue)}" ${isCorrection ? 'readonly' : ''}>
           </div>
           <div class="form-group">
-            <label class="form-label">Serienummer</label>
-            <input type="text" class="form-input" id="mm_serial" placeholder="optioneel" value="${escapeHtml(monitor.serial || '')}">
+            <label class="form-label">Serial number</label>
+            <input type="text" class="form-input" id="mm_serial" placeholder="optional" value="${escapeHtml(monitor.serial || '')}">
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Schermformaat</label>
+            <label class="form-label">Screen size</label>
             <select class="form-input" id="mm_display">
               ${renderMonitorDisplaySizeOptions(monitor.display || '')}
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">Resolutie</label>
-            <input type="text" class="form-input" id="mm_resolution" placeholder="bijv. 1920x1080" value="${escapeHtml(monitor.resolution || '')}">
+            <label class="form-label">Resolution</label>
+            <input type="text" class="form-input" id="mm_resolution" placeholder="e.g. 1920x1080" value="${escapeHtml(monitor.resolution || '')}">
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Video in</label>
           ${renderMonitorManualPortPicker(monitor.videoInputs || '')}
-          <p class="field-help">Maximaal twee aansluitingen. Bij een databasematch vult de app dit automatisch in; onbekende modellen kun je handmatig aanvullen.</p>
+          <p class="field-help">Maximum of two connections. On a database match the app fills this in automatically; for unknown models you can add them manually.</p>
         </div>
         <div class="form-group">
-          <label class="form-label">Herkomst</label>
-          <input type="text" class="form-input" id="mm_herkomst" placeholder="bijv. retour, losse voorraad of leverancier" value="${escapeHtml(monitor.herkomst || '')}">
+          <label class="form-label">Origin</label>
+          <input type="text" class="form-input" id="mm_herkomst" placeholder="e.g. return, loose stock or supplier" value="${escapeHtml(monitor.herkomst || '')}">
         </div>
 
         <div class="nav-buttons" style="margin-top: 8px;">
-          <button class="btn btn-secondary" data-action="monitor_label_scan" type="button">Terug naar Label Scan</button>
-          <button class="btn btn-primary" data-action="monitor_manual_submit" type="button">Naar grade kiezen</button>
+          <button class="btn btn-secondary" data-action="monitor_label_scan" type="button">Back to Label Scan</button>
+          <button class="btn btn-primary" data-action="monitor_manual_submit" type="button">Continue to grade</button>
         </div>
       </div>
     </div>
@@ -1946,7 +1946,7 @@ function renderImport() {
               <div class="import-row">
                 <div>
                   <strong>${escapeHtml(l.merk)} ${escapeHtml(l.model)}</strong>
-                  <span class="card-sub">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.processor || '-')} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · Accu ${escapeHtml(l.battery || '-')}</span>
+                  <span class="card-sub">Barcode ${escapeHtml(l.sticker)} · ${escapeHtml(l.processor || '-')} · ${escapeHtml(l.ram || '-')} · ${escapeHtml(l.ssd || '-')} · Battery ${escapeHtml(l.battery || '-')}</span>
                 </div>
                 <span class="badge badge-active">${escapeHtml(l.leverancier_class || '-')}</span>
               </div>
@@ -1961,7 +1961,7 @@ function renderImport() {
               <div class="import-row">
                 <div>
                   <strong>${escapeHtml(monitor.deviceName || `${monitor.merk} ${monitor.model}`.trim() || 'Monitor')}</strong>
-                  <span class="card-sub">Barcode ${escapeHtml(monitor.sticker)} · SN ${escapeHtml(monitor.serial || '-')} · ${escapeHtml(monitor.display || '-')} · ${escapeHtml(monitor.resolution || '-')} · Video in ${escapeHtml(monitor.videoInputs || 'onbekend')}</span>
+                  <span class="card-sub">Barcode ${escapeHtml(monitor.sticker)} · SN ${escapeHtml(monitor.serial || '-')} · ${escapeHtml(monitor.display || '-')} · ${escapeHtml(monitor.resolution || '-')} · Video in ${escapeHtml(monitor.videoInputs || 'unknown')}</span>
                 </div>
                 <span class="badge badge-active">${escapeHtml(displayMonitorGrade(monitor.leverancier_class || 'A'))}</span>
               </div>
@@ -1995,8 +1995,8 @@ function renderAccounts() {
     <div class="screen" style="max-width: 1100px;">
       <div class="card">
         <h3>User Management</h3>
-        <p class="card-sub">Nieuwe gebruikers krijgen het startwachtwoord en moeten bij de eerste login direct een eigen wachtwoord kiezen.</p>
-        <div class="instruction-strip">Startwachtwoord: <strong>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></div>
+        <p class="card-sub">New users receive the start password and must choose their own password immediately at first login.</p>
+        <div class="instruction-strip">Start password: <strong>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></div>
       </div>
 
       <div class="account-grid">
@@ -2038,7 +2038,7 @@ function renderAccounts() {
               <div class="account-row">
                 <div>
                   <strong>${escapeHtml(u.naam)}</strong>
-                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(displayUserRole(u.rol))} · ${escapeHtml(displayUserPreference(u.voorkeur))} · ${u.mustChangePassword ? 'moet wachtwoord instellen' : 'eigen wachtwoord actief'}</div>
+                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(displayUserRole(u.rol))} · ${escapeHtml(displayUserPreference(u.voorkeur))} · ${u.mustChangePassword ? 'must set password' : 'own password active'}</div>
                 </div>
                 <div class="form-row">
                   <select class="small-select" data-account-role="${escapeHtml(u.id)}">
@@ -2096,7 +2096,7 @@ function renderLaptopInfo() {
           <div class="spec-item"><span class="spec-label">Storage</span><span class="spec-value">${escapeHtml(l.ssd || '—')}</span></div>
           <div class="spec-item"><span class="spec-label">Display</span><span class="spec-value">${escapeHtml(l.display || '—')}</span></div>
           <div class="spec-item"><span class="spec-label">Touch</span><span class="spec-value">${isTouchscreenLaptop(l) ? 'Yes' : 'No'}</span></div>
-          <div class="spec-item"><span class="spec-label">Accu</span><span class="spec-value">${escapeHtml(l.battery || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Battery</span><span class="spec-value">${escapeHtml(l.battery || '—')}</span></div>
           <div class="spec-item"><span class="spec-label">Graphics</span><span class="spec-value">${escapeHtml(l.gpu || '—')}</span></div>
         </div>
       </div>
@@ -2203,21 +2203,21 @@ function renderGradingExpert() {
   const l = STATE.currentLaptop || {};
   const selectedGrade = g && g.expertFinalGrade;
   const gradeOptions = [
-    { grade: 'A', label: 'A-grade', detail: 'Zeer nette staat. Label print direct.' },
-    { grade: 'B', label: 'B-grade', detail: 'Gebruikssporen, volledig functioneel. Label print direct.' },
-    { grade: 'C', label: 'C-grade', detail: 'Duidelijke gebruikssporen, technisch in orde. Label print direct.' },
-    { grade: 'D', label: 'X / Repair', detail: 'Reparatie, defect of niet direct verkoopbaar. Omschrijving verplicht.' },
+    { grade: 'A', label: 'A-grade', detail: 'Very tidy condition. Label prints immediately.' },
+    { grade: 'B', label: 'B-grade', detail: 'Signs of use, fully functional. Label prints immediately.' },
+    { grade: 'C', label: 'C-grade', detail: 'Clear signs of use, technically sound. Label prints immediately.' },
+    { grade: 'D', label: 'X / Repair', detail: 'Repair, defective or not directly sellable. Description required.' },
   ];
 
   return `
     <div class="screen expert-direct-screen" style="max-width: 980px;">
       <div class="expert-direct-head">
         <div>
-          <div class="ops-kicker">Expert modus</div>
-          <h1>Kies de definitieve grade</h1>
-          <p>Voor ervaren graders: kies A, B, C of X. Bij A/B/C print de app direct het specs-label en gaat daarna terug naar Apparaat graden.</p>
+          <div class="ops-kicker">Expert mode</div>
+          <h1>Choose the final grade</h1>
+          <p>For experienced graders: choose A, B, C or X. For A/B/C the app prints the specs label immediately and then returns to Grade Device.</p>
         </div>
-        <button class="btn btn-secondary" data-action="back_scan" type="button">Terug</button>
+        <button class="btn btn-secondary" data-action="back_scan" type="button">Back</button>
       </div>
 
       <div class="laptop-card">
@@ -2228,8 +2228,8 @@ function renderGradingExpert() {
           <div class="spec-item"><span class="spec-label">RAM</span><span class="spec-value">${escapeHtml(l.ram || '—')}</span></div>
           <div class="spec-item"><span class="spec-label">Storage</span><span class="spec-value">${escapeHtml(l.ssd || '—')}</span></div>
           <div class="spec-item"><span class="spec-label">Display</span><span class="spec-value">${escapeHtml(l.display || '—')}</span></div>
-          <div class="spec-item"><span class="spec-label">Accu</span><span class="spec-value">${escapeHtml(formatBatteryForLabel(l.battery) || '—')}</span></div>
-          <div class="spec-item"><span class="spec-label">Leverancier</span><span class="spec-value">${escapeHtml(l.leverancier_class || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Battery</span><span class="spec-value">${escapeHtml(formatBatteryForLabel(l.battery) || '—')}</span></div>
+          <div class="spec-item"><span class="spec-label">Supplier</span><span class="spec-value">${escapeHtml(l.leverancier_class || '—')}</span></div>
         </div>
       </div>
       ${renderExpertSupplierInlineNotice(l)}
@@ -2239,18 +2239,18 @@ function renderGradingExpert() {
           <button class="monitor-grade-button expert-grade-button grade-${option.grade}" data-expert-final-grade="${option.grade}" type="button">
             <span class="monitor-grade-letter">${option.grade === 'D' ? 'X' : option.grade}</span>
             <span class="monitor-grade-copy"><strong>${escapeHtml(option.label)}</strong><span>${escapeHtml(option.detail)}</span></span>
-            <em>${option.grade === 'D' ? 'Omschrijving invullen' : 'Print label'}</em>
+            <em>${option.grade === 'D' ? 'Enter description' : 'Print label'}</em>
           </button>
         `).join('')}
       </div>
 
       ${selectedGrade === 'D' ? `
         <div class="expert-repair-panel">
-          <label class="form-label" for="expertRepairText">Reparatie / beschadiging voor reparatielabel *</label>
-          <textarea class="form-input expert-repair-text" id="expertRepairText" rows="3" placeholder="Bijv. defect keyboard, LCD pixel line, touchpad werkt niet...">${escapeHtml(g.expertRepairText || '')}</textarea>
+          <label class="form-label" for="expertRepairText">Repair / damage for repair label *</label>
+          <textarea class="form-input expert-repair-text" id="expertRepairText" rows="3" placeholder="e.g. faulty keyboard, LCD pixel line, touchpad not working...">${escapeHtml(g.expertRepairText || '')}</textarea>
           <div class="nav-buttons" style="border-top:0; padding-top:12px;">
-            <span class="card-sub">Bij X print de app een specs-label en een reparatielabel met deze omschrijving.</span>
-            <button class="btn btn-primary" data-action="confirm_expert_repair" type="button">Bevestig X & print labels</button>
+            <span class="card-sub">For X the app prints a specs label and a repair label with this description.</span>
+            <button class="btn btn-primary" data-action="confirm_expert_repair" type="button">Confirm X & print labels</button>
           </div>
         </div>
       ` : ''}
@@ -2301,9 +2301,9 @@ function renderResult() {
   const l = STATE.currentLaptop;
   const grade = r.eindgrade;
   const extraLabelButton = r.repairLabelType === 'production'
-    ? 'Print Productie'
+    ? 'Print Production'
     : r.repairLabelType === 'reject'
-      ? 'Print Niet verkoopbaar'
+      ? 'Print Not sellable'
       : 'Print Repair';
   const testOnly = g.testOnly || (l && l.testOnly);
   const labels = {
@@ -2361,7 +2361,7 @@ function renderResult() {
         Label: ${getLabelRows(l, r).filter(Boolean).map(escapeHtml).join(' · ')}
       </div>`}
       ${r.gradeAfterRepair ? `<div class="label-note">
-        Specs-label toont de grade na reparatie. Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
+        Specs label shows the grade after repair. Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
       </div>` : ''}
       
       <div class="nav-buttons">

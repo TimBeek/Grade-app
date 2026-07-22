@@ -195,12 +195,12 @@ function getSupplierScorecardRows(items) {
 }
 
 function renderSupplierScorecard(rows) {
-  if (!rows.length) return '<div class="empty-analytics">Nog geen leveranciersgrades beschikbaar voor vergelijking.</div>';
+  if (!rows.length) return '<div class="empty-analytics">No supplier grades available for comparison yet.</div>';
   return `
     <div class="analytics-table-wrap">
       <table class="analytics-table supplier-scorecard-table">
         <thead>
-          <tr><th>Leverancier</th><th>Apparaten</th><th>% boven</th><th>% onder</th><th>⌀ uplift/apparaat</th><th>→ A</th></tr>
+          <tr><th>Supplier</th><th>Devices</th><th>% above</th><th>% below</th><th>⌀ uplift/device</th><th>→ A</th></tr>
         </thead>
         <tbody>
           ${rows.map(row => {
@@ -430,11 +430,11 @@ const ANALYTICS_GRADE_COLORS = {
 };
 
 const ANALYTICS_STATUS_LABELS = {
-  all: 'Alle statussen',
-  graded: 'Gegraded',
-  repair: 'Reparatie / X',
-  open: 'Wacht op grading',
-  label: 'Alleen label geprint',
+  all: 'All statuses',
+  graded: 'Graded',
+  repair: 'Repair / X',
+  open: 'Awaiting grading',
+  label: 'Label only printed',
 };
 
 function getAnalyticsFilters() {
@@ -561,7 +561,7 @@ function createAnalyticsItem(source, overrides) {
     source,
     productType: 'laptop',
     status: 'graded',
-    statusLabel: 'Gegraded',
+    statusLabel: 'Graded',
     sticker: '',
     brand: '',
     model: '',
@@ -601,7 +601,7 @@ function buildAnalyticsItems(isAdmin) {
     items.push(createAnalyticsItem('history', {
       productType: 'laptop',
       status: grade === 'D' || problems.length ? 'repair' : 'graded',
-      statusLabel: grade === 'D' || problems.length ? 'Reparatie / X' : 'Gegraded',
+      statusLabel: grade === 'D' || problems.length ? 'Repair / X' : 'Graded',
       sticker: analyticsText(historyItem.sticker),
       brand: analyticsText(historyItem.merk),
       model: analyticsText(historyItem.model),
@@ -628,7 +628,7 @@ function buildAnalyticsItems(isAdmin) {
     items.push(createAnalyticsItem('label', {
       productType: 'laptop',
       status: 'label',
-      statusLabel: 'Alleen label geprint',
+      statusLabel: 'Label only printed',
       sticker: analyticsText(print.sticker),
       brand: analyticsText(print.merk),
       model: analyticsText(print.model),
@@ -644,7 +644,7 @@ function buildAnalyticsItems(isAdmin) {
     items.push(createAnalyticsItem('monitor-label', {
       productType: 'monitor',
       status: grade === 'D' ? 'repair' : 'graded',
-      statusLabel: grade === 'D' ? 'Reparatie / X' : 'Gegraded',
+      statusLabel: grade === 'D' ? 'Repair / X' : 'Graded',
       sticker: analyticsText(print.sticker),
       brand: analyticsText(print.merk),
       model: analyticsText(print.model || print.deviceName),
@@ -664,7 +664,7 @@ function buildAnalyticsItems(isAdmin) {
       items.push(createAnalyticsItem('open-batch', {
         productType: 'laptop',
         status: 'open',
-        statusLabel: 'Wacht op grading',
+        statusLabel: 'Awaiting grading',
         sticker: analyticsText(laptop.sticker),
         brand: analyticsText(laptop.merk),
         model: analyticsText(laptop.model),
@@ -685,7 +685,7 @@ function buildAnalyticsItems(isAdmin) {
       items.push(createAnalyticsItem('open-monitor-batch', {
         productType: 'monitor',
         status: 'open',
-        statusLabel: 'Wacht op grading',
+        statusLabel: 'Awaiting grading',
         sticker: analyticsText(monitor.sticker),
         brand: analyticsText(monitor.merk),
         model: analyticsText(monitor.model || monitor.deviceName),
@@ -736,32 +736,32 @@ function renderAnalyticsSelect(name, label, selected, options) {
 }
 
 function renderAnalyticsFilters(filters, allItems) {
-  const employeeOptions = [{ value: 'all', label: 'Alle medewerkers' }]
+  const employeeOptions = [{ value: 'all', label: 'All employees' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'employeeName').map(name => ({ value: name, label: name })));
-  const brandOptions = [{ value: 'all', label: 'Alle merken' }]
+  const brandOptions = [{ value: 'all', label: 'All brands' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'brand').map(brand => ({ value: brand, label: brand })));
 
   return `
     <div class="analytics-filter-bar">
       <div class="analytics-search-wrap">
-        <span>Zoeken</span>
-        <input id="analyticsSearch" type="search" placeholder="Barcode, batch, merk, model, melding..." value="${escapeHtml(filters.query || '')}">
+        <span>Search</span>
+        <input id="analyticsSearch" type="search" placeholder="Barcode, batch, brand, model, note..." value="${escapeHtml(filters.query || '')}">
       </div>
-      ${renderAnalyticsSelect('dateRange', 'Periode', filters.dateRange, [
-        { value: 'all', label: 'Alle data' },
-        { value: 'today', label: 'Vandaag' },
-        { value: 'week', label: 'Laatste 7 dagen' },
-        { value: 'month', label: 'Laatste 30 dagen' },
+      ${renderAnalyticsSelect('dateRange', 'Period', filters.dateRange, [
+        { value: 'all', label: 'All data' },
+        { value: 'today', label: 'Today' },
+        { value: 'week', label: 'Last 7 days' },
+        { value: 'month', label: 'Last 30 days' },
       ])}
       ${renderAnalyticsSelect('productType', 'Product', filters.productType, [
-        { value: 'all', label: 'Alles' },
+        { value: 'all', label: 'All' },
         { value: 'laptop', label: 'Laptops' },
-        { value: 'monitor', label: 'Monitoren' },
+        { value: 'monitor', label: 'Monitors' },
       ])}
-      ${renderAnalyticsSelect('employee', 'Medewerker', filters.employee, employeeOptions)}
-      ${renderAnalyticsSelect('brand', 'Merk', filters.brand, brandOptions)}
+      ${renderAnalyticsSelect('employee', 'Employee', filters.employee, employeeOptions)}
+      ${renderAnalyticsSelect('brand', 'Brand', filters.brand, brandOptions)}
       ${renderAnalyticsSelect('grade', 'Grade', filters.grade, [
-        { value: 'all', label: 'Alle grades' },
+        { value: 'all', label: 'All grades' },
         { value: 'A', label: 'A' },
         { value: 'B', label: 'B' },
         { value: 'C', label: 'C' },
@@ -941,17 +941,17 @@ function buildEmployeeRows(items) {
 }
 
 function renderEmployeeTable(rows) {
-  if (!rows.length) return '<div class="empty-analytics">Nog geen medewerkerdata beschikbaar.</div>';
+  if (!rows.length) return '<div class="empty-analytics">No employee data available yet.</div>';
   return `
     <div class="analytics-table-wrap">
       <table class="analytics-table">
         <thead>
-          <tr><th>Medewerker</th><th>Output</th><th>Gem. tijd</th><th>X-rate</th></tr>
+          <tr><th>Employee</th><th>Output</th><th>Avg. time</th><th>X-rate</th></tr>
         </thead>
         <tbody>
           ${rows.map(row => `
             <tr>
-              <td><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} labelprints` : 'grading'}</span></td>
+              <td><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} label prints` : 'grading'}</span></td>
               <td>${formatNumber(row.count)}</td>
               <td>${formatSeconds(row.timed ? row.sec / row.timed : 0)}</td>
               <td>${safePercent(row.repair, row.count)}%</td>
@@ -999,18 +999,18 @@ function buildBatchProgressRows(productFilter) {
 }
 
 function renderBatchProgress(rows) {
-  if (!rows.length) return '<div class="empty-analytics">Geen actieve batches gevonden.</div>';
+  if (!rows.length) return '<div class="empty-analytics">No active batches found.</div>';
   return `
     <div class="analytics-batch-list">
       ${rows.slice(0, 8).map(row => `
         <div class="analytics-batch-row">
           <div>
             <strong>${escapeHtml(row.label)}</strong>
-            <span>${escapeHtml(row.meta || 'Actieve batch')}</span>
+            <span>${escapeHtml(row.meta || 'Active batch')}</span>
           </div>
           <div class="analytics-batch-progress">
             <div><span style="width:${row.value}%;"></span></div>
-            <small>${row.done}/${row.total} klaar · ${row.open} open</small>
+            <small>${row.done}/${row.total} done · ${row.open} open</small>
           </div>
         </div>
       `).join('')}
@@ -1045,11 +1045,11 @@ function buildComponentRows(items) {
   return Array.from(components.entries())
     .sort((a, b) => b[1].points - a[1].points)
     .slice(0, 8)
-    .map(([label, stats]) => ({ label, value: stats.points, meta: `${stats.count}x geraakt` }));
+    .map(([label, stats]) => ({ label, value: stats.points, meta: `${stats.count}x hit` }));
 }
 
 function buildHeatmapRows(items) {
-  const days = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'];
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const periods = [
     { key: 'morning', label: '08-12', from: 8, to: 12 },
     { key: 'midday', label: '12-15', from: 12, to: 15 },
@@ -1089,14 +1089,14 @@ function renderRecentActivity(items) {
   const recent = items.filter(item => item.status !== 'open')
     .sort((a, b) => b.date - a.date)
     .slice(0, 8);
-  if (!recent.length) return '<div class="empty-analytics">Nog geen recente activiteit gevonden.</div>';
+  if (!recent.length) return '<div class="empty-analytics">No recent activity found yet.</div>';
   return `
     <div class="analytics-activity-feed">
       ${recent.map(item => `
         <div class="analytics-activity-item">
           <span class="activity-dot ${item.grade || 'label'}"></span>
           <div>
-            <strong>${escapeHtml([item.brand, item.model].filter(Boolean).join(' ') || item.sticker || 'Onbekend apparaat')}</strong>
+            <strong>${escapeHtml([item.brand, item.model].filter(Boolean).join(' ') || item.sticker || 'Unknown device')}</strong>
             <small>${escapeHtml(item.employeeName || '-')} · ${escapeHtml(item.statusLabel)} · batch ${escapeHtml(item.batch || '-')}</small>
           </div>
           <em>${escapeHtml(displayGrade(item.grade) || (item.status === 'label' ? 'Label' : '-'))}</em>
@@ -1114,7 +1114,7 @@ async function refreshAnalyticsServerStats() {
   if (!container) return;
   if (typeof canUseSharedDemoState === 'function' && !canUseSharedDemoState()) {
     container.setAttribute('data-state', 'offline');
-    container.innerHTML = '<span class="analytics-server-stats-label">Lokale modus · database-cijfers niet beschikbaar</span>';
+    container.innerHTML = '<span class="analytics-server-stats-label">Local mode · database figures unavailable</span>';
     return;
   }
   try {
@@ -1127,17 +1127,17 @@ async function refreshAnalyticsServerStats() {
       ? updated.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
       : '-';
     const cells = [
-      { label: 'Vandaag gegraded', value: formatNumber(totals.gradedToday || 0) },
-      { label: 'Laatste 7 dagen', value: formatNumber(totals.gradedLast7Days || 0) },
-      { label: 'Gegraded totaal (DB)', value: formatNumber(totals.graded || 0) },
-      { label: 'Laptops voorraad', value: formatNumber(totals.laptopsInVoorraad || 0) },
-      { label: 'Monitoren voorraad', value: formatNumber(totals.monitorsInVoorraad || 0) },
-      { label: 'Gebruikers', value: formatNumber(totals.users || 0) },
-      { label: 'Laatste update', value: escapeHtml(updatedLabel) },
+      { label: 'Graded today', value: formatNumber(totals.gradedToday || 0) },
+      { label: 'Last 7 days', value: formatNumber(totals.gradedLast7Days || 0) },
+      { label: 'Graded total (DB)', value: formatNumber(totals.graded || 0) },
+      { label: 'Laptops in stock', value: formatNumber(totals.laptopsInVoorraad || 0) },
+      { label: 'Monitors in stock', value: formatNumber(totals.monitorsInVoorraad || 0) },
+      { label: 'Users', value: formatNumber(totals.users || 0) },
+      { label: 'Last update', value: escapeHtml(updatedLabel) },
     ];
     container.setAttribute('data-state', 'ready');
     container.innerHTML = `
-      <span class="analytics-server-stats-label">Live uit database</span>
+      <span class="analytics-server-stats-label">Live from database</span>
       <div class="analytics-server-stats-cells">
         ${cells.map(cell => `
           <div class="analytics-server-stat">
@@ -1149,8 +1149,8 @@ async function refreshAnalyticsServerStats() {
     `;
   } catch (error) {
     container.setAttribute('data-state', 'error');
-    container.innerHTML = '<span class="analytics-server-stats-label">Database-cijfers konden niet worden geladen</span>';
-    if (typeof reportAppWarning === 'function') reportAppWarning('Dashboard-statistieken konden niet worden geladen', error);
+    container.innerHTML = '<span class="analytics-server-stats-label">Database figures could not be loaded</span>';
+    if (typeof reportAppWarning === 'function') reportAppWarning('Dashboard statistics could not be loaded', error);
   }
 }
 
@@ -1185,10 +1185,10 @@ function renderAnalytics() {
     : 0;
   const supplierScorecardRows = getSupplierScorecardRows(supplierComparisonItems);
   const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), totalCompleted);
-  const rangeLabel = filters.dateRange === 'today' ? 'vandaag'
-    : filters.dateRange === 'week' ? 'laatste 7 dagen'
-      : filters.dateRange === 'month' ? 'laatste 30 dagen'
-        : 'alle data';
+  const rangeLabel = filters.dateRange === 'today' ? 'today'
+    : filters.dateRange === 'week' ? 'last 7 days'
+      : filters.dateRange === 'month' ? 'last 30 days'
+        : 'all data';
 
   return `
     <div class="screen analytics-screen analytics-pro-screen">
@@ -1196,7 +1196,7 @@ function renderAnalytics() {
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
           <h1>Operations &amp; Value Analytics</h1>
-          <p>Sturen op leveranciersrendement, output, kwaliteit en productiviteit — ${rangeLabel}, live uit de database.</p>
+          <p>Steer on supplier yield, output, quality and productivity — ${rangeLabel}, live from the database.</p>
         </div>
         <div class="analytics-hero-actions">
           <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
@@ -1205,77 +1205,77 @@ function renderAnalytics() {
       </div>
       ${renderDashboardTabs('analytics')}
       <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
-        <span class="analytics-server-stats-label">Live cijfers uit database laden…</span>
+        <span class="analytics-server-stats-label">Loading live figures from database…</span>
       </div>
       ${renderAnalyticsFilters(filters, allItems)}
 
       <section class="analytics-section analytics-section-first">
         <div class="analytics-section-head">
-          <h2>Kerncijfers</h2>
-          <span>Output, rendement en kwaliteit in één oogopslag · ${rangeLabel}</span>
+          <h2>Key figures</h2>
+          <span>Output, yield and quality at a glance · ${rangeLabel}</span>
         </div>
         <div class="analytics-kpi-grid analytics-kpi-grid--auto">
-          ${renderKpiCard({ label: 'Gegraded totaal', value: formatNumber(totalCompleted), sub: `${todayCompleted} vandaag · ${weekCompleted} deze week`, tone: 'primary' })}
+          ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
           ${renderKpiCard({
-            label: 'Rendement vs leverancier',
+            label: 'Yield vs supplier',
             value: supplierSummary.total ? `${supplierSummary.improvedPercent}%` : '-',
             sub: supplierSummary.total
-              ? `${formatSignedNumber(supplierSummary.netDelta)} netto delta · ⌀ ${formatSignedNumber(upliftAvg)}/apparaat`
-              : 'geen leveranciersgrades',
+              ? `${formatSignedNumber(supplierSummary.netDelta)} net delta · ⌀ ${formatSignedNumber(upliftAvg)}/device`
+              : 'no supplier grades',
             tone: 'primary',
           })}
-          ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} van ${formatNumber(totalCompleted)} als A/B` })}
-          ${renderKpiCard({ label: 'Reparatie / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} naar repair`, tone: repairCount ? 'danger' : '' })}
-          ${renderKpiCard({ label: 'Gem. gradingtijd', value: formatSeconds(avgTime), sub: `over ${formatNumber(totalCompleted)} gradings` })}
-          ${renderKpiCard({ label: 'Wacht op grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+          ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(totalCompleted)} as A/B` })}
+          ${renderKpiCard({ label: 'Repair / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} to repair`, tone: repairCount ? 'danger' : '' })}
+          ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
+          ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
         </div>
       </section>
 
       <section class="analytics-section">
         <div class="analytics-section-head">
-          <h2>Leveranciersrendement</h2>
-          <span>Waar de marge zit: ReMarkt-grade vs leveranciersgrade</span>
+          <h2>Supplier yield</h2>
+          <span>Where the margin sits: ReMarkt grade vs supplier grade</span>
         </div>
         <div class="analytics-grid">
           ${renderSupplierComparisonPanel(supplierComparisonItems)}
-          ${renderAnalyticsPanel('Leverancier scorecard', 'Rendement per leverancier: wie onder- of overschat en hoeveel grade-uplift je gemiddeld per apparaat haalt. Sturing voor inkoop.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
+          ${renderAnalyticsPanel('Supplier scorecard', 'Yield per supplier: who under- or overestimates and how much grade uplift you gain on average per device. Guidance for purchasing.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
         </div>
       </section>
 
       <section class="analytics-section">
         <div class="analytics-section-head">
-          <h2>Productie &amp; doorlooptijd</h2>
-          <span>Output per dag, medewerkerprestaties en batchvoortgang</span>
+          <h2>Production &amp; lead time</h2>
+          <span>Output per day, employee performance and batch progress</span>
         </div>
         <div class="analytics-grid">
-          ${renderAnalyticsPanel('Throughput trend', 'Output per dag binnen de actieve filters.', renderTrendChart(trendBuckets))}
-          ${renderAnalyticsPanel('Employee performance', 'Output, snelheid en X-rate per medewerker.', renderEmployeeTable(employeeRows))}
-          ${renderAnalyticsPanel('Batch completion', 'Welke batches afgerond zijn en waar nog voorraad openstaat.', renderBatchProgress(batchRows), 'analytics-wide')}
+          ${renderAnalyticsPanel('Throughput trend', 'Output per day within the active filters.', renderTrendChart(trendBuckets))}
+          ${renderAnalyticsPanel('Employee performance', 'Output, speed and X-rate per employee.', renderEmployeeTable(employeeRows))}
+          ${renderAnalyticsPanel('Batch completion', 'Which batches are completed and where stock is still open.', renderBatchProgress(batchRows), 'analytics-wide')}
         </div>
       </section>
 
       <section class="analytics-section">
         <div class="analytics-section-head">
-          <h2>Kwaliteit</h2>
-          <span>Grade-mix, onderdeelimpact en conditiesignalen</span>
+          <h2>Quality</h2>
+          <span>Grade mix, part impact and condition signals</span>
         </div>
         <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
-          ${renderKpiCard({ label: 'Gem. accu gezondheid', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: rangeLabel })}
-          ${renderKpiCard({ label: 'Accessoire signalen', value: formatNumber(missingAccessories), sub: 'adapter, rubber feet, lader' })}
+          ${renderKpiCard({ label: 'Avg. battery health', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: rangeLabel })}
+          ${renderKpiCard({ label: 'Accessory signals', value: formatNumber(missingAccessories), sub: 'adapter, rubber feet, charger' })}
         </div>
         <div class="analytics-grid">
-          ${renderAnalyticsPanel('Grade distribution', 'Verdeling per ReMarkt grade binnen de actieve filters.', renderGradeDonut(counts))}
-          ${renderAnalyticsPanel('Part impact', 'Onderdelen die het meeste score-impact veroorzaken — input voor leverancierskwaliteit.', renderBarList(componentRows, 'Nog geen onderdeelimpact beschikbaar.', 'p'))}
+          ${renderAnalyticsPanel('Grade distribution', 'Distribution per ReMarkt grade within the active filters.', renderGradeDonut(counts))}
+          ${renderAnalyticsPanel('Part impact', 'Parts that cause the most score impact — input for supplier quality.', renderBarList(componentRows, 'No part impact available yet.', 'p'))}
         </div>
       </section>
 
       <section class="analytics-section">
         <div class="analytics-section-head">
-          <h2>Activiteit</h2>
-          <span>Laatste gradings en labelprints binnen de filters</span>
+          <h2>Activity</h2>
+          <span>Latest gradings and label prints within the filters</span>
         </div>
         <div class="analytics-grid">
-          ${renderAnalyticsPanel('Recent activity', 'Realtime feed van de laatste handelingen.', renderRecentActivity(filteredItems), 'analytics-wide')}
+          ${renderAnalyticsPanel('Recent activity', 'Realtime feed of the latest actions.', renderRecentActivity(filteredItems), 'analytics-wide')}
         </div>
       </section>
     </div>
