@@ -29,6 +29,8 @@ const STATE = {
   monitorGradeInfoOpen: null,
   manualError: '',
   monitorManualContext: null,
+  monitorManualAutoKey: null,
+  monitorManualPortsAutoFilled: false,
   appMessage: null,
   manualMode: false,
   importResult: null,

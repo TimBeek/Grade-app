@@ -1716,7 +1716,7 @@ function renderMonitorManualEntry() {
         <h3>${isCorrection ? 'Monitorgegevens corrigeren' : 'Monitor handmatig invoeren'}</h3>
         <p class="card-sub" style="margin-bottom: 16px;">Gebruik dit voor monitoren zonder betrouwbare scan of voor correcties op leverancierdata. Merk en modelnummer zijn verplicht; serie helpt voor een net label en betere databasematch.</p>
         ${isCorrection ? `<div class="soft-note" style="margin-bottom: 14px;">Je corrigeert de gegevens voor barcode ${escapeHtml(stickerValue)}. De barcode blijft hetzelfde; merk, model en specificaties worden overschreven.</div>` : ''}
-        ${STATE.manualError ? `<div class="form-error">${escapeHtml(STATE.manualError)}</div>` : ''}
+        <div class="form-error" id="mm_error"${STATE.manualError ? '' : ' hidden'}>${escapeHtml(STATE.manualError || '')}</div>
 
         <div class="form-row">
           <div class="form-group">

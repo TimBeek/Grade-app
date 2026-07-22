@@ -121,6 +121,62 @@ function allChoices(sandbox, letter) {
   );
 }
 
+// Bouwt een lichtgewicht DOM-mock voor het "Monitor handmatig invoeren" scherm
+// zodat de autofill-/poort-lifecycle getest kan worden. Referenties komen op
+// globalThis (__mmFields / __mmPorts) voor assertions.
+function setupMonitorManualDom(app) {
+  vm.runInContext(`
+    globalThis.__mmFields = {};
+    globalThis.__mmPorts = {};
+    (function () {
+      const F = globalThis.__mmFields;
+      function field(id, tag) {
+        F[id] = {
+          id, value: '', dataset: {}, tagName: tag || 'INPUT', hidden: false, textContent: '',
+          setAttribute(k, v) { if (k === 'hidden') this.hidden = true; this['attr_' + k] = v; },
+          removeAttribute(k) { if (k === 'hidden') this.hidden = false; },
+          scrollIntoView() {},
+        };
+      }
+      ['mm_merk','mm_series','mm_model','mm_resolution','mm_device_preview','mm_serial','mm_sticker','mm_herkomst','monitorManualSeriesSuggestions','monitorManualModelSuggestions','monitorManualBrandSuggestions','mm_error'].forEach(id => field(id));
+      field('mm_display', 'SELECT');
+
+      const ports = ['HDMI','DisplayPort','Mini DisplayPort','DVI','VGA','USB-C','Thunderbolt'];
+      const selects = [];
+      ports.forEach(port => {
+        const buttons = [0,1,2].map(count => {
+          const b = { dataset: { port, count: String(count) }, _active: false, _pressed: 'false' };
+          b.classList = { toggle(cls, on) { if (cls === 'active') b._active = !!on; } };
+          b.setAttribute = (k, v) => { if (k === 'aria-pressed') b._pressed = v; };
+          return b;
+        });
+        const select = { dataset: { monitorVideoPort: port }, value: '0' };
+        const group = { querySelectorAll(sel) {
+          if (sel === '[data-monitor-video-port-count-button]') return buttons;
+          if (sel === '[data-monitor-video-port-count-select]') return [select];
+          return [];
+        } };
+        select.closest = () => group;
+        globalThis.__mmPorts[port] = { select, buttons, group };
+        selects.push(select);
+      });
+      globalThis.__mmSelects = selects;
+
+      document.getElementById = (id) => id === 'app' ? __appElement : (F[id] || null);
+      document.querySelectorAll = (sel) => sel === '[data-monitor-video-port-count-select]' ? __mmSelects : [];
+    })();
+  `, app);
+}
+
+// Seed de (in tests lege) monitor-poortdatabase met echte entries.
+function seedMonitorPortDatabase(app, entries) {
+  vm.runInContext(`
+    MONITOR_PORT_DATABASE.splice(0, MONITOR_PORT_DATABASE.length, ...(${JSON.stringify(entries)})
+      .map(normalizeMonitorPortDatabaseEntry).filter(Boolean));
+    rebuildMonitorPortDatabaseIndex();
+  `, app);
+}
+
 test('alles A geeft grade A met score 0', () => {
   const app = loadAppSandbox();
   const result = app.calculateGrade(allChoices(app, 'A'), {});
@@ -1661,6 +1717,99 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   // invoerscherm zodat de volgende meteen ingevoerd kan worden.
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
   assert.equal(vm.runInContext('STATE.currentMonitor', app), null);
+});
+
+test('databasematch vult resolutie/scherm/poorten en normaliseert decimale schermmaat', () => {
+  const app = loadAppSandbox();
+  setupMonitorManualDom(app);
+  vm.runInContext(`
+    STATE.currentScreen = 'monitor_manual';
+    __mmFields.mm_merk.value = 'HP';
+    __mmFields.mm_model.value = 'E233';
+    applyMonitorManualDatabaseMatch({ model: 'HP EliteDisplay E233', resolution: '1920x1080', displaySize: '23.8', videoInputs: '2x HDMI / DisplayPort' });
+  `, app);
+
+  assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '1920x1080');
+  // Decimale maat (23.8") wordt genormaliseerd naar hele inch die in de select bestaat.
+  assert.equal(vm.runInContext('__mmFields.mm_display.value', app), '23"');
+  assert.equal(vm.runInContext('__mmPorts.HDMI.select.value', app), '2');
+  assert.equal(vm.runInContext('__mmPorts.DisplayPort.select.value', app), '1');
+  assert.equal(vm.runInContext('__mmFields.mm_resolution.dataset.autoFilled', app), 'true');
+  assert.equal(vm.runInContext('STATE.monitorManualPortsAutoFilled', app), true);
+});
+
+test('automatisch ingevulde poorten worden gewist bij wisselen naar onbekend model', () => {
+  const app = loadAppSandbox();
+  setupMonitorManualDom(app);
+  vm.runInContext(`
+    STATE.currentScreen = 'monitor_manual';
+    STATE.monitorManualAutoKey = 'iets';
+    __mmFields.mm_merk.value = 'HP';
+    __mmFields.mm_model.value = 'E233';
+    applyMonitorManualDatabaseMatch({ model: 'HP EliteDisplay E233', resolution: '1920x1080', displaySize: '23', videoInputs: 'HDMI / DisplayPort / VGA' });
+  `, app);
+  assert.equal(vm.runInContext('__mmPorts.HDMI.select.value', app), '1');
+
+  // Nu geen match meer (lege database): oude auto-gegevens en poorten wissen.
+  vm.runInContext('syncMonitorManualDatabaseAssist();', app);
+  assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '');
+  assert.equal(vm.runInContext('__mmFields.mm_display.value', app), '');
+  assert.equal(vm.runInContext('__mmPorts.HDMI.select.value', app), '0');
+  assert.equal(vm.runInContext('__mmPorts.DisplayPort.select.value', app), '0');
+  assert.equal(vm.runInContext('__mmPorts.VGA.select.value', app), '0');
+  assert.equal(vm.runInContext('STATE.monitorManualAutoKey', app), null);
+});
+
+test('handmatig gekozen poort blijft behouden bij herhaalde sync van hetzelfde model', () => {
+  const app = loadAppSandbox();
+  setupMonitorManualDom(app);
+  seedMonitorPortDatabase(app, [
+    { model: 'HP EliteDisplay E233', displaySize: '23', resolution: '1920x1080', videoInputs: 'HDMI / DisplayPort / VGA' },
+  ]);
+  vm.runInContext(`
+    STATE.currentScreen = 'monitor_manual';
+    __mmFields.mm_merk.value = 'HP';
+    __mmFields.mm_model.value = 'E233';
+    syncMonitorManualDatabaseAssist();
+  `, app);
+  const keyAfterMatch = vm.runInContext('STATE.monitorManualAutoKey', app);
+  assert.ok(keyAfterMatch, 'match moet een identiteitssleutel opleveren');
+  assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '1920x1080');
+
+  // Medewerker corrigeert de VGA-poort naar 2x en typt daarna verder in het model.
+  vm.runInContext(`
+    setMonitorManualPortCount({ dataset: { port: 'VGA', count: '2' }, closest: () => __mmPorts.VGA.group });
+    syncMonitorManualDatabaseAssist();
+  `, app);
+
+  // Zelfde databasemodel => geen her-invulling => correctie blijft staan.
+  assert.equal(vm.runInContext('__mmPorts.VGA.select.value', app), '2');
+  assert.equal(vm.runInContext('STATE.monitorManualPortsAutoFilled', app), false);
+  assert.equal(vm.runInContext('STATE.monitorManualAutoKey', app), keyAfterMatch);
+});
+
+test('validatiefout bij handmatige monitor wist de ingevulde velden niet', async () => {
+  const app = loadAppSandbox();
+  setupMonitorManualDom(app);
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'monitor_manual';
+    __mmFields.mm_merk.value = '';
+    __mmFields.mm_model.value = 'E233';
+    __mmFields.mm_resolution.value = '1920x1080';
+  `, app);
+
+  const before = app.__appElement.innerHTML;
+  await vm.runInContext('submitMonitorManualEntry()', app);
+
+  assert.equal(vm.runInContext('STATE.manualError', app), 'Merk en modelnummer zijn verplicht.');
+  assert.equal(vm.runInContext('__mmFields.mm_error.textContent', app), 'Merk en modelnummer zijn verplicht.');
+  assert.equal(vm.runInContext('__mmFields.mm_error.hidden', app), false);
+  // Geen render() => ingevulde velden intact en scherm niet herbouwd.
+  assert.equal(vm.runInContext('__mmFields.mm_model.value', app), 'E233');
+  assert.equal(vm.runInContext('__mmFields.mm_resolution.value', app), '1920x1080');
+  assert.equal(app.__appElement.innerHTML, before);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'monitor_manual');
 });
 
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {

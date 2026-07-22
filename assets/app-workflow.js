@@ -285,6 +285,9 @@ function toggleMonitorGradeInfo(grade) {
 
 function setMonitorManualPortCount(button) {
   if (!button) return;
+  // De medewerker kiest zelf een poort: vanaf nu handmatig, niet meer 'auto'.
+  // Een databasematch voor hetzelfde model overschrijft deze keuze dus niet.
+  STATE.monitorManualPortsAutoFilled = false;
   const port = button.dataset.port || '';
   const count = Math.max(0, Math.min(2, Number(button.dataset.count || 0)));
   const group = button.closest('.monitor-manual-port-option');
@@ -319,6 +322,13 @@ async function handleDelegatedChange(e) {
   if (e.target.id === 'mm_merk' || e.target.id === 'mm_series' || e.target.id === 'mm_model') {
     if (e.target.id === 'mm_series' && e.target.dataset) e.target.dataset.autoFilled = 'false';
     syncMonitorManualDatabaseAssist();
+    return;
+  }
+
+  // Handmatig aangepaste resolutie/schermformaat horen voortaan bij de
+  // medewerker: niet meer als 'auto' behandelen, zodat de auto-clear ze niet wist.
+  if (e.target.id === 'mm_resolution' || e.target.id === 'mm_display') {
+    if (e.target.dataset) e.target.dataset.autoFilled = 'false';
     return;
   }
 
@@ -369,6 +379,10 @@ function handleDelegatedInput(e) {
     syncMonitorManualDatabaseAssist();
     return;
   }
+  if (e.target.id === 'mm_resolution' || e.target.id === 'mm_display') {
+    if (e.target.dataset) e.target.dataset.autoFilled = 'false';
+    return;
+  }
   if (e.target.id === 'historySearch') {
     scheduleHistorySearch(e.target.value);
     return;
@@ -395,6 +409,27 @@ function getImportRestoreOptions(result = STATE.importResult) {
   };
 }
 
+// Stabiele identiteit van een databasematch. Twee invoervarianten die naar
+// hetzelfde databasemodel wijzen (bv. "Dell" vs "DELL") leveren dezelfde sleutel
+// op, zodat we de automatische invulling niet bij elke toetsaanslag opnieuw
+// toepassen (en handmatige correcties niet steeds overschrijven).
+function monitorManualMatchKey(match) {
+  if (!match || !match.model) return null;
+  const key = typeof normalizeMonitorLookupKey === 'function'
+    ? normalizeMonitorLookupKey(match.model)
+    : String(match.model).toLowerCase().replace(/[^a-z0-9]/g, '');
+  return key || null;
+}
+
+// Sleutel van het databasemodel dat hoort bij een reeds opgeslagen monitor.
+// Gebruikt om de correctie-flow te "seeden": zolang het model niet echt
+// verandert, blijven de bestaande (echte) gegevens staan.
+function monitorManualMatchKeyForMonitor(monitor) {
+  if (!monitor || typeof findMonitorManualDatabaseMatch !== 'function') return null;
+  const match = findMonitorManualDatabaseMatch(monitor.merk || '', monitor.serie || '', monitor.modelNumber || monitor.model || '');
+  return monitorManualMatchKey(match);
+}
+
 function syncMonitorManualDatabaseAssist() {
   if (STATE.currentScreen !== 'monitor_manual') return;
   const merk = readFormValue('mm_merk');
@@ -402,13 +437,24 @@ function syncMonitorManualDatabaseAssist() {
   const model = readFormValue('mm_model');
   updateMonitorManualSeriesSuggestions(merk, series);
   updateMonitorManualModelSuggestions(merk, series, model);
-  updateMonitorManualDevicePreview(merk, series, model);
   const match = typeof findMonitorManualDatabaseMatch === 'function' ? findMonitorManualDatabaseMatch(merk, series, model) : null;
   if (!match) {
+    // Geen match (meer): oude automatisch ingevulde gegevens én poorten wissen
+    // zodat er niets van een vorig model blijft hangen.
     clearAutoFilledMonitorManualFields();
+    STATE.monitorManualAutoKey = null;
+    updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
     return;
   }
-  applyMonitorManualDatabaseMatch(match);
+  const key = monitorManualMatchKey(match);
+  // Alleen (opnieuw) automatisch invullen wanneer een ANDER databasemodel
+  // gevonden wordt. Blijft het hetzelfde model, dan laten we handmatige
+  // correcties (bv. poorten) met rust.
+  if (key !== STATE.monitorManualAutoKey) {
+    STATE.monitorManualAutoKey = key;
+    applyMonitorManualDatabaseMatch(match);
+  }
+  updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
 
 function updateMonitorManualSeriesSuggestions(merk, series) {
@@ -454,6 +500,11 @@ function clearAutoFilledMonitorManualFields() {
       field.dataset.autoFilled = 'false';
     }
   });
+  // Automatisch ingevulde video-in poorten ook terugzetten naar 0. Handmatig
+  // door de medewerker gekozen poorten blijven staan (die zijn niet 'auto').
+  if (STATE.monitorManualPortsAutoFilled) {
+    applyMonitorManualVideoInputsToPicker('');
+  }
   updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
 
@@ -471,13 +522,20 @@ function applyMonitorManualDatabaseMatch(match) {
     if (parts.modelNumber && modelField && !readFormValue('mm_model')) setAutoFilledFormValue('mm_model', parts.modelNumber);
   }
   setAutoFilledFormValue('mm_resolution', match.resolution || '');
-  setAutoFilledFormValue('mm_display', match.displaySize ? `${match.displaySize}"` : '');
+  // Schermformaat als hele inch normaliseren zodat de waarde overeenkomt met een
+  // bestaande optie in de selectlijst (bv. "23.8" -> 23", "24 inch" -> 24").
+  const displayInch = match.displaySize ? (String(match.displaySize).match(/\d{2}/) || [''])[0] : '';
+  setAutoFilledFormValue('mm_display', displayInch ? `${displayInch}"` : '');
   applyMonitorManualVideoInputsToPicker(match.videoInputs || '');
   updateMonitorManualDevicePreview(readFormValue('mm_merk'), readFormValue('mm_series'), readFormValue('mm_model'));
 }
 
 function applyMonitorManualVideoInputsToPicker(videoInputs) {
   const countInputs = Array.from(document.querySelectorAll('[data-monitor-video-port-count-select]') || []);
+  // Poorten zijn nu automatisch gevuld (ook bij leegmaken via de auto-clear).
+  // Zo weet clearAutoFilledMonitorManualFields() dat het deze mag terugzetten,
+  // terwijl handmatig gekozen poorten (zie setMonitorManualPortCount) blijven.
+  STATE.monitorManualPortsAutoFilled = true;
   if (!countInputs.length) return;
   const selections = typeof getMonitorManualPortSelections === 'function' ? getMonitorManualPortSelections(videoInputs) : [];
   const selectionByPort = new Map(selections.map(selection => [selection.port, selection]));
@@ -945,6 +1003,9 @@ async function handleAction(action, el) {
       STATE.monitorManualContext = null;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
+      // Verse invoer: geen automatisch ingevulde gegevens onthouden.
+      STATE.monitorManualAutoKey = null;
+      STATE.monitorManualPortsAutoFilled = false;
       break;
     case 'monitor_manual_from_current':
       if (!STATE.currentMonitor) {
@@ -957,6 +1018,11 @@ async function handleAction(action, el) {
       STATE.monitorPrintInProgress = false;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
+      // Correctie: seed de match-sleutel op het huidige model en behandel de
+      // reeds ingevulde poorten als handmatig (echte monitorgegevens), zodat
+      // het eerste veld dat je aanpast niet meteen alles overschrijft of wist.
+      STATE.monitorManualAutoKey = monitorManualMatchKeyForMonitor(STATE.currentMonitor);
+      STATE.monitorManualPortsAutoFilled = false;
       break;
     case 'monitor_scan_reset':
       STATE.currentMonitor = null;
@@ -1280,6 +1346,25 @@ function readMonitorManualVideoInputs() {
   return parts.length ? parts.join(' / ') : readFormValue('mm_video_inputs');
 }
 
+// Toon een invoerfout op het handmatige-monitorscherm zonder render(), zodat de
+// reeds ingevulde velden en poortkeuzes behouden blijven. Valt terug op een
+// volledige render alleen als het foutvak (nog) niet bestaat.
+function showMonitorManualError(message) {
+  STATE.manualError = message || '';
+  const box = document.getElementById('mm_error');
+  if (!box) {
+    render();
+    return;
+  }
+  box.textContent = STATE.manualError;
+  if (STATE.manualError) {
+    box.removeAttribute('hidden');
+    if (typeof box.scrollIntoView === 'function') box.scrollIntoView({ block: 'nearest' });
+  } else {
+    box.setAttribute('hidden', '');
+  }
+}
+
 async function submitMonitorManualEntry() {
   const sourceMonitor = STATE.currentMonitor && STATE.currentMonitor.sticker ? STATE.currentMonitor : null;
   const merk = readFormValue('mm_merk');
@@ -1291,14 +1376,14 @@ async function submitMonitorManualEntry() {
   const sticker = enteredSticker || (sourceMonitor && sourceMonitor.sticker) || `monitor_manual_${Date.now()}`;
 
   if (!merk || !modelNumber) {
-    STATE.manualError = 'Merk en modelnummer zijn verplicht.';
-    render();
+    // Toon de fout zonder het formulier te herbouwen, anders raakt de
+    // medewerker alle al ingevulde gegevens kwijt.
+    showMonitorManualError('Merk en modelnummer zijn verplicht.');
     return false;
   }
 
   if (isMonitorLabelPrinted(sticker)) {
-    STATE.manualError = `Voor barcode ${sticker} is al een monitorlabel geprint. Gebruik een nieuwe barcode of verwijder eerst het bestaande resultaat.`;
-    render();
+    showMonitorManualError(`Voor barcode ${sticker} is al een monitorlabel geprint. Gebruik een nieuwe barcode of verwijder eerst het bestaande resultaat.`);
     return false;
   }
 
@@ -1746,6 +1831,9 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
       STATE.monitorManualContext = null;
       STATE.manualError = '';
       STATE.monitorScanSearch = '';
+      // Verse start voor de volgende monitor: geen onthouden autofill/poorten.
+      STATE.monitorManualAutoKey = null;
+      STATE.monitorManualPortsAutoFilled = false;
     }
     return true;
   } catch (error) {
