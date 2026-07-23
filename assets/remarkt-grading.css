@@ -294,6 +294,13 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .language-toggle-code { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 20px; border-radius: 5px; background: #fff; border: 1px solid var(--remarkt-line); color: var(--remarkt-red); font-size: 11px; line-height: 1; font-weight: 950; }
 .preference-option.active .language-toggle-code { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.45); color: #fff; }
 .language-toggle-name { font-size: 12px; color: currentColor; }
+/* Icoon-only toggles: vlaggen voor taal, zon/maan voor thema (geen tekst meer). */
+.preference-option.icon-option { padding: 6px 9px; }
+.preference-option.icon-option svg { width: 17px; height: 17px; }
+.preference-option.flag-option { padding: 5px 7px; }
+.preference-option .pref-flag { width: 24px; height: 16px; border-radius: 3px; display: block; overflow: hidden; box-shadow: 0 0 0 1px rgba(120,120,120,0.4); }
+.preference-option .pref-flag rect { stroke: none; }
+.preference-option.active .pref-flag { box-shadow: 0 0 0 1px rgba(255,255,255,0.75); }
 .login-language-row { display: flex; justify-content: flex-end; margin: -10px -10px 16px 0; }
 .screen { max-width: 980px; padding: 26px; }
 .login-card, .action-card, .card, .laptop-card, .choice, .expert-row, .batch-row, .history-row, .form-input, .scan-input { border-color: var(--remarkt-line); border-radius: 8px; box-shadow: 0 1px 2px rgba(15,15,15,0.04); }
@@ -391,6 +398,10 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .batch-status-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; border: 1px solid var(--remarkt-line); border-radius: 8px; padding: 12px; background: #FDFDFD; }
 .batch-status-title { font-weight: 800; }
 .batch-status-meta { color: var(--remarkt-muted); font-size: 12px; margin-top: 2px; }
+/* Reparatielabels per batch: hoeveel stickers en welke bak (productie/afkeur). */
+.batch-repair-line { color: var(--remarkt-muted); font-size: 12px; margin-top: 5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.batch-repair-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; padding: 0 6px; border-radius: 999px; background: #EFEFEC; color: var(--remarkt-muted); font-weight: 950; font-size: 11px; line-height: 1; }
+.batch-repair-count.has-repair { background: rgba(227,6,19,0.12); color: var(--remarkt-red); }
 .batch-status-count { text-align: right; font-weight: 800; min-width: 96px; }
 .batch-progress-track { grid-column: 1 / -1; height: 8px; background: #ECECEA; border-radius: 999px; overflow: hidden; }
 .batch-progress-fill { height: 100%; background: var(--remarkt-red); border-radius: 999px; }
@@ -1132,6 +1143,8 @@ html[data-theme="dark"] .ops-stat,
 html[data-theme="dark"] .ops-side-panel,
 html[data-theme="dark"] .ops-batch-board,
 html[data-theme="dark"] .ops-admin-board,
+html[data-theme="dark"] .batch-repair-count { background: #23232A; color: var(--dark-muted); }
+html[data-theme="dark"] .batch-repair-count.has-repair { background: rgba(227,6,19,0.22); color: #FF8A90; }
 html[data-theme="dark"] .batch-status-row,
 html[data-theme="dark"] .analytics-hero,
 html[data-theme="dark"] .analytics-panel,
@@ -1494,6 +1507,7 @@ html[data-theme="dark"] .question-hint,
 html[data-theme="dark"] .progress-text,
 html[data-theme="dark"] .choice-detail,
 html[data-theme="dark"] .batch-meta,
+html[data-theme="dark"] .batch-repair-line,
 html[data-theme="dark"] .batch-status-meta,
 html[data-theme="dark"] .score-label,
 html[data-theme="dark"] .score-info,

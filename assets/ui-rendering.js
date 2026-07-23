@@ -341,8 +341,8 @@ function renderThemeToggle() {
   return `
     <div class="preference-switch theme-toggle" role="group" aria-label="${labels.group}" data-i18n-skip="true">
       ${options.map(option => `
-        <button class="preference-option ${currentTheme === option.value ? 'active' : ''}" data-action="toggle_theme" data-theme-value="${option.value}" type="button" aria-pressed="${currentTheme === option.value ? 'true' : 'false'}">
-          ${uiIcon(option.icon)} <span>${option.label}</span>
+        <button class="preference-option icon-option ${currentTheme === option.value ? 'active' : ''}" data-action="toggle_theme" data-theme-value="${option.value}" type="button" aria-pressed="${currentTheme === option.value ? 'true' : 'false'}" title="${option.label}" aria-label="${option.label}">
+          ${uiIcon(option.icon)}
         </button>
       `).join('')}
     </div>
@@ -940,16 +940,21 @@ function getDashboardData() {
   const monitorLatest = monitorItems[monitorItems.length - 1];
   const maxGradeCount = Math.max(counts.A, counts.B, counts.C, counts.D, 1);
   const monitorMaxGradeCount = Math.max(monitorCounts.A, monitorCounts.B, monitorCounts.C, monitorCounts.D, 1);
+  const batchRepairStats = typeof getBatchRepairStats === 'function' ? getBatchRepairStats() : {};
   const batchRows = BATCHES.map(batch => {
     const open = openLaptopCount(batch);
     const total = batch.laptops.length;
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
+    const rp = typeof getBatchRepairStatsFor === 'function' ? getBatchRepairStatsFor(batch, batchRepairStats) : { repair: 0, production: 0, reject: 0 };
     return `
       <div class="batch-status-row">
         <div>
           <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}</div>
           <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · ${escapeHtml(batch.geimporteerd || 'today')}</div>
+          <div class="batch-repair-line" title="Repair labels printed for this batch">
+            <span class="batch-repair-count ${rp.repair ? 'has-repair' : ''}">${rp.repair}</span> repair labels${rp.repair ? ` · ${rp.production} production · ${rp.reject} not sellable` : ''}
+          </div>
           ${isAdmin ? `<button class="batch-remove" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}">Delete batch</button>` : ''}
         </div>
         <div class="batch-status-count">${open} open<br><span class="card-sub">${done}/${total} done</span></div>

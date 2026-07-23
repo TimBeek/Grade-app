@@ -1985,6 +1985,27 @@ test('labeltitel zet het merk niet twee keer neer (HP HP)', () => {
   assert.equal(app.buildMonitorDeviceName('HP', '', 'HP E233'), 'HP E233');
 });
 
+test('reparatielabels worden per batch geteld en in bakken (productie/afkeur) verdeeld', () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    STATE.history = [
+      { batchId: 'B1', batchNummer: '900', grade: 'C', leverancier_meldingen: '', result: { forceProblemLabel: true, repairLabelType: 'production', problems: ['toets'], repairActions: [{ issue: 'toets' }] } },
+      { batchId: 'B1', batchNummer: '900', grade: 'X', leverancier_meldingen: '', result: { repairActions: [{ issue: 'lcd' }], repairLabelType: 'reject' } },
+      { batchId: 'B1', batchNummer: '900', grade: 'A', leverancier_meldingen: '', result: { forceProblemLabel: false, problems: [], repairActions: [] } },
+      { batchId: 'B2', batchNummer: '901', grade: 'X', leverancier_meldingen: '', result: { forceProblemLabel: true, repairLabelType: 'reject' } },
+    ];
+  `, app);
+  const stats = vm.runInContext('getBatchRepairStats()', app);
+  assert.equal(stats.B1.graded, 3);
+  assert.equal(stats.B1.repair, 2);
+  assert.equal(stats.B1.production, 1);
+  assert.equal(stats.B1.reject, 1);
+  assert.equal(stats.B2.repair, 1);
+  assert.equal(stats.B2.reject, 1);
+  const forB1 = vm.runInContext("getBatchRepairStatsFor({ id: 'B1', nummer: '900' })", app);
+  assert.equal(forB1.repair, 2);
+});
+
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
   const app = loadAppSandbox();
 

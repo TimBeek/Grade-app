@@ -6,6 +6,53 @@ function safePercent(part, total) {
   return total ? Math.round((part / total) * 100) : 0;
 }
 
+// -----------------------------------------------------------------------------
+// Reparatielabel-statistiek per batch (en reparatie-bakken).
+// Een laptop kreeg een reparatielabel wanneer needsProblemLabel() waar was bij
+// het graden. De labeltype ('production' vs 'reject'/'direct') deelt reparaties
+// in bakken: productie-reparatie vs niet-verkoopbaar/afkeur.
+// -----------------------------------------------------------------------------
+function getHistoryRepairLabelType(item) {
+  const result = item && item.result;
+  const type = result ? (result.repairLabelType || (result.repairPolicy && result.repairPolicy.labelType) || '') : '';
+  if (type === 'production') return 'production';
+  if (type === 'reject' || type === 'direct') return 'reject';
+  return '';
+}
+
+function historyItemHadRepairLabel(item) {
+  if (!item) return false;
+  if (item.result && typeof needsProblemLabel === 'function') {
+    return needsProblemLabel({ meldingen: item.leverancier_meldingen || '' }, item.result);
+  }
+  // Terugval voor oudere records zonder opgeslagen result.
+  const grade = normalizeSupplierGrade(item.grade);
+  return grade === 'D';
+}
+
+// Reparatiestatistiek gegroepeerd per batch-id: { [batchId]: {graded, repair,
+// production, reject, batchNummer, leverancier} }.
+function getBatchRepairStats(historyItems = STATE.history) {
+  const stats = {};
+  (historyItems || []).forEach(item => {
+    const key = item.batchId || item.batchNummer || '—';
+    if (!stats[key]) stats[key] = { graded: 0, repair: 0, production: 0, reject: 0, batchNummer: item.batchNummer || '', leverancier: '' };
+    stats[key].graded += 1;
+    if (historyItemHadRepairLabel(item)) {
+      stats[key].repair += 1;
+      const type = getHistoryRepairLabelType(item);
+      if (type === 'production') stats[key].production += 1;
+      else stats[key].reject += 1;
+    }
+  });
+  return stats;
+}
+
+function getBatchRepairStatsFor(batch, allStats) {
+  const stats = allStats || getBatchRepairStats();
+  return stats[batch && batch.id] || stats[batch && batch.nummer] || { graded: 0, repair: 0, production: 0, reject: 0 };
+}
+
 const SUPPLIER_COMPARISON_GRADE_VALUE = { A: 4, B: 3, C: 2, D: 1 };
 
 function normalizeSupplierGrade(value) {
