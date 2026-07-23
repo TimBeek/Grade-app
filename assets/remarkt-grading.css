@@ -26,13 +26,22 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; border: none
 
 /* Home / scan */
 .home-actions { display: grid; gap: 12px; margin-bottom: 24px; }
-.action-card { background: white; border: 1px solid #E5E5E0; border-radius: 12px; padding: 18px; display: flex; align-items: center; gap: 14px; text-align: left; transition: all 0.15s; }
-.action-card:hover, .action-card:active { border-color: #1F1F1E; }
+.action-card { position: relative; background: white; border: 1px solid #E5E5E0; border-radius: 14px; padding: 20px 22px; display: flex; align-items: center; gap: 18px; text-align: left; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+.action-card:hover, .action-card:active { border-color: var(--action-accent, var(--remarkt-red)); box-shadow: 0 10px 26px -12px rgba(15,15,15,0.28); transform: translateY(-1px); }
 .action-icon { width: 40px; height: 40px; border-radius: 8px; background: #FAEEDA; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px; }
+.action-text { min-width: 0; }
 .action-text p { margin: 0; }
-.action-title { font-weight: 500; }
-.action-desc { color: #292927; font-size: 13px; line-height: 1.35; margin-top: 5px; }
+.action-title { font-weight: 850; font-size: 16.5px; line-height: 1.15; color: var(--remarkt-ink); }
+.action-desc { color: var(--remarkt-muted); font-size: 13px; line-height: 1.35; margin-top: 4px; }
 .action-sub { font-size: 13px; color: #6B6B66; margin-top: 2px; }
+/* "i"-knop + uitklapbaar detail op de actiekaart. */
+.action-info-btn { position: absolute; top: 12px; right: 12px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--remarkt-line); background: #fff; color: var(--remarkt-muted); display: inline-flex; align-items: center; justify-content: center; font-family: Georgia, 'Times New Roman', serif; font-weight: 900; font-size: 14px; line-height: 1; cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s; }
+.action-info-btn:hover, .action-info-btn.is-open { border-color: var(--action-accent, var(--remarkt-red)); color: var(--action-accent, var(--remarkt-red)); background: var(--action-soft, #FFF5F5); }
+.action-info-panel { display: none; margin-top: 9px; padding: 9px 11px; border-radius: 8px; background: rgba(15,15,15,0.05); color: var(--remarkt-muted); font-size: 12.5px; line-height: 1.4; }
+.action-info-panel.is-open { display: block; }
+html[data-theme="dark"] .action-info-btn { background: #2A2A2F; border-color: var(--dark-line); color: var(--dark-muted); }
+html[data-theme="dark"] .action-info-btn:hover, html[data-theme="dark"] .action-info-btn.is-open { color: #fff; border-color: var(--action-accent, var(--remarkt-red)); background: #33333A; }
+html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06); color: var(--dark-muted); }
 
 .scan-input { width: 100%; padding: 14px 16px; font-size: 18px; border: 1px solid #E5E5E0; border-radius: 10px; font-family: monospace; background: white; }
 .scan-input:focus { outline: none; border-color: #1F1F1E; box-shadow: 0 0 0 3px rgba(31,31,30,0.1); }
@@ -348,8 +357,8 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .action-card.import-work { --action-accent: #C05621; --action-soft: #FFF7ED; }
 .action-card.accounts-work { --action-accent: #4F46E5; --action-soft: #F1F2FF; }
 .action-card:disabled { opacity: 0.55; cursor: not-allowed; }
-.action-icon { width: 36px; height: 36px; font-size: 0; background: var(--action-accent, var(--remarkt-red)); color: #fff; }
-.action-icon svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.action-icon { width: 56px; height: 56px; border-radius: 15px; font-size: 0; background: var(--action-accent, var(--remarkt-red)); color: #fff; box-shadow: 0 8px 18px -8px var(--action-accent, rgba(227,6,19,0.55)); }
+.action-icon svg { width: 27px; height: 27px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .ops-side-panel, .ops-batch-board, .ops-admin-board { background: #fff; border: 1px solid var(--remarkt-line); border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(15,15,15,0.035); }
 .ops-side-panel { display: grid; gap: 14px; }
 .ops-side-row { display: grid; gap: 3px; padding-bottom: 12px; border-bottom: 1px solid var(--remarkt-line); }
@@ -416,15 +425,21 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .home-section-sub { font-size: 12px; color: var(--remarkt-muted); }
 .home-knowledge { margin: 18px 0 0; }
 .knowledge-card { box-shadow: 0 10px 28px rgba(0,0,0,0.04); }
-.dashboard-tabs { display: flex; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
-.dashboard-tab { --tab-accent: var(--remarkt-red); border: 1px solid var(--remarkt-line); background: #fff; color: var(--remarkt-ink); border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 800; display: inline-flex; align-items: center; gap: 8px; }
+/* Prominente segmented navigatiebalk bovenaan het dashboard. */
+.dashboard-tabs { display: flex; gap: 6px; margin: 0 0 20px; flex-wrap: wrap; padding: 6px; border: 1px solid var(--remarkt-line); border-radius: 14px; background: #F3F3F0; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5); }
+.dashboard-tab { --tab-accent: var(--remarkt-red); flex: 1 1 150px; justify-content: center; border: 1px solid transparent; background: transparent; color: var(--remarkt-muted); border-radius: 10px; padding: 14px 16px; font-size: 15px; font-weight: 850; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s; }
 .dashboard-tab.workflow-tab { --tab-accent: #185FA5; }
 .dashboard-tab.sticker-tab { --tab-accent: #E30613; }
 .dashboard-tab.support-tab { --tab-accent: #0F766E; }
 .dashboard-tab.analytics-tab { --tab-accent: #7C3AED; }
-.dashboard-tab:hover { border-color: var(--tab-accent); color: var(--tab-accent); }
-.dashboard-tab.active { background: var(--tab-accent); border-color: var(--tab-accent); color: #fff; }
-.dashboard-tab svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.dashboard-tab:hover { background: #fff; color: var(--tab-accent); }
+.dashboard-tab.active { background: var(--tab-accent); border-color: var(--tab-accent); color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.16); }
+.dashboard-tab svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 2.1; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 640px) { .dashboard-tab { flex: 1 1 44%; padding: 12px 10px; font-size: 13.5px; } }
+html[data-theme="dark"] .dashboard-tabs { background: #202024; border-color: var(--dark-line); box-shadow: none; }
+html[data-theme="dark"] .dashboard-tab { background: transparent; border-color: transparent; color: var(--dark-muted); }
+html[data-theme="dark"] .dashboard-tab:hover { background: #2D2D33; color: #fff; }
+html[data-theme="dark"] .dashboard-tab.active { background: var(--tab-accent); border-color: var(--tab-accent); color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
 .support-dashboard { display: grid; gap: 18px; }
 .support-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .dashboard-panel { background: #fff; border: 1px solid var(--remarkt-line); border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(15,15,15,0.035); }
@@ -1443,7 +1458,6 @@ html[data-theme="dark"] .image-preview-modal img {
   color: var(--dark-text);
 }
 
-html[data-theme="dark"] .dashboard-tab,
 html[data-theme="dark"] .transition-chip,
 html[data-theme="dark"] .trigger-chip,
 html[data-theme="dark"] .btn-secondary,
@@ -1960,3 +1974,49 @@ html[data-theme="dark"][data-contrast="high"] {
 :root[data-contrast="high"] .analytics-kpi-card,
 :root[data-contrast="high"] .batch-status-row { border-width: 1.5px; }
 :root[data-contrast="high"] :focus-visible { outline: 3px solid var(--remarkt-red); outline-offset: 2px; }
+
+/* ============================================================================
+   Batch-kaart op het dashboard: reparatielabels als prominente chips, subtielere
+   verwijderknop, en uitklapbare statistieken (grade-mix, tijd, rendement).
+   ============================================================================ */
+.batch-card { border: 1px solid var(--remarkt-line); border-radius: 12px; padding: 14px 16px; background: #fff; display: grid; gap: 12px; box-shadow: 0 1px 2px rgba(15,15,15,0.035); }
+.batch-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.batch-card .batch-status-count { text-align: right; font-size: 13px; color: var(--remarkt-muted); white-space: nowrap; }
+.batch-card .batch-status-count strong { font-size: 20px; color: var(--remarkt-ink); }
+.batch-card .batch-status-count .card-sub { display: block; font-size: 11.5px; }
+.batch-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.batch-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: #F1F1EE; color: var(--remarkt-muted); font-size: 12px; font-weight: 750; }
+.batch-chip b { font-weight: 950; color: var(--remarkt-ink); }
+.batch-chip.repair.has-repair { background: rgba(227,6,19,0.10); color: #A1141B; }
+.batch-chip.repair.has-repair b { color: #C8102E; }
+.batch-chip.bin-prod { background: rgba(26,127,55,0.12); color: #17692F; }
+.batch-chip.bin-prod b { color: #1A7F37; }
+.batch-chip.bin-reject { background: rgba(200,16,46,0.12); color: #A1141B; }
+.batch-chip.bin-reject b { color: #C8102E; }
+.batch-card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.batch-mini-btn { min-height: 34px; padding: 6px 14px; border: 1px solid var(--remarkt-line); border-radius: 8px; background: #fff; color: var(--remarkt-ink); font-size: 12.5px; font-weight: 800; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+.batch-mini-btn:hover { border-color: var(--remarkt-red); color: var(--remarkt-red); }
+.batch-mini-btn.danger { color: #9A9A94; }
+.batch-mini-btn.danger:hover { border-color: #C8102E; color: #C8102E; background: #FFF5F5; }
+.batch-stats-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; padding: 12px; border-radius: 10px; background: #F7F7F5; border: 1px solid var(--remarkt-line); }
+.batch-stat { display: grid; gap: 3px; align-content: start; }
+.batch-stat span { font-size: 11px; color: var(--remarkt-muted); text-transform: uppercase; font-weight: 850; letter-spacing: 0.02em; }
+.batch-stat strong { font-size: 16px; color: var(--remarkt-ink); }
+.batch-stat-wide { grid-column: 1 / -1; }
+.batch-grade-mix { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: #E5E5E0; margin-top: 3px; }
+.batch-grade-mix .grade-seg { display: block; height: 100%; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5); }
+.batch-grade-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 5px; font-size: 11px; color: var(--remarkt-muted); }
+html[data-theme="dark"] .batch-card { background: var(--dark-surface); border-color: var(--dark-line); }
+html[data-theme="dark"] .batch-card .batch-status-count strong,
+html[data-theme="dark"] .batch-chip b,
+html[data-theme="dark"] .batch-stat strong { color: var(--dark-text); }
+html[data-theme="dark"] .batch-chip { background: #2A2A2F; color: var(--dark-muted); }
+html[data-theme="dark"] .batch-chip.repair.has-repair { background: rgba(227,6,19,0.2); color: #FF9CA1; }
+html[data-theme="dark"] .batch-chip.bin-prod { background: rgba(26,127,55,0.22); color: #7FE0A0; }
+html[data-theme="dark"] .batch-chip.bin-reject { background: rgba(200,16,46,0.22); color: #FF9CA1; }
+html[data-theme="dark"] .batch-mini-btn { background: #25252A; border-color: var(--dark-line); color: var(--dark-text); }
+html[data-theme="dark"] .batch-mini-btn.danger { color: #9C9A92; }
+html[data-theme="dark"] .batch-mini-btn.danger:hover { background: #351115; }
+html[data-theme="dark"] .batch-stats-panel { background: #1E1E22; border-color: var(--dark-line); }
+html[data-theme="dark"] .batch-stat span, html[data-theme="dark"] .batch-grade-legend { color: var(--dark-muted); }
+html[data-theme="dark"] .batch-grade-mix { background: #151518; }

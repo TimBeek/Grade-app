@@ -35,6 +35,8 @@ const STATE = {
   monitorRegradeSticker: null,
   analyticsTab: 'overview',
   contrast: 'normal',
+  homeInfoCard: null,
+  expandedBatchStats: null,
   appMessage: null,
   manualMode: false,
   importResult: null,

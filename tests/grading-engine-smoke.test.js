@@ -488,9 +488,10 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
   assert.match(app.__appElement.innerHTML, /Grade Device/);
   assert.match(app.__appElement.innerHTML, /Laptop Workflow/);
   assert.match(app.__appElement.innerHTML, /Monitor Workflow/);
-  assert.match(app.__appElement.innerHTML, /Scan a device, review all parts/);
+  assert.match(app.__appElement.innerHTML, /Grade Device from list/);
+  assert.match(app.__appElement.innerHTML, /action-info-btn/);
   assert.match(app.__appElement.innerHTML, /Label Scan/);
-  assert.match(app.__appElement.innerHTML, /Print specs labels with a blank grade line/);
+  assert.match(app.__appElement.innerHTML, /Print a specs label with a blank grade line/);
   assert.match(app.__appElement.innerHTML, /grade-work/);
   assert.match(app.__appElement.innerHTML, /sticker-work/);
   assert.match(app.__appElement.innerHTML, /Test Grading/);
@@ -523,13 +524,6 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
   assert.match(app.__appElement.innerHTML, /Grade Mix/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Label Content/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Grade Moment/);
-  assert.match(app.__appElement.innerHTML, /workflow-monitor-route-6-step-ai\.png/);
-  assert.match(app.__appElement.innerHTML, /route-steps-6/);
-  assert.match(app.__appElement.innerHTML, /Supplier batch/);
-  assert.match(app.__appElement.innerHTML, /Scan monitor/);
-  assert.match(app.__appElement.innerHTML, /Check ports/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Match model/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /route-steps-7/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
 
   vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
@@ -695,7 +689,7 @@ test('stickeraar ziet alleen scan-en-print werkstroom', async () => {
 
   assert.match(app.__appElement.innerHTML, /Labeling/);
   assert.match(app.__appElement.innerHTML, /Scan &amp; Print|Scan & Print/);
-  assert.match(app.__appElement.innerHTML, /specs and repair labels print automatically/);
+  assert.match(app.__appElement.innerHTML, /repair labels print automatically/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Test Grading/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Manual Entry/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Insights/);
@@ -1694,7 +1688,6 @@ test('monitor handmatige invoer maakt monitor aan en print na gradekeuze', async
   `, app);
 
   vm.runInContext('render();', app);
-  assert.match(app.__appElement.innerHTML, /workflow-monitor-manual-entry-ai\.png/);
   assert.match(app.__appElement.innerHTML, /monitors without a reliable scan/);
   assert.match(app.__appElement.innerHTML, /Brand and model number are required/);
   assert.match(app.__appElement.innerHTML, /Choose screen size/);

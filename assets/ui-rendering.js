@@ -476,7 +476,14 @@ function uiIcon(name) {
   return `<svg viewBox="0 0 22 22" aria-hidden="true">${icons[name] || icons.scan}</svg>`;
 }
 
-function renderWorkflowRoute(mode = 'grading', placement = '') {
+function renderWorkflowRoute() {
+  // Decoratieve route-illustraties verwijderd op verzoek — de actiekaarten en de
+  // navigatiebalk doen dit werk nu duidelijker. Functie behouden voor bestaande
+  // aanroepen.
+  return '';
+}
+
+function renderWorkflowRouteLegacy(mode = 'grading', placement = '') {
   const isLabelFlow = mode === 'label';
   const isMonitorFlow = mode === 'monitor';
   const steps = isMonitorFlow
@@ -531,7 +538,12 @@ function renderWorkflowRoute(mode = 'grading', placement = '') {
   `;
 }
 
-function renderWorkflowIntroBanner(type) {
+function renderWorkflowIntroBanner() {
+  // Intro-banner met illustratie verwijderd op verzoek (rommelig/niet mooi).
+  return '';
+}
+
+function renderWorkflowIntroBannerLegacy(type) {
   const banners = {
     grade: {
       image: 'assets/workflow-grade-device-banner.png',
@@ -975,18 +987,26 @@ function getDashboardData() {
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
     const rp = typeof getBatchRepairStatsFor === 'function' ? getBatchRepairStatsFor(batch, batchRepairStats) : { repair: 0, production: 0, reject: 0 };
+    const expanded = STATE.expandedBatchStats === batch.id;
     return `
-      <div class="batch-status-row">
-        <div>
-          <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}</div>
-          <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · ${escapeHtml(batch.geimporteerd || 'today')}</div>
-          <div class="batch-repair-line" title="Repair labels printed for this batch">
-            <span class="batch-repair-count ${rp.repair ? 'has-repair' : ''}">${rp.repair}</span> repair labels${rp.repair ? ` · ${rp.production} production · ${rp.reject} not sellable` : ''}
+      <div class="batch-card">
+        <div class="batch-card-head">
+          <div>
+            <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}</div>
+            <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · ${escapeHtml(batch.geimporteerd || 'today')}</div>
           </div>
-          ${isAdmin ? `<button class="batch-remove" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}">Delete batch</button>` : ''}
+          <div class="batch-status-count"><strong>${open}</strong> open<span class="card-sub">${done}/${total} done</span></div>
         </div>
-        <div class="batch-status-count">${open} open<br><span class="card-sub">${done}/${total} done</span></div>
+        <div class="batch-chips">
+          <span class="batch-chip repair ${rp.repair ? 'has-repair' : ''}"><b>${rp.repair}</b> repair labels</span>
+          ${rp.repair ? `<span class="batch-chip bin-prod"><b>${rp.production}</b> production</span><span class="batch-chip bin-reject"><b>${rp.reject}</b> not sellable</span>` : ''}
+        </div>
         <div class="batch-progress-track"><div class="batch-progress-fill" style="width: ${progress}%;"></div></div>
+        <div class="batch-card-actions">
+          <button class="batch-mini-btn" data-batch-stats="${escapeHtml(batch.id)}" type="button" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? 'Hide statistics' : 'Statistics'}</button>
+          ${isAdmin ? `<button class="batch-mini-btn danger" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}" type="button">Delete batch</button>` : ''}
+        </div>
+        ${expanded && typeof renderBatchStatsPanel === 'function' ? renderBatchStatsPanel(getBatchDashboardStats(batch)) : ''}
       </div>
     `;
   }).join('');
@@ -1027,6 +1047,23 @@ function getDashboardData() {
   return { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, stickerBatchRows, monitorBatchRows };
 }
 
+// Compacte actiekaart: groot icoon + titel + korte omschrijving. Extra detail
+// (stats/context) zit achter een "i" zodat de kaart overzichtelijk blijft.
+function renderActionCard(opts) {
+  const expanded = STATE.homeInfoCard === opts.key;
+  return `
+    <button class="action-card ${opts.extraClass || ''}" data-action="${opts.action}" type="button">
+      <div class="action-icon">${uiIcon(opts.icon)}</div>
+      <div class="action-text">
+        <p class="action-title">${escapeHtml(opts.title)}</p>
+        <p class="action-desc">${escapeHtml(opts.desc)}</p>
+        ${opts.info ? `<p class="action-info-panel ${expanded ? 'is-open' : ''}">${escapeHtml(opts.info)}</p>` : ''}
+      </div>
+      ${opts.info ? `<span class="action-info-btn ${expanded ? 'is-open' : ''}" data-action-info="${escapeHtml(opts.key)}" role="button" tabindex="0" aria-label="More info" aria-expanded="${expanded ? 'true' : 'false'}" title="More info">i</span>` : ''}
+    </button>
+  `;
+}
+
 function renderDashboardTabs(active) {
   if (isStickerUser()) {
     return `
@@ -1053,6 +1090,7 @@ function renderHome() {
   const isMonitor = activeTab === 'monitor';
   return `
     <div class="screen home-screen">
+      ${renderDashboardTabs(activeTab)}
       <div class="ops-command">
         <div>
           <div class="ops-kicker">ReMarkt Operations</div>
@@ -1068,7 +1106,6 @@ function renderHome() {
             : 'Start daily grading work, label devices and run safe grading tests from one clean workspace.'}</p>
         </div>
       </div>
-      ${renderDashboardTabs(activeTab)}
       ${activeTab === 'support' ? renderSupportDashboard(data) : activeTab === 'monitor' ? renderMonitorWorkflowDashboard(data) : renderWorkflowDashboard(data)}
     </div>
   `;
@@ -1090,14 +1127,7 @@ function renderWorkflowDashboard(data) {
             <div class="ops-section-sub">Scan barcode, print instantly, blank grade line on label</div>
           </div>
           <div class="workflow-actions">
-            <button class="action-card sticker-work primary-work" data-action="sticker_scan">
-              <div class="action-icon">${uiIcon('labelPrint')}</div>
-              <div class="action-text">
-                <p class="action-title">Scan & Print</p>
-                <p class="action-desc">Scan a barcode; specs and repair labels print automatically when needed.</p>
-                <p class="action-sub">${stickerOpenCount} devices waiting for label-only print</p>
-              </div>
-            </button>
+            ${renderActionCard({ action: 'sticker_scan', key: 'stickerscan', extraClass: 'sticker-work primary-work', icon: 'labelPrint', title: 'Scan & Print', desc: 'Scan a barcode; the label prints automatically.', info: `${stickerOpenCount} devices waiting for a label-only print. Specs and repair labels print automatically when needed.` })}
           </div>
         </div>
 
@@ -1136,38 +1166,10 @@ function renderWorkflowDashboard(data) {
           <div class="ops-section-sub">Daily actions for warehouse grading</div>
         </div>
         <div class="workflow-actions">
-          <button class="action-card grade-work primary-work" data-action="scan">
-            <div class="action-icon">${uiIcon('gradeScan')}</div>
-            <div class="action-text">
-              <p class="action-title">Grade Device</p>
-              <p class="action-desc">Scan a device, review all parts and save the final grade.</p>
-              <p class="action-sub">${BATCHES.length} active batch${BATCHES.length === 1 ? '' : 'es'} · ${openCount} open devices</p>
-            </div>
-          </button>
-          <button class="action-card sticker-work" data-action="sticker_scan">
-            <div class="action-icon">${uiIcon('labelPrint')}</div>
-            <div class="action-text">
-              <p class="action-title">Label Scan</p>
-              <p class="action-desc">Print specs labels with a blank grade line, then mark the device complete.</p>
-              <p class="action-sub">${stickerOpenCount} label-only prints remaining</p>
-            </div>
-          </button>
-          <button class="action-card manual-work" data-action="manual">
-            <div class="action-icon">${uiIcon('manualEntry')}</div>
-            <div class="action-text">
-              <p class="action-title">Manual Entry</p>
-              <p class="action-desc">Enter brand, model and specs manually for individual devices.</p>
-              <p class="action-sub">For returns or stock without a batch</p>
-            </div>
-          </button>
-          <button class="action-card test-work" data-action="grading_test">
-            <div class="action-icon">${uiIcon('testGrade')}</div>
-            <div class="action-text">
-              <p class="action-title">Test Grading</p>
-              <p class="action-desc">Run the grading flow without changing stock or history.</p>
-              <p class="action-sub">Safe practice and rule checks</p>
-            </div>
-          </button>
+          ${renderActionCard({ action: 'scan', key: 'grade', extraClass: 'grade-work primary-work', icon: 'gradeScan', title: 'Grade Device from list', desc: 'Scan a device from the batch and grade it.', info: `${BATCHES.length} active batch${BATCHES.length === 1 ? '' : 'es'} · ${openCount} open devices. Scan the barcode, review every part and save the final grade; labels print automatically.` })}
+          ${renderActionCard({ action: 'sticker_scan', key: 'label', extraClass: 'sticker-work', icon: 'labelPrint', title: 'Label Scan', desc: 'Print a specs label with a blank grade line.', info: `${stickerOpenCount} label-only prints remaining. The device is then marked complete in the digital workflow.` })}
+          ${renderActionCard({ action: 'manual', key: 'manual', extraClass: 'manual-work', icon: 'manualEntry', title: 'Manual Entry', desc: 'Enter brand, model and specs by hand.', info: 'For returns or loose stock without a batch.' })}
+          ${renderActionCard({ action: 'grading_test', key: 'test', extraClass: 'test-work', icon: 'testGrade', title: 'Test Grading', desc: 'Practice grading without changing data.', info: 'Runs the full grading flow but never touches stock or history — safe rule checks.' })}
         </div>
       </div>
 
@@ -1224,22 +1226,8 @@ function renderMonitorWorkflowDashboard(data) {
           <div class="ops-section-sub">Separated monitor intake with scan, grade choice and label print</div>
         </div>
         <div class="workflow-actions">
-          <button class="action-card monitor-work primary-work" data-action="monitor_label_scan">
-            <div class="action-icon">${uiIcon('monitor')}</div>
-            <div class="action-text">
-              <p class="action-title">Label Scan</p>
-              <p class="action-desc">Scan the monitor first, then choose A, B, C or X and print the label.</p>
-              <p class="action-sub">${monitorOpenCount} monitors waiting for label print</p>
-            </div>
-          </button>
-          <button class="action-card manual-work" data-action="monitor_manual">
-            <div class="action-icon">${uiIcon('manualEntry')}</div>
-            <div class="action-text">
-              <p class="action-title">Manual entry</p>
-              <p class="action-desc">Enter brand, model and monitor specifications manually, then choose the grade.</p>
-              <p class="action-sub">For loose monitors or corrections</p>
-            </div>
-          </button>
+          ${renderActionCard({ action: 'monitor_label_scan', key: 'monlabel', extraClass: 'monitor-work primary-work', icon: 'monitor', title: 'Label Scan', desc: 'Scan the monitor, then choose A, B, C or X.', info: `${monitorOpenCount} monitors waiting for a label print. The app prints the monitor label right after the grade.` })}
+          ${renderActionCard({ action: 'monitor_manual', key: 'monmanual', extraClass: 'manual-work', icon: 'manualEntry', title: 'Enter monitor manually', desc: 'Enter brand, model and specs by hand.', info: 'For loose monitors or corrections without a reliable scan.' })}
         </div>
       </div>
 

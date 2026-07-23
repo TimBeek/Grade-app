@@ -53,6 +53,53 @@ function getBatchRepairStatsFor(batch, allStats) {
   return stats[batch && batch.id] || stats[batch && batch.nummer] || { graded: 0, repair: 0, production: 0, reject: 0 };
 }
 
+// Belangrijkste statistieken van één batch, voor het uitklap-paneel op de
+// batch-rij (grade-mix, gem. tijd, rendement vs leverancier, reparatie).
+function getBatchDashboardStats(batch) {
+  const id = batch && batch.id;
+  const nummer = batch && batch.nummer;
+  const items = (STATE.history || []).filter(h => (id && h.batchId === id) || (!h.batchId && nummer && h.batchNummer === nummer));
+  const counts = { A: 0, B: 0, C: 0, D: 0 };
+  let timeSum = 0;
+  let timed = 0;
+  items.forEach(h => {
+    const grade = normalizeSupplierGrade(h.grade);
+    if (counts[grade] !== undefined) counts[grade] += 1;
+    const sec = Number(h.duurSec || 0);
+    if (sec > 0) { timeSum += sec; timed += 1; }
+  });
+  const supplierStats = getSupplierComparisonStats(items);
+  const uplift = supplierStats.summary.total ? Math.round((supplierStats.summary.netDelta / supplierStats.summary.total) * 100) / 100 : null;
+  return {
+    graded: items.length,
+    counts,
+    avgSec: timed ? Math.round(timeSum / timed) : 0,
+    uplift,
+    improvedPercent: supplierStats.summary.improvedPercent,
+    repair: getBatchRepairStatsFor(batch),
+  };
+}
+
+function renderBatchStatsPanel(stats) {
+  const total = stats.counts.A + stats.counts.B + stats.counts.C + stats.counts.D;
+  return `
+    <div class="batch-stats-panel">
+      <div class="batch-stat"><span>Graded</span><strong>${formatNumber(stats.graded)}</strong></div>
+      <div class="batch-stat"><span>Avg. time</span><strong>${formatSeconds(stats.avgSec)}</strong></div>
+      <div class="batch-stat"><span>Uplift vs supplier</span><strong>${stats.uplift === null ? '—' : formatSignedNumber(stats.uplift)}</strong></div>
+      <div class="batch-stat"><span>Above supplier</span><strong>${stats.uplift === null ? '—' : stats.improvedPercent + '%'}</strong></div>
+      <div class="batch-stat batch-stat-wide">
+        <span>Grade mix</span>
+        ${total
+          ? `<div class="batch-grade-mix">${['A', 'B', 'C', 'D'].map(g => stats.counts[g] ? `<span class="grade-seg" style="width:${(stats.counts[g] / total) * 100}%; background:${ANALYTICS_GRADE_COLORS[g]};" title="${displayGrade(g)}: ${stats.counts[g]}"></span>` : '').join('')}</div>
+             <div class="batch-grade-legend">${['A', 'B', 'C', 'D'].map(g => `<span>${displayGrade(g)} ${stats.counts[g]}</span>`).join('')}</div>`
+          : '<strong>—</strong>'}
+      </div>
+      <div class="batch-stat batch-stat-wide"><span>Repair labels</span><strong>${stats.repair.repair} · ${stats.repair.production} production · ${stats.repair.reject} not sellable</strong></div>
+    </div>
+  `;
+}
+
 const SUPPLIER_COMPARISON_GRADE_VALUE = { A: 4, B: 3, C: 2, D: 1 };
 
 function normalizeSupplierGrade(value) {

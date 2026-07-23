@@ -51,6 +51,21 @@ function bindRenderedControlHandlers() {
     resolvePendingDecision(Number(button.dataset.decisionOption));
   });
 
+  // "i"-knopje en statistieken-knop zitten NAAST/IN een data-action-kaart. Ze
+  // krijgen hun eigen onclick (met stopPropagation) zodat een klik erop niet
+  // doorslaat naar de navigatie-actie van de omliggende kaart.
+  bindClick('[data-action-info]', button => {
+    const key = button.dataset.actionInfo;
+    STATE.homeInfoCard = STATE.homeInfoCard === key ? null : key;
+    render();
+  });
+
+  bindClick('[data-batch-stats]', button => {
+    const id = button.dataset.batchStats;
+    STATE.expandedBatchStats = STATE.expandedBatchStats === id ? null : id;
+    render();
+  });
+
   bindClick('[data-action]', button => handleAction(button.dataset.action, button));
 
   bindClick('[data-history-toggle]', button => {

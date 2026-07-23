@@ -1099,6 +1099,34 @@ Object.assign(NL_COPY, {
   'Top repair causes': 'Top reparatie-oorzaken',
 });
 
+// Vernieuwd dashboard: actiekaarten (titel/omschrijving/info) + batch-kaart met
+// uitklapbare statistieken. Losse zinsfragmenten laten de dynamische info-teksten
+// (met getallen) ook netjes in het Nederlands vertalen.
+Object.assign(NL_COPY, {
+  'Scan & Print': 'Scannen & printen',
+  'Scan a device from the batch and grade it.': 'Scan een apparaat uit de batch en gradeer het.',
+  'Print a specs label with a blank grade line.': 'Print een specs-label met een lege grade-regel.',
+  'Enter brand, model and specs by hand.': 'Voer merk, model en specificaties handmatig in.',
+  'Practice grading without changing data.': 'Oefen met graden zonder data te wijzigen.',
+  'Scan the monitor, then choose A, B, C or X.': 'Scan de monitor en kies daarna A, B, C of X.',
+  'Enter monitor manually': 'Monitor handmatig invoeren',
+  'For returns or loose stock without a batch.': 'Voor retouren of losse voorraad zonder batch.',
+  'Runs the full grading flow but never touches stock or history — safe rule checks.': 'Doorloopt de volledige gradingflow maar raakt voorraad of historie nooit aan — veilige regelcontrole.',
+  'For loose monitors or corrections without a reliable scan.': 'Voor losse monitoren of correcties zonder betrouwbare scan.',
+  'Statistics': 'Statistieken',
+  'Hide statistics': 'Statistieken verbergen',
+  'More info': 'Meer info',
+  'Uplift vs supplier': 'Winst t.o.v. leverancier',
+  // Zinsfragmenten voor de dynamische info-teksten met getallen.
+  'devices waiting for a label-only print.': 'apparaten wachten op een alleen-label-print.',
+  'Specs and repair labels print automatically when needed.': 'Specs- en reparatielabels worden automatisch geprint wanneer nodig.',
+  'Scan the barcode, review every part and save the final grade; labels print automatically.': 'Barcode scannen, elk onderdeel controleren en de definitieve grade opslaan; labels worden automatisch geprint.',
+  'label-only prints remaining.': 'alleen-label-prints over.',
+  'The device is then marked complete in the digital workflow.': 'Het apparaat wordt daarna als voltooid gemarkeerd in de digitale werkstroom.',
+  'monitors waiting for a label print.': 'monitoren wachten op een labelprint.',
+  'The app prints the monitor label right after the grade.': 'De app print het monitorlabel direct na de grade.',
+});
+
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt', 'data-preview-label'];
 
 function normalizeLanguagePreference(value) {
