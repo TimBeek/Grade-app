@@ -197,8 +197,8 @@ function renderImagePreviewModal(preview) {
           <strong>${escapeHtml(preview.label || 'Preview')}</strong>
           <button class="image-preview-close" data-action="close_image_preview" type="button" aria-label="Close image" style="min-height:40px;min-width:94px;padding:8px 11px;border:1px solid #E9E9E9;border-radius:8px;background:#fff;color:#171717;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:800;line-height:1;">× <span>Close</span></button>
         </div>
-        <div class="image-preview-body" style="min-width:0;min-height:260px;width:100%;height:70vh;max-height:calc(100vh - 96px);overflow:hidden;background:#F8F8F8;display:flex;align-items:center;justify-content:center;">
-          <img src="${escapeHtml(preview.src)}" alt="${escapeHtml(preview.label || 'Enlarged option image')}" loading="eager" decoding="async" style="width:100%;height:100%;min-width:0;min-height:0;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;background:#F8F8F8;display:block;padding:10px;">
+        <div class="image-preview-body" style="min-width:0;min-height:260px;width:100%;height:70vh;max-height:calc(100vh - 96px);overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;">
+          <img src="${escapeHtml(preview.src)}" alt="${escapeHtml(preview.label || 'Enlarged option image')}" loading="eager" decoding="async" style="width:100%;height:100%;min-width:0;min-height:0;max-width:100%;max-height:100%;object-fit:contain;object-position:center center;background:#fff;display:block;padding:10px;">
         </div>
       </div>
     </div>

@@ -227,7 +227,7 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .decision-option, .choice, .expert-btn, .detail-pill, .btn, .btn-secondary, .btn-primary { touch-action: manipulation; }
 .decision-option.has-image { padding: 0; overflow: hidden; gap: 0; }
 .decision-image-wrap { position: relative; display: block; min-width: 0; }
-.decision-option img { width: 100%; height: 190px; object-fit: contain; object-position: center center; display: block; border-bottom: 1px solid #E5E5E0; background: #F8F8F8; }
+.decision-option img { width: 100%; height: 190px; object-fit: contain; object-position: center center; display: block; border-bottom: 1px solid #E5E5E0; background: #fff; }
 .decision-zoom-action { position: absolute; top: 10px; right: 10px; z-index: 30; width: 44px; height: 44px; border: 1px solid rgba(23,23,23,0.16); border-radius: 999px; background: rgba(255,255,255,0.94); color: var(--remarkt-ink); display: flex; align-items: center; justify-content: center; cursor: zoom-in; touch-action: manipulation; box-shadow: 0 8px 22px rgba(0,0,0,0.18); }
 .decision-zoom-action:hover { color: var(--remarkt-red); background: #fff; }
 .decision-zoom-action svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.3; fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -537,7 +537,7 @@ html[data-theme="dark"] .repair-alert-reasons span { color: #C8102E; }
 .visual-choice { display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(104px, auto); gap: 0; padding: 0; overflow: hidden; align-items: stretch; text-align: left; min-height: 100%; }
 .visual-choice.selected, .visual-choice-shell.selected { padding: 0; box-shadow: 0 0 0 2px var(--remarkt-red); border-color: var(--remarkt-red); }
 .grading-visual-screen { max-width: 1240px; }
-.visual-thumb { position: relative; aspect-ratio: 16 / 9; background: #F8F8F8; border-bottom: 1px solid var(--remarkt-line); overflow: hidden; }
+.visual-thumb { position: relative; aspect-ratio: 16 / 9; background: #fff; border-bottom: 1px solid var(--remarkt-line); overflow: hidden; }
 .visual-thumb img { width: 100%; height: 100%; object-fit: contain; object-position: center center; display: block; transform: none; box-sizing: border-box; padding: 6px; }
 .visual-letter { position: absolute; top: 10px; left: 10px; min-width: 38px; height: 34px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 800; }
 .visual-letter.A { background: #F6C400; color: #111; }
@@ -904,8 +904,8 @@ html[data-theme="dark"] .repair-alert-reasons span { color: #C8102E; }
 .image-preview-close { min-height: 40px; min-width: 94px; padding: 8px 11px; border: 1px solid var(--remarkt-line); border-radius: 8px; background: #fff; color: var(--remarkt-ink); display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-weight: 800; line-height: 1; touch-action: manipulation; }
 .image-preview-close:hover { border-color: var(--remarkt-red); color: var(--remarkt-red); }
 .image-preview-close > span { font-size: 12px; }
-.image-preview-body { min-width: 0; min-height: 260px; width: 100%; height: 70vh; max-height: calc(100vh - 96px); overflow: hidden; background: #F8F8F8; display: flex; align-items: center; justify-content: center; }
-.image-preview-modal img { width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center center; background: #F8F8F8; display: block; padding: 10px; }
+.image-preview-body { min-width: 0; min-height: 260px; width: 100%; height: 70vh; max-height: calc(100vh - 96px); overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
+.image-preview-modal img { width: 100%; height: 100%; min-width: 0; min-height: 0; max-width: 100%; max-height: 100%; object-fit: contain; object-position: center center; background: #fff; display: block; padding: 10px; }
 
 @media (max-width: 900px) {
   .dashboard-hero, .home-actions, .admin-actions, .visual-choice-grid, .metrics, .import-summary, .account-grid, .explain-hero, .explain-flow, .score-ranges, .impact-legend, .detail-decision-grid, .tweak-item, .plain-explain-grid, .example-grid, .easy-explain-grid, .priority-grid, .simple-stat-row, .grade-scale, .ops-command, .ops-status-grid, .ops-layout, .workflow-actions, .utility-actions, .batch-status-row, .support-grid, .panel-actions, .analytics-hero, .analytics-grid, .comparison-kpis, .test-start-grid, .workflow-intro-banner, .expert-direct-head { grid-template-columns: 1fr; }
@@ -1055,10 +1055,12 @@ html[data-theme="dark"] .detail-table,
 html[data-theme="dark"] .metric,
 html[data-theme="dark"] .expert-btn,
 html[data-theme="dark"] .detail-pill,
-html[data-theme="dark"] .empty-analytics,
+html[data-theme="dark"] .empty-analytics { background: #2D2D32; border-color: #3D3D3A; }
+/* Grade-voorbeeldfoto's staan op een witte achtergrond: laat de letterbox ook wit
+   zodat er geen grijze rand om de foto valt (net als voorbeeld B). */
 html[data-theme="dark"] .visual-thumb,
 html[data-theme="dark"] .image-preview-body,
-html[data-theme="dark"] .image-preview-modal img { background: #2D2D32; border-color: #3D3D3A; }
+html[data-theme="dark"] .image-preview-modal img { background: #fff; border-color: #3D3D3A; }
 html[data-theme="dark"] .btn-primary { background: #E8E8E2; color: #1A1A18; border-color: #E8E8E2; }
 html[data-theme="dark"] .btn-primary:hover { background: #C2C0B6; }
 
@@ -1114,10 +1116,10 @@ html[data-theme="light"] .detail-table,
 html[data-theme="light"] .metric,
 html[data-theme="light"] .expert-btn,
 html[data-theme="light"] .detail-pill,
-html[data-theme="light"] .empty-analytics,
+html[data-theme="light"] .empty-analytics { background: #F7F7F7; border-color: var(--remarkt-line); }
 html[data-theme="light"] .visual-thumb,
 html[data-theme="light"] .image-preview-body,
-html[data-theme="light"] .image-preview-modal img { background: #F7F7F7; border-color: var(--remarkt-line); }
+html[data-theme="light"] .image-preview-modal img { background: #fff; border-color: var(--remarkt-line); }
 html[data-theme="light"] .btn-primary { background: var(--remarkt-red); color: #fff; border-color: var(--remarkt-red); }
 html[data-theme="light"] .workflow-actions .action-card,
 html[data-theme="light"] .panel-actions .action-card { background: var(--action-soft, #fff); }
@@ -1450,12 +1452,15 @@ html[data-theme="dark"] .easy-card,
 html[data-theme="dark"] .priority-card,
 html[data-theme="dark"] .comparison-table th,
 html[data-theme="dark"] .explain-table th,
-html[data-theme="dark"] .detail-check,
-html[data-theme="dark"] .image-preview-body,
-html[data-theme="dark"] .image-preview-modal img {
+html[data-theme="dark"] .detail-check {
   background: var(--dark-surface-2);
   border-color: var(--dark-line);
   color: var(--dark-text);
+}
+html[data-theme="dark"] .image-preview-body,
+html[data-theme="dark"] .image-preview-modal img {
+  background: #fff;
+  border-color: var(--dark-line);
 }
 
 html[data-theme="dark"] .transition-chip,
