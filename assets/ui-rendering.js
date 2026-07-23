@@ -77,6 +77,7 @@ function renderTouchOverrideControls(laptop, context = 'info') {
 // =============================================================================
 function render() {
   applyThemePreference();
+  if (typeof applyContrastPreference === 'function') applyContrastPreference();
   const perf = window.performance;
   if (perf && perf.mark) perf.mark('remarkt-render-start');
   const app = document.getElementById('app');
@@ -316,6 +317,7 @@ function renderTopbar() {
       <div class="topbar-actions">
         ${renderOptionalLanguageToggle()}
         ${renderThemeToggle()}
+        ${renderContrastToggle()}
         ${backAction ? `<button class="btn-icon" data-action="${backAction}">← Back</button>` : ''}
         ${backAction && backAction !== 'home' ? '<button class="btn-icon" data-action="home">Home</button>' : ''}
         <button class="btn-icon" data-action="logout">Sign out</button>
@@ -326,6 +328,32 @@ function renderTopbar() {
 
 function renderOptionalLanguageToggle() {
   return typeof renderLanguageToggle === 'function' ? renderLanguageToggle() : '';
+}
+
+// Contrast-icoon: open cirkel (normaal) vs half-gevulde cirkel (hoog contrast).
+// De gevulde helft heeft een eigen fill zodat de .preference-option svg-regel
+// (fill:none) hem niet wegneemt.
+function uiContrastIcon(level) {
+  const half = level === 'high' ? '<path d="M11 4a7 7 0 0 1 0 14z" fill="currentColor" stroke="none"/>' : '';
+  return `<svg class="contrast-icon" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="7"/>${half}</svg>`;
+}
+
+function renderContrastToggle() {
+  const current = STATE.contrast === 'high' ? 'high' : 'normal';
+  const isDutch = typeof getLanguagePreference === 'function' ? getLanguagePreference() === 'nl' : false;
+  const options = [
+    { value: 'normal', label: isDutch ? 'Normaal contrast' : 'Normal contrast' },
+    { value: 'high', label: isDutch ? 'Hoog contrast' : 'High contrast' },
+  ];
+  return `
+    <div class="preference-switch contrast-toggle" role="group" aria-label="Contrast" data-i18n-skip="true">
+      ${options.map(option => `
+        <button class="preference-option icon-option ${current === option.value ? 'active' : ''}" data-action="toggle_contrast" data-contrast-value="${option.value}" type="button" aria-pressed="${current === option.value ? 'true' : 'false'}" title="${option.label}" aria-label="${option.label}">
+          ${uiContrastIcon(option.value)}
+        </button>
+      `).join('')}
+    </div>
+  `;
 }
 
 function renderThemeToggle() {

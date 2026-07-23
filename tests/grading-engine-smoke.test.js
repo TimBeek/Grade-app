@@ -2023,6 +2023,23 @@ test('reparatielabels worden per batch geteld en in bakken (productie/afkeur) ve
   assert.equal(forB1.repair, 2);
 });
 
+test('contrast-toggle schakelt tussen normaal en hoog contrast', async () => {
+  const app = loadAppSandbox();
+  vm.runInContext("STATE.currentUser = USERS.find(u => u.id === 'tim'); STATE.currentScreen = 'home';", app);
+  const html = vm.runInContext('renderContrastToggle()', app);
+  assert.match(html, /data-action="toggle_contrast"/);
+  assert.match(html, /data-contrast-value="normal"/);
+  assert.match(html, /data-contrast-value="high"/);
+  assert.match(html, /contrast-icon/);
+  // Hoog-contrast icoon heeft een gevulde helft.
+  assert.match(html, /data-contrast-value="high"[\s\S]*?fill="currentColor"/);
+
+  await vm.runInContext("handleAction('toggle_contrast', { dataset: { contrastValue: 'high' } });", app);
+  assert.equal(vm.runInContext('STATE.contrast', app), 'high');
+  await vm.runInContext("handleAction('toggle_contrast', { dataset: { contrastValue: 'normal' } });", app);
+  assert.equal(vm.runInContext('STATE.contrast', app), 'normal');
+});
+
 test('monitorlabel printen toont bezigstatus en blokkeert dubbele gradekeuze', async () => {
   const app = loadAppSandbox();
 

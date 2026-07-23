@@ -34,6 +34,7 @@ const STATE = {
   monitorReprintPrompt: null,
   monitorRegradeSticker: null,
   analyticsTab: 'overview',
+  contrast: 'normal',
   appMessage: null,
   manualMode: false,
   importResult: null,
@@ -60,6 +61,7 @@ const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20260520-
 const DEMO_STORAGE_KEYS = {
   users: 'remarktDemoUsersV2',
   theme: 'remarktThemePreferenceV1',
+  contrast: 'remarktContrastPreferenceV1',
   session: 'remarktSessionUserV1',
   sharedBackup: 'remarktDemoStateBackupV1',
 };
@@ -101,6 +103,7 @@ consumeLoginResetRequest();
 loadUsers();
 loadSessionUser();
 loadThemePreference();
+loadContrastPreference();
 
 const BATCH = {
   id: 'batch_50375',
@@ -531,6 +534,34 @@ function setThemePreference(value) {
 function applyThemePreference() {
   if (typeof document === 'undefined' || !document.documentElement) return;
   document.documentElement.dataset.theme = normalizeThemePreference(STATE.theme);
+}
+
+function normalizeContrastPreference(value) {
+  return value === 'high' ? 'high' : 'normal';
+}
+
+function loadContrastPreference() {
+  try {
+    STATE.contrast = normalizeContrastPreference(localStorage.getItem(DEMO_STORAGE_KEYS.contrast));
+  } catch {
+    STATE.contrast = 'normal';
+  }
+  applyContrastPreference();
+}
+
+function setContrastPreference(value) {
+  STATE.contrast = normalizeContrastPreference(value);
+  try {
+    localStorage.setItem(DEMO_STORAGE_KEYS.contrast, STATE.contrast);
+  } catch {
+    // Local storage may be unavailable in restricted browser contexts.
+  }
+  applyContrastPreference();
+}
+
+function applyContrastPreference() {
+  if (typeof document === 'undefined' || !document.documentElement) return;
+  document.documentElement.dataset.contrast = normalizeContrastPreference(STATE.contrast);
 }
 
 function normalizeStoredUser(user) {

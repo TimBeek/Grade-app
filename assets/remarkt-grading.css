@@ -483,9 +483,16 @@ html, body { background: #FAFAF8; color: var(--remarkt-ink); }
 .expert-row .component-notice { margin: 8px 0; padding: 9px 10px; font-size: 12px; }
 .repair-alert { background: #1F1F1F; color: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 5px solid var(--remarkt-red); animation: noticePulse 1.4s ease-out 2; }
 .repair-alert strong { display: block; color: #fff; margin-bottom: 4px; }
-.repair-alert-reasons { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: #fff; color: var(--remarkt-ink); font-size: 13px; line-height: 1.4; }
-.repair-alert-reasons span { display: block; margin-bottom: 5px; font-weight: 850; color: var(--remarkt-red); }
+/* Witte callout binnen de altijd-donkere .repair-alert kaart: tekst MOET in
+   beide thema's donker blijven (var(--remarkt-ink) flipt naar licht in dark mode
+   en werd dan onleesbaar op wit). */
+.repair-alert-reasons { margin-top: 12px; padding: 12px 14px; border-radius: 8px; background: #fff; color: #232323; font-size: 13px; line-height: 1.4; }
+.repair-alert-reasons span { display: block; margin-bottom: 5px; font-weight: 850; color: #C8102E; }
 .repair-alert-reasons ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.repair-alert-reasons li { color: #232323; }
+html[data-theme="dark"] .repair-alert-reasons { background: #fff; color: #232323; }
+html[data-theme="dark"] .repair-alert-reasons li { color: #232323; }
+html[data-theme="dark"] .repair-alert-reasons span { color: #C8102E; }
 .touch-override-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--remarkt-line); border-radius: 8px; background: #FAFAF7; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .touch-override-panel-compact { margin-top: 12px; background: rgba(255,255,255,0.7); }
 .touch-override-copy { display: grid; gap: 2px; min-width: min(100%, 190px); }
@@ -1928,3 +1935,28 @@ html[data-theme="dark"] .grade-stacked-bar,
 html[data-theme="dark"] .route-bar,
 html[data-theme="dark"] .pareto-track { background: #17171B; }
 html[data-theme="dark"] .pareto-cum { background: #E8E8E2; }
+
+/* ============================================================================
+   Hoog-contrast modus (data-contrast="high"): donkerdere/lichtere secundaire
+   tekst en sterkere randen, in zowel licht als donker thema. Werkt via de
+   bestaande kleur-variabelen, dus alle secundaire tekst (card-sub, meta, labels,
+   axis) wordt in één keer beter leesbaar.
+   ============================================================================ */
+:root[data-contrast="high"] {
+  --remarkt-muted: #2A2A2A;
+  --remarkt-line: #8E8E8E;
+}
+html[data-theme="dark"][data-contrast="high"] {
+  --remarkt-muted: #F2F2EC;
+  --remarkt-line: #6E6E6E;
+  --dark-text: #FFFFFF;
+  --dark-muted: #F2F2EC;
+  --dark-line: #6E6E6E;
+}
+/* Iets steviger knop-/paneelranden en zichtbaardere focus in hoog contrast. */
+:root[data-contrast="high"] .analytics-panel,
+:root[data-contrast="high"] .card,
+:root[data-contrast="high"] .laptop-card,
+:root[data-contrast="high"] .analytics-kpi-card,
+:root[data-contrast="high"] .batch-status-row { border-width: 1.5px; }
+:root[data-contrast="high"] :focus-visible { outline: 3px solid var(--remarkt-red); outline-offset: 2px; }

@@ -880,6 +880,7 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'confirm_supplier_notice',
   'toggle_language',
   'toggle_theme',
+  'toggle_contrast',
   'close_image_preview',
   'logout',
   'home',
@@ -908,6 +909,7 @@ const PASSWORD_CHANGE_ALLOWED_ACTIONS = new Set([
   'dismiss_message',
   'toggle_language',
   'toggle_theme',
+  'toggle_contrast',
   'logout',
   'change_own_password',
 ]);
@@ -951,6 +953,9 @@ async function handleAction(action, el) {
       break;
     case 'toggle_theme':
       setThemePreference(el.dataset.themeValue);
+      break;
+    case 'toggle_contrast':
+      if (typeof setContrastPreference === 'function') setContrastPreference(el && el.dataset ? el.dataset.contrastValue : 'normal');
       break;
     case 'toggle_language':
       if (typeof setLanguagePreference === 'function') {
