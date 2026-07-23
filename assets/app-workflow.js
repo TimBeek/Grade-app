@@ -1188,6 +1188,9 @@ async function handleAction(action, el) {
     case 'analytics_filters_reset':
       resetAnalyticsFilters();
       break;
+    case 'analytics_tab':
+      if (typeof setAnalyticsTab === 'function') setAnalyticsTab(el && el.dataset ? el.dataset.analyticsTab : 'overview');
+      break;
     case 'export_supplier_comparison':
       await exportSupplierComparison(el.dataset.exportBatch || 'all');
       return;

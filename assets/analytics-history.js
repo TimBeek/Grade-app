@@ -1201,9 +1201,258 @@ async function refreshAnalyticsServerStats() {
   }
 }
 
+// =============================================================================
+// REDESIGN: tabbed insights (sub-tabs) + new chart forms
+// (diverging bar, favourability score, repair bins, route split, Pareto, stacked)
+// =============================================================================
+const ANALYTICS_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'batch', label: 'Batch quality' },
+  { key: 'throughput', label: 'Throughput & staff' },
+  { key: 'repair', label: 'Repair bins' },
+];
+
+function getAnalyticsTab() {
+  return ANALYTICS_TABS.some(tab => tab.key === STATE.analyticsTab) ? STATE.analyticsTab : 'overview';
+}
+
+function setAnalyticsTab(tab) {
+  STATE.analyticsTab = ANALYTICS_TABS.some(entry => entry.key === tab) ? tab : 'overview';
+}
+
+function renderAnalyticsSubTabs(activeTab) {
+  return `
+    <div class="analytics-subtabs" role="tablist" aria-label="Insights sections">
+      ${ANALYTICS_TABS.map(tab => `
+        <button class="analytics-subtab ${tab.key === activeTab ? 'active' : ''}" data-action="analytics_tab" data-analytics-tab="${tab.key}" type="button" role="tab" aria-selected="${tab.key === activeTab ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function analyticsClamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+// Signed 0-centred horizontal bar. Green to the right = better than supplier,
+// red to the left = worse. Reserved for signed deltas (favourability).
+function renderDivergingBar(rows, opts = {}) {
+  const clean = (rows || []).filter(row => row && Number.isFinite(Number(row.value)));
+  if (!clean.length) return `<div class="empty-analytics">${escapeHtml(opts.empty || 'No data yet.')}</div>`;
+  const maxAbs = Math.max(...clean.map(row => Math.abs(Number(row.value))), Number(opts.minScale) || 0.5);
+  const format = opts.format || formatSignedNumber;
+  return `
+    <div class="analytics-diverging">
+      ${clean.map(row => {
+        const value = Number(row.value);
+        const pct = Math.min(100, (Math.abs(value) / maxAbs) * 100);
+        const positive = value >= 0;
+        return `
+          <div class="diverging-row">
+            <div class="diverging-label"><strong>${escapeHtml(row.label)}</strong>${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ''}</div>
+            <div class="diverging-track">
+              <div class="diverging-half neg">${!positive ? `<span class="diverging-fill neg" style="width:${pct}%;"></span>` : ''}</div>
+              <div class="diverging-half pos">${positive ? `<span class="diverging-fill pos" style="width:${pct}%;"></span>` : ''}</div>
+            </div>
+            <div class="diverging-value ${positive ? 'pos' : 'neg'}">${escapeHtml(format(value))}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// Per-batch grade uplift (net grade delta / device) as a diverging bar.
+function buildBatchYieldRows(supplierItems) {
+  return getSupplierComparisonStats(supplierItems).batches
+    .filter(batch => batch.total > 0)
+    .slice(0, 12)
+    .map(batch => ({
+      label: `Batch ${batch.batchNummer || '-'}`,
+      value: Math.round((batch.netDelta / batch.total) * 100) / 100,
+      meta: `${batch.batchSupplier || 'supplier ?'} · ${batch.total} devices`,
+    }));
+}
+
+// 0-100 favourability index per supplier: weighted uplift + %above - %below.
+function getSupplierFavorabilityRows(scorecardRows) {
+  return (scorecardRows || []).map(row => {
+    const score = Math.round(100 * analyticsClamp01(
+      0.5 * ((row.avgUplift + 3) / 6) +
+      0.3 * (row.improvedPercent / 100) +
+      0.2 * (1 - row.downgradedPercent / 100)
+    ));
+    return { label: row.supplier, value: score, meta: `${row.total} devices · ⌀ ${formatSignedNumber(row.avgUplift)}/device` };
+  }).sort((a, b) => b.value - a.value);
+}
+
+// 0-100 score leaderboard (green=buy, red=avoid).
+function renderScoreBars(rows, opts = {}) {
+  if (!rows.length) return `<div class="empty-analytics">${escapeHtml(opts.empty || 'No data yet.')}</div>`;
+  return `
+    <div class="analytics-score-bars">
+      ${rows.map(row => {
+        const value = Math.max(0, Math.min(100, Number(row.value) || 0));
+        const tone = value >= 66 ? 'good' : value >= 45 ? 'mid' : 'bad';
+        return `
+          <div class="score-bar-row">
+            <div class="score-bar-label"><strong>${escapeHtml(row.label)}</strong>${row.meta ? `<span>${escapeHtml(row.meta)}</span>` : ''}</div>
+            <div class="score-bar-track"><span class="score-bar-fill ${tone}" style="width:${value}%;"></span></div>
+            <div class="score-bar-value ${tone}">${value}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// 100% stacked grade mix bar (fixed grade colours).
+function render100StackedGradeBar(counts) {
+  const total = counts.A + counts.B + counts.C + counts.D;
+  if (!total) return '<div class="empty-analytics">No graded devices yet.</div>';
+  return `
+    <div class="grade-stacked">
+      <div class="grade-stacked-bar">
+        ${['A', 'B', 'C', 'D'].map(grade => counts[grade]
+          ? `<span class="grade-seg" style="width:${(counts[grade] / total) * 100}%; background:${ANALYTICS_GRADE_COLORS[grade]};" title="${displayGrade(grade)}: ${counts[grade]}"></span>`
+          : '').join('')}
+      </div>
+      <div class="grade-stacked-legend">
+        ${['A', 'B', 'C', 'D'].map(grade => `<span><b class="grade-dot ${grade}"></b> ${displayGrade(grade)} · ${formatNumber(counts[grade])} (${safePercent(counts[grade], total)}%)</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ---- Repair bins (physical sort board) ----
+const REPAIR_BIN_LABELS = {
+  lcd: 'Display / screen',
+  scharnieren: 'Hinges',
+  scharnier: 'Hinges',
+  keyboard: 'Keyboard',
+  toetsenbord: 'Keyboard',
+  touchpad: 'Touchpad',
+  bovenkap: 'Housing / cosmetic',
+  zijkant: 'Housing / cosmetic',
+  onderkant: 'Housing / cosmetic',
+  palmrest: 'Housing / cosmetic',
+};
+
+function getRepairBin(action) {
+  const id = String((action && action.componentId) || '').toLowerCase();
+  if (REPAIR_BIN_LABELS[id]) return REPAIR_BIN_LABELS[id];
+  const text = `${(action && action.issue) || ''} ${(action && action.triggerId) || ''}`.toLowerCase();
+  if (/batter|accu|power|voeding/.test(text)) return 'Battery / power';
+  if (/usb|poort|port|hdmi/.test(text)) return 'Ports';
+  if (/key|toets/.test(text)) return 'Keyboard';
+  if (/lcd|scherm|pixel|display|screen/.test(text)) return 'Display / screen';
+  if (/touch/.test(text)) return 'Touchpad';
+  if (/scharnier|hinge/.test(text)) return 'Hinges';
+  return 'Other';
+}
+
+function getRepairItems(filteredItems) {
+  return (filteredItems || []).filter(item =>
+    item.source === 'history' && item.rawItem && typeof needsProblemLabel === 'function'
+    && needsProblemLabel(item.rawItem, item.rawItem.result));
+}
+
+function buildRepairBinRows(repairItems) {
+  const bins = new Map();
+  const bump = (key, severity) => {
+    const bin = bins.get(key) || { bin: key, total: 0, light: 0, heavy: 0, reject: 0 };
+    bin.total += 1;
+    if (severity === 'heavy') bin.heavy += 1;
+    else if (severity === 'reject') bin.reject += 1;
+    else bin.light += 1;
+    bins.set(key, bin);
+  };
+  (repairItems || []).forEach(item => {
+    const actions = (item.rawItem.result && item.rawItem.result.repairActions) || [];
+    if (!actions.length) { bump('Other', 'reject'); return; }
+    actions.forEach(action => bump(getRepairBin(action), action.repairSeverity));
+  });
+  return Array.from(bins.values()).sort((a, b) => b.total - a.total);
+}
+
+function getRepairRouteSplit(repairItems) {
+  const split = { production: 0, direct: 0, reject: 0 };
+  (repairItems || []).forEach(item => {
+    const result = item.rawItem.result || {};
+    const type = result.repairLabelType || (result.repairPolicy && result.repairPolicy.labelType) || 'reject';
+    if (type === 'production') split.production += 1;
+    else if (type === 'direct') split.direct += 1;
+    else split.reject += 1;
+  });
+  return split;
+}
+
+function renderRepairRouteSplit(split) {
+  const total = split.production + split.direct + split.reject;
+  if (!total) return '<div class="empty-analytics">No repair labels in this selection.</div>';
+  const seg = (value, cls) => value ? `<span class="route-seg ${cls}" style="width:${(value / total) * 100}%;" title="${value}"></span>` : '';
+  return `
+    <div class="repair-route">
+      <div class="route-bar">${seg(split.production, 'production')}${seg(split.direct, 'direct')}${seg(split.reject, 'reject')}</div>
+      <div class="route-legend">
+        <span><b class="route-dot production"></b> Production repair · ${split.production}</span>
+        <span><b class="route-dot direct"></b> Repair (direct) · ${split.direct}</span>
+        <span><b class="route-dot reject"></b> Not sellable · ${split.reject}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderRepairBins(binRows) {
+  if (!binRows.length) return '<div class="empty-analytics">No repair items in this selection.</div>';
+  const max = Math.max(...binRows.map(bin => bin.total), 1);
+  return `
+    <div class="repair-bins">
+      ${binRows.map(bin => `
+        <div class="repair-bin-row">
+          <div class="repair-bin-head"><strong>${escapeHtml(bin.bin)}</strong><em>${bin.total}</em></div>
+          <div class="repair-bin-track-wrap"><div class="repair-bin-track" style="width:${Math.max(6, (bin.total / max) * 100)}%;">
+            ${bin.light ? `<span class="bin-seg light" style="flex:${bin.light};" title="Light ${bin.light}"></span>` : ''}
+            ${bin.heavy ? `<span class="bin-seg heavy" style="flex:${bin.heavy};" title="Heavy ${bin.heavy}"></span>` : ''}
+            ${bin.reject ? `<span class="bin-seg reject" style="flex:${bin.reject};" title="Reject ${bin.reject}"></span>` : ''}
+          </div></div>
+          <div class="repair-bin-meta">${bin.light} light · ${bin.heavy} heavy · ${bin.reject} reject</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// Pareto: descending bars + running cumulative-% marker (attack the vital few).
+function renderPareto(rows, emptyText) {
+  if (!rows.length) return `<div class="empty-analytics">${escapeHtml(emptyText || 'No data yet.')}</div>`;
+  const total = rows.reduce((sum, row) => sum + row.value, 0) || 1;
+  const max = Math.max(...rows.map(row => row.value), 1);
+  let cumulative = 0;
+  return `
+    <div class="analytics-pareto">
+      ${rows.map(row => {
+        cumulative += row.value;
+        const cumPct = Math.round((cumulative / total) * 100);
+        return `
+          <div class="pareto-row">
+            <div class="pareto-label"><strong>${escapeHtml(row.label)}</strong></div>
+            <div class="pareto-track">
+              <span class="pareto-fill" style="width:${Math.max(3, (row.value / max) * 100)}%;"></span>
+              <span class="pareto-cum" style="left:${cumPct}%;"></span>
+            </div>
+            <div class="pareto-value">${formatNumber(row.value)}<em>${cumPct}%</em></div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderAnalytics() {
   const isAdmin = isAdminUser();
   const filters = getAnalyticsFilters();
+  const activeTab = getAnalyticsTab();
   const allItems = buildAnalyticsItems(isAdmin);
   const filteredItems = filterAnalyticsItems(allItems, filters);
   const completedItems = filteredItems.filter(item => item.status === 'graded' || item.status === 'repair');
@@ -1211,31 +1460,123 @@ function renderAnalytics() {
   const counts = getAnalyticsCounts(completedItems);
   const totalCompleted = completedItems.length;
   const openCount = countAnalyticsStatus(filteredItems, 'open');
-  const repairCount = countAnalyticsStatus(filteredItems, 'repair');
-  const labelOnlyCount = countAnalyticsStatus(filteredItems, 'label');
   const avgTime = getAverageAnalyticsTime(completedItems);
-  const avgBattery = getAverageBattery(filteredItems);
   const todayCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
   const weekCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
-  const missingAccessories = filteredItems.filter(hasMissingAccessorySignal).length;
   const completionRate = safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
-  const componentRows = buildComponentRows(completedItems);
   const employeeRows = buildEmployeeRows(filteredItems);
-  const batchRows = buildBatchProgressRows(filters.productType);
+  const batchProgressRows = buildBatchProgressRows(filters.productType);
   const trendBuckets = buildTrendBuckets(filteredItems, 7);
-  const supplierComparisonItems = filteredItems
-    .filter(item => item.rawItem)
-    .map(item => item.rawItem);
-  const supplierSummary = getSupplierComparisonStats(supplierComparisonItems).summary;
-  const upliftAvg = supplierSummary.total
-    ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100
-    : 0;
+  const supplierComparisonItems = filteredItems.filter(item => item.rawItem).map(item => item.rawItem);
+  const supplierStats = getSupplierComparisonStats(supplierComparisonItems);
+  const supplierSummary = supplierStats.summary;
+  const upliftAvg = supplierSummary.total ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100 : 0;
   const supplierScorecardRows = getSupplierScorecardRows(supplierComparisonItems);
-  const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), totalCompleted);
+  const favorabilityRows = getSupplierFavorabilityRows(supplierScorecardRows);
+  const batchYieldRows = buildBatchYieldRows(supplierComparisonItems);
+  const premiumBase = (counts.A || 0) + (counts.B || 0) + (counts.C || 0);
+  const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), premiumBase);
+  const usableYield = safePercent((counts.A || 0) + (counts.B || 0) + (counts.C || 0), totalCompleted);
+  const rejectRate = safePercent(counts.D || 0, totalCompleted);
+  const concordance = safePercent(supplierSummary.same, supplierSummary.total);
+  const repairItems = getRepairItems(filteredItems);
+  const repairBinRows = buildRepairBinRows(repairItems);
+  const routeSplit = getRepairRouteSplit(repairItems);
+  const paretoRows = buildAnalyticsProblemRows(repairItems);
   const rangeLabel = filters.dateRange === 'today' ? 'today'
     : filters.dateRange === 'week' ? 'last 7 days'
       : filters.dateRange === 'month' ? 'last 30 days'
         : 'all data';
+
+  const overviewTab = `
+    <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
+      <span class="analytics-server-stats-label">Loading live figures from database…</span>
+    </div>
+    <section class="analytics-section analytics-section-first">
+      <div class="analytics-section-head"><h2>Key figures</h2><span>Output, favourability and quality at a glance · ${rangeLabel}</span></div>
+      <div class="analytics-kpi-grid analytics-kpi-grid--auto">
+        ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Grade uplift Δ', value: supplierSummary.total ? formatSignedNumber(upliftAvg) : '-', sub: supplierSummary.total ? `${formatSignedNumber(supplierSummary.netDelta)} net · ${supplierSummary.improvedPercent}% above supplier` : 'no supplier grades', tone: 'primary' })}
+        ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
+        ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
+        ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+      </div>
+    </section>
+    <section class="analytics-section">
+      <div class="analytics-section-head"><h2>Favourability</h2><span>Did each batch beat or miss the supplier grade · ${rangeLabel}</span></div>
+      <div class="analytics-grid">
+        ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device — green beats the supplier grade, red misses it.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }), 'analytics-wide')}
+        ${renderAnalyticsPanel('Grade mix', 'Where the value lands across A/B/C/X.', render100StackedGradeBar(counts))}
+      </div>
+    </section>
+  `;
+
+  const batchTab = `
+    <section class="analytics-section analytics-section-first">
+      <div class="analytics-section-head"><h2>Favourability KPIs</h2><span>Is this batch/supplier favourable for us · ${rangeLabel}</span></div>
+      <div class="analytics-kpi-grid analytics-kpi-grid--auto">
+        ${renderKpiCard({ label: 'Above supplier', value: supplierSummary.total ? `${supplierSummary.improvedPercent}%` : '-', sub: `${formatNumber(supplierSummary.improved || 0)} devices upgraded`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Below supplier', value: supplierSummary.total ? `${supplierSummary.downgradedPercent}%` : '-', sub: `${formatNumber(supplierSummary.downgraded || 0)} devices downgraded`, tone: supplierSummary.downgradedPercent > 0 ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Grade concordance', value: supplierSummary.total ? `${concordance}%` : '-', sub: 'matched the supplier grade' })}
+        ${renderKpiCard({ label: 'Net grade delta', value: supplierSummary.total ? formatSignedNumber(supplierSummary.netDelta) : '-', sub: `⌀ ${formatSignedNumber(upliftAvg)}/device` })}
+        ${renderKpiCard({ label: 'Usable yield (A/B/C)', value: `${usableYield}%`, sub: `${rejectRate}% rejected` })}
+        ${renderKpiCard({ label: 'Upgraded to A', value: formatNumber(supplierSummary.toAFromLower || 0), sub: 'from a lower supplier grade' })}
+      </div>
+    </section>
+    <section class="analytics-section">
+      <div class="analytics-section-head"><h2>Supplier &amp; batch detail</h2><span>Where the margin sits: ReMarkt grade vs supplier grade</span></div>
+      <div class="analytics-grid">
+        ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device per batch — green beats, red misses.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }), 'analytics-wide')}
+        ${renderSupplierComparisonPanel(supplierComparisonItems)}
+        ${renderAnalyticsPanel('Supplier favourability index', 'One 0–100 buy/avoid score per supplier (uplift + % above − % below).', renderScoreBars(favorabilityRows, { empty: 'No supplier grades yet.' }), 'analytics-wide')}
+        ${renderAnalyticsPanel('Supplier scorecard', 'Per supplier: who under- or over-grades and the average uplift per device.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
+      </div>
+    </section>
+  `;
+
+  const throughputTab = `
+    <section class="analytics-section analytics-section-first">
+      <div class="analytics-section-head"><h2>Throughput KPIs</h2><span>How fast and by whom · ${rangeLabel}</span></div>
+      <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
+        ${renderKpiCard({ label: 'Output', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
+        ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+      </div>
+    </section>
+    <section class="analytics-section">
+      <div class="analytics-section-head"><h2>Production &amp; staff</h2><span>Output per day, per employee, and batch progress</span></div>
+      <div class="analytics-grid">
+        ${renderAnalyticsPanel('Output per day', 'Graded per day; the red part is repair/X. Last 7 days.', renderTrendChart(trendBuckets))}
+        ${renderAnalyticsPanel('Employee performance', 'Output, average time and X-rate per employee.', renderEmployeeTable(employeeRows))}
+        ${renderAnalyticsPanel('Batch completion (live)', 'Where stock is still open — respects the Product filter only.', renderBatchProgress(batchProgressRows), 'analytics-wide')}
+      </div>
+    </section>
+  `;
+
+  const repairTab = `
+    <section class="analytics-section analytics-section-first">
+      <div class="analytics-section-head"><h2>Repair KPIs</h2><span>Size of the repair queue and its bins · ${rangeLabel}</span></div>
+      <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
+        ${renderKpiCard({ label: 'Repair labels', value: formatNumber(repairItems.length), sub: `${safePercent(repairItems.length, totalCompleted)}% of graded`, tone: repairItems.length ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Production repair', value: formatNumber(routeSplit.production), sub: 'fixable, back to stock' })}
+        ${renderKpiCard({ label: 'Not sellable', value: formatNumber(routeSplit.reject + routeSplit.direct), sub: 'reject / heavy repair' })}
+      </div>
+    </section>
+    <section class="analytics-section">
+      <div class="analytics-section-head"><h2>Repair bins</h2><span>Sort each laptop to the right bin and clear stock fast</span></div>
+      <div class="analytics-grid">
+        ${renderAnalyticsPanel('Route split', 'Green = production repair (restock), amber = direct repair, red = not sellable.', renderRepairRouteSplit(routeSplit), 'analytics-wide')}
+        ${renderAnalyticsPanel('Repair bins by type', 'One bin per station; light vs heavy vs reject within each bin.', renderRepairBins(repairBinRows))}
+        ${renderAnalyticsPanel('Top repair causes', 'The vital few causes driving most repairs (Pareto).', renderPareto(paretoRows, 'No repair causes yet.'))}
+      </div>
+    </section>
+  `;
+
+  const tabBody = activeTab === 'batch' ? batchTab
+    : activeTab === 'throughput' ? throughputTab
+      : activeTab === 'repair' ? repairTab
+        : overviewTab;
 
   return `
     <div class="screen analytics-screen analytics-pro-screen">
@@ -1243,7 +1584,7 @@ function renderAnalytics() {
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
           <h1>Operations &amp; Value Analytics</h1>
-          <p>Steer on supplier yield, output, quality and productivity — ${rangeLabel}, live from the database.</p>
+          <p>Steer on batch favourability, output and repair flow — ${rangeLabel}.</p>
         </div>
         <div class="analytics-hero-actions">
           <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
@@ -1251,80 +1592,9 @@ function renderAnalytics() {
         </div>
       </div>
       ${renderDashboardTabs('analytics')}
-      <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
-        <span class="analytics-server-stats-label">Loading live figures from database…</span>
-      </div>
       ${renderAnalyticsFilters(filters, allItems)}
-
-      <section class="analytics-section analytics-section-first">
-        <div class="analytics-section-head">
-          <h2>Key figures</h2>
-          <span>Output, yield and quality at a glance · ${rangeLabel}</span>
-        </div>
-        <div class="analytics-kpi-grid analytics-kpi-grid--auto">
-          ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
-          ${renderKpiCard({
-            label: 'Yield vs supplier',
-            value: supplierSummary.total ? `${supplierSummary.improvedPercent}%` : '-',
-            sub: supplierSummary.total
-              ? `${formatSignedNumber(supplierSummary.netDelta)} net delta · ⌀ ${formatSignedNumber(upliftAvg)}/device`
-              : 'no supplier grades',
-            tone: 'primary',
-          })}
-          ${renderKpiCard({ label: 'Premium yield (A/B)', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(totalCompleted)} as A/B` })}
-          ${renderKpiCard({ label: 'Repair / X-rate', value: `${safePercent(repairCount, totalCompleted)}%`, sub: `${formatNumber(repairCount)} to repair`, tone: repairCount ? 'danger' : '' })}
-          ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
-          ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
-        </div>
-      </section>
-
-      <section class="analytics-section">
-        <div class="analytics-section-head">
-          <h2>Supplier yield</h2>
-          <span>Where the margin sits: ReMarkt grade vs supplier grade</span>
-        </div>
-        <div class="analytics-grid">
-          ${renderSupplierComparisonPanel(supplierComparisonItems)}
-          ${renderAnalyticsPanel('Supplier scorecard', 'Yield per supplier: who under- or overestimates and how much grade uplift you gain on average per device. Guidance for purchasing.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
-        </div>
-      </section>
-
-      <section class="analytics-section">
-        <div class="analytics-section-head">
-          <h2>Production &amp; lead time</h2>
-          <span>Output per day, employee performance and batch progress</span>
-        </div>
-        <div class="analytics-grid">
-          ${renderAnalyticsPanel('Throughput trend', 'Output per day within the active filters.', renderTrendChart(trendBuckets))}
-          ${renderAnalyticsPanel('Employee performance', 'Output, speed and X-rate per employee.', renderEmployeeTable(employeeRows))}
-          ${renderAnalyticsPanel('Batch completion', 'Which batches are completed and where stock is still open.', renderBatchProgress(batchRows), 'analytics-wide')}
-        </div>
-      </section>
-
-      <section class="analytics-section">
-        <div class="analytics-section-head">
-          <h2>Quality</h2>
-          <span>Grade mix, part impact and condition signals</span>
-        </div>
-        <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
-          ${renderKpiCard({ label: 'Avg. battery health', value: avgBattery === null ? '-' : `${avgBattery}%`, sub: rangeLabel })}
-          ${renderKpiCard({ label: 'Accessory signals', value: formatNumber(missingAccessories), sub: 'adapter, rubber feet, charger' })}
-        </div>
-        <div class="analytics-grid">
-          ${renderAnalyticsPanel('Grade distribution', 'Distribution per ReMarkt grade within the active filters.', renderGradeDonut(counts))}
-          ${renderAnalyticsPanel('Part impact', 'Parts that cause the most score impact — input for supplier quality.', renderBarList(componentRows, 'No part impact available yet.', 'p'))}
-        </div>
-      </section>
-
-      <section class="analytics-section">
-        <div class="analytics-section-head">
-          <h2>Activity</h2>
-          <span>Latest gradings and label prints within the filters</span>
-        </div>
-        <div class="analytics-grid">
-          ${renderAnalyticsPanel('Recent activity', 'Realtime feed of the latest actions.', renderRecentActivity(filteredItems), 'analytics-wide')}
-        </div>
-      </section>
+      ${renderAnalyticsSubTabs(activeTab)}
+      ${tabBody}
     </div>
   `;
 }

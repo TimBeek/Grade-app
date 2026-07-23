@@ -33,6 +33,7 @@ const STATE = {
   monitorManualPortsAutoFilled: false,
   monitorReprintPrompt: null,
   monitorRegradeSticker: null,
+  analyticsTab: 'overview',
   appMessage: null,
   manualMode: false,
   importResult: null,

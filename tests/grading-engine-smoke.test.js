@@ -600,19 +600,36 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
     render();
   `, app);
 
+  // Standaard = Overzicht-tab: sub-tabs + de nieuwe favourability-charts.
   assert.match(app.__appElement.innerHTML, /analytics-pro-screen/);
   assert.match(app.__appElement.innerHTML, /analytics-kpi-grid/);
   assert.match(app.__appElement.innerHTML, /data-analytics-filter="dateRange"/);
-  assert.match(app.__appElement.innerHTML, /Grade distribution/);
-  assert.match(app.__appElement.innerHTML, /Throughput trend/);
-  assert.match(app.__appElement.innerHTML, /Batch completion/);
-  assert.match(app.__appElement.innerHTML, /Employee performance/);
-  assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
-  assert.match(app.__appElement.innerHTML, /Recent activity/);
+  assert.match(app.__appElement.innerHTML, /analytics-subtabs/);
+  assert.match(app.__appElement.innerHTML, /data-analytics-tab="repair"/);
+  assert.match(app.__appElement.innerHTML, /Grade uplift/);
+  assert.match(app.__appElement.innerHTML, /Yield per batch/);
+  assert.match(app.__appElement.innerHTML, /grade-stacked/);
+  // "Recent activity" en de oude losse panelen zijn bewust weg.
+  assert.doesNotMatch(app.__appElement.innerHTML, /Recent activity/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Repair bottlenecks/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Productivity heatmap/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Top brands/);
-  assert.doesNotMatch(app.__appElement.innerHTML, /Top models/);
+
+  // Batchkwaliteit-tab: leveranciersvergelijking + favourability-index.
+  vm.runInContext("setAnalyticsTab('batch'); render();", app);
+  assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
+  assert.match(app.__appElement.innerHTML, /supplier-scorecard-table/);
+  assert.match(app.__appElement.innerHTML, /score-bar/);
+
+  // Doorloop-tab: output per dag + medewerkerprestatie.
+  vm.runInContext("setAnalyticsTab('throughput'); render();", app);
+  assert.match(app.__appElement.innerHTML, /analytics-trend/);
+  assert.match(app.__appElement.innerHTML, /Batch completion/);
+
+  // Reparatiebakken-tab: route-split, bakken en Pareto.
+  vm.runInContext("setAnalyticsTab('repair'); render();", app);
+  assert.match(app.__appElement.innerHTML, /repair-route/);
+  assert.match(app.__appElement.innerHTML, /repair-bins/);
+  assert.match(app.__appElement.innerHTML, /analytics-pareto/);
 
   vm.runInContext(`setAnalyticsFilter('brand', 'Dell');`, app);
   assert.equal(vm.runInContext(`getAnalyticsFilters().brand`, app), 'Dell');
@@ -2633,7 +2650,8 @@ test('analyse vergelijkt leverancier-grading met ReMarkt-grading per batch', () 
   assert.equal(exportRows[0]['ReMarkt grade'], 'A');
   assert.equal(exportRows[0].Status, 'Improved');
 
-  vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
+  // De leveranciersvergelijking staat nu op de Batchkwaliteit-tab.
+  vm.runInContext(`STATE.currentScreen = 'analytics'; setAnalyticsTab('batch'); render();`, app);
   assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
   assert.match(app.__appElement.innerHTML, /B -&gt; A/);
   assert.match(app.__appElement.innerHTML, /Export Report/);
