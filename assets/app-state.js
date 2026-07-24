@@ -332,6 +332,29 @@ function stickerOpenLaptopCount(batch) {
   return batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker)).length;
 }
 
+// Een batch is voltooid zodra élk apparaat gescand en gegradeerd/gelabeld is.
+function isBatchComplete(batch) {
+  const total = batch && batch.laptops ? batch.laptops.length : 0;
+  return total > 0 && openLaptopCount(batch) === 0;
+}
+
+// Tijdstip waarop de batch aan de app is toegevoegd (machineleesbaar).
+function getBatchAddedTime(batch) {
+  const raw = batch && batch.importedAt;
+  if (!raw) return null;
+  const time = Date.parse(raw);
+  return Number.isFinite(time) ? time : null;
+}
+
+// "Nieuw" = korter dan een week geleden toegevoegd. Zonder importedAt (oudere
+// batches) tonen we bewust geen nieuw-markering i.p.v. te gokken.
+function isBatchNew(batch, days = 7) {
+  const time = getBatchAddedTime(batch);
+  if (time === null) return false;
+  const age = Date.now() - time;
+  return age >= 0 && age <= days * 24 * 60 * 60 * 1000;
+}
+
 function isAdminUser() {
   return normalizeUserRole(STATE.currentUser && STATE.currentUser.rol) === 'Manager';
 }
@@ -1409,6 +1432,7 @@ function getOrCreateManualMonitorBatch() {
       nummer: 'Manual',
       leverancier: 'Handmatige monitorinvoer',
       geimporteerd: new Date().toLocaleDateString('nl-NL'),
+      importedAt: new Date().toISOString(),
       monitors: [],
     };
     MONITOR_BATCHES.push(batch);
@@ -1661,6 +1685,7 @@ function normalizeSharedBatch(batch) {
     nummer,
     leverancier: sanitizeExternalText(batch.leverancier || 'Supplier import', 120),
     geimporteerd: sanitizeExternalText(batch.geimporteerd || new Date().toLocaleDateString('nl-NL'), 40),
+    importedAt: sanitizeExternalText(batch.importedAt || '', 40),
     laptops,
   };
 }
@@ -1713,6 +1738,7 @@ function normalizeSharedMonitorBatch(batch) {
     nummer,
     leverancier: sanitizeExternalText(batch.leverancier || 'Monitor supplier import', 120),
     geimporteerd: sanitizeExternalText(batch.geimporteerd || new Date().toLocaleDateString('nl-NL'), 40),
+    importedAt: sanitizeExternalText(batch.importedAt || '', 40),
     monitors,
   };
 }

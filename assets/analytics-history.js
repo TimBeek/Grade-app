@@ -509,6 +509,7 @@ function renderAnalyticsRows(entries, emptyText) {
 const ANALYTICS_FILTER_DEFAULTS = {
   employee: 'all',
   productType: 'all',
+  batch: 'all',
   brand: 'all',
   grade: 'all',
   dateRange: 'all',
@@ -802,6 +803,7 @@ function filterAnalyticsItems(items, filters) {
   return items.filter(item => {
     if (filters.productType !== 'all' && item.productType !== filters.productType) return false;
     if (filters.employee !== 'all' && item.employeeId !== filters.employee && item.employeeName !== filters.employee) return false;
+    if (filters.batch !== 'all' && item.batch !== filters.batch) return false;
     if (filters.brand !== 'all' && item.brand !== filters.brand) return false;
     if (filters.grade !== 'all' && displayGrade(item.grade) !== filters.grade) return false;
     if (filters.status !== 'all' && item.status !== filters.status) return false;
@@ -834,6 +836,8 @@ function renderAnalyticsFilters(filters, allItems) {
     .concat(getUniqueAnalyticsOptions(allItems, 'employeeName').map(name => ({ value: name, label: name })));
   const brandOptions = [{ value: 'all', label: 'All brands' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'brand').map(brand => ({ value: brand, label: brand })));
+  const batchOptions = [{ value: 'all', label: 'All batches' }]
+    .concat(getUniqueAnalyticsOptions(allItems, 'batch').map(batch => ({ value: batch, label: `Batch ${batch}` })));
 
   return `
     <div class="analytics-filter-bar">
@@ -853,6 +857,7 @@ function renderAnalyticsFilters(filters, allItems) {
         { value: 'monitor', label: 'Monitors' },
       ])}
       ${renderAnalyticsSelect('employee', 'Employee', filters.employee, employeeOptions)}
+      ${renderAnalyticsSelect('batch', 'Batch', filters.batch, batchOptions)}
       ${renderAnalyticsSelect('brand', 'Brand', filters.brand, brandOptions)}
       ${renderAnalyticsSelect('grade', 'Grade', filters.grade, [
         { value: 'all', label: 'All grades' },
@@ -1001,17 +1006,26 @@ function buildTrendBuckets(items, days = 7) {
 
 function renderTrendChart(buckets) {
   const max = Math.max(...buckets.map(bucket => bucket.value), 1);
+  const totalOk = buckets.reduce((sum, bucket) => sum + Math.max(bucket.value - bucket.repair, 0), 0);
+  const totalRepair = buckets.reduce((sum, bucket) => sum + bucket.repair, 0);
   return `
     <div class="analytics-trend">
-      ${buckets.map(bucket => `
+      ${buckets.map(bucket => {
+        const ok = Math.max(bucket.value - bucket.repair, 0);
+        return `
         <div class="analytics-trend-day">
-          <div class="analytics-trend-stack" title="${escapeHtml(bucket.label)}: ${bucket.value}">
+          <div class="analytics-trend-stack" title="${escapeHtml(bucket.label)} — ${bucket.value} graded: ${ok} OK, ${bucket.repair} repair/X">
             <span class="repair" style="height:${(bucket.repair / max) * 100}%;"></span>
-            <strong style="height:${Math.max(4, ((bucket.value - bucket.repair) / max) * 100)}%;"></strong>
+            <strong style="height:${Math.max(4, (ok / max) * 100)}%;"></strong>
           </div>
           <small>${escapeHtml(bucket.label)}</small>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
+    </div>
+    <div class="trend-legend">
+      <span><b class="trend-dot ok"></b> Graded OK · ${formatNumber(totalOk)}</span>
+      <span><b class="trend-dot repair"></b> Repair / X · ${formatNumber(totalRepair)}</span>
     </div>
   `;
 }
@@ -1034,6 +1048,17 @@ function buildEmployeeRows(items) {
     .slice(0, 7);
 }
 
+// Vaste kleur per medewerker, afgeleid van de naam. Bewust op naam en niet op
+// positie in de lijst, zodat iemands kleur niet verspringt als de ranglijst wijzigt.
+const EMPLOYEE_COLORS = ['#2F6FB2', '#0F766E', '#7C3AED', '#B45309', '#0891B2', '#9D174D', '#4D7C0F', '#5E6368'];
+
+function getEmployeeColor(name) {
+  const key = String(name || '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return EMPLOYEE_COLORS[hash % EMPLOYEE_COLORS.length];
+}
+
 function renderEmployeeTable(rows) {
   if (!rows.length) return '<div class="empty-analytics">No employee data available yet.</div>';
   return `
@@ -1045,7 +1070,12 @@ function renderEmployeeTable(rows) {
         <tbody>
           ${rows.map(row => `
             <tr>
-              <td><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} label prints` : 'grading'}</span></td>
+              <td>
+                <span class="employee-cell">
+                  <b class="employee-dot" style="background: ${getEmployeeColor(row.name)};" aria-hidden="true"></b>
+                  <span class="employee-meta"><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} label prints` : 'grading'}</span></span>
+                </span>
+              </td>
               <td>${formatNumber(row.count)}</td>
               <td>${formatSeconds(row.timed ? row.sec / row.timed : 0)}</td>
               <td>${safePercent(row.repair, row.count)}%</td>
@@ -1066,11 +1096,13 @@ function buildBatchProgressRows(productFilter) {
       const done = Math.max(total - open, 0);
       rows.push({
         label: `Laptop batch ${batch.nummer || '-'}`,
-        meta: [batch.leverancier, batch.geimporteerd].filter(Boolean).join(' · '),
+        meta: [batch.leverancier, batch.geimporteerd ? `added ${batch.geimporteerd}` : ''].filter(Boolean).join(' · '),
         value: safePercent(done, total),
         done,
         open,
         total,
+        complete: total > 0 && open === 0,
+        isNew: typeof isBatchNew === 'function' && isBatchNew(batch),
       });
     });
   }
@@ -1081,11 +1113,13 @@ function buildBatchProgressRows(productFilter) {
       const done = Math.max(total - open, 0);
       rows.push({
         label: `Monitor batch ${batch.nummer || '-'}`,
-        meta: [batch.leverancier, batch.geimporteerd].filter(Boolean).join(' · '),
+        meta: [batch.leverancier, batch.geimporteerd ? `added ${batch.geimporteerd}` : ''].filter(Boolean).join(' · '),
         value: safePercent(done, total),
         done,
         open,
         total,
+        complete: total > 0 && open === 0,
+        isNew: typeof isBatchNew === 'function' && isBatchNew(batch),
       });
     });
   }
@@ -1099,7 +1133,7 @@ function renderBatchProgress(rows) {
       ${rows.slice(0, 8).map(row => `
         <div class="analytics-batch-row">
           <div>
-            <strong>${escapeHtml(row.label)}</strong>
+            <strong>${escapeHtml(row.label)}${row.complete ? '<span class="batch-badge done">Completed</span>' : ''}${row.isNew ? '<span class="batch-badge new">New</span>' : ''}</strong>
             <span>${escapeHtml(row.meta || 'Active batch')}</span>
           </div>
           <div class="analytics-batch-progress">
@@ -1470,6 +1504,64 @@ function renderRepairBins(binRows) {
   `;
 }
 
+// Reparatie per batch: welke batch levert de meeste reparaties op, met het
+// reparatiepercentage en de verdeling over de bakken. Zo zie je direct welke
+// leveranciersbatch structureel werk oplevert.
+function buildRepairBatchRows(filteredItems) {
+  const rows = new Map();
+  (filteredItems || []).forEach(item => {
+    if (item.source !== 'history' || !item.rawItem) return;
+    const key = item.batch || '—';
+    const row = rows.get(key) || { batch: key, graded: 0, repair: 0, production: 0, direct: 0, reject: 0 };
+    row.graded += 1;
+    const raw = item.rawItem;
+    if (typeof needsProblemLabel === 'function' && needsProblemLabel(raw, raw.result)) {
+      row.repair += 1;
+      const result = raw.result || {};
+      const type = result.repairLabelType || (result.repairPolicy && result.repairPolicy.labelType) || 'reject';
+      if (type === 'production') row.production += 1;
+      else if (type === 'direct') row.direct += 1;
+      else row.reject += 1;
+    }
+    rows.set(key, row);
+  });
+  return Array.from(rows.values())
+    .map(row => ({ ...row, rate: safePercent(row.repair, row.graded) }))
+    .sort((a, b) => b.repair - a.repair || b.graded - a.graded);
+}
+
+function renderRepairBatchTable(rows) {
+  if (!rows.length) return '<div class="empty-analytics">No repair data in this selection.</div>';
+  const worst = rows.reduce((max, row) => Math.max(max, row.rate), 0);
+  return `
+    <div class="analytics-table-wrap">
+      <table class="comparison-table repair-batch-table">
+        <thead>
+          <tr><th>Batch</th><th>Graded</th><th>Repair</th><th>Repair rate</th><th>Production</th><th>Direct</th><th>Not sellable</th></tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr class="${row.rate >= 25 ? 'is-high-repair' : ''}">
+              <td><strong>${escapeHtml(row.batch)}</strong></td>
+              <td>${formatNumber(row.graded)}</td>
+              <td><b>${formatNumber(row.repair)}</b></td>
+              <td>
+                <span class="repair-rate-cell">
+                  <span class="repair-rate-track"><span class="repair-rate-fill ${row.rate >= 25 ? 'high' : row.rate >= 10 ? 'mid' : 'low'}" style="width:${worst ? Math.round((row.rate / worst) * 100) : 0}%;"></span></span>
+                  <b>${row.rate}%</b>
+                </span>
+              </td>
+              <td>${formatNumber(row.production)}</td>
+              <td>${formatNumber(row.direct)}</td>
+              <td>${formatNumber(row.reject)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 // Pareto: descending bars + running cumulative-% marker (attack the vital few).
 function renderPareto(rows, emptyText) {
   if (!rows.length) return `<div class="empty-analytics">${escapeHtml(emptyText || 'No data yet.')}</div>`;
@@ -1528,6 +1620,7 @@ function renderAnalytics() {
   const concordance = safePercent(supplierSummary.same, supplierSummary.total);
   const repairItems = getRepairItems(filteredItems);
   const repairBinRows = buildRepairBinRows(repairItems);
+  const repairBatchRows = buildRepairBatchRows(filteredItems);
   const routeSplit = getRepairRouteSplit(repairItems);
   const paretoRows = buildAnalyticsProblemRows(repairItems);
   const rangeLabel = filters.dateRange === 'today' ? 'today'
@@ -1606,14 +1699,18 @@ function renderAnalytics() {
       <div class="analytics-section-head"><h2>Repair KPIs</h2><span>Size of the repair queue and its bins · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
         ${renderKpiCard({ label: 'Repair labels', value: formatNumber(repairItems.length), sub: `${safePercent(repairItems.length, totalCompleted)}% of graded`, tone: repairItems.length ? 'danger' : '' })}
-        ${renderKpiCard({ label: 'Production repair', value: formatNumber(routeSplit.production), sub: 'fixable, back to stock' })}
-        ${renderKpiCard({ label: 'Not sellable', value: formatNumber(routeSplit.reject + routeSplit.direct), sub: 'reject / heavy repair' })}
+        ${renderKpiCard({ label: 'Production repair', value: formatNumber(routeSplit.production), sub: `${safePercent(routeSplit.production, repairItems.length)}% of repairs · back to stock` })}
+        ${renderKpiCard({ label: 'Direct repair', value: formatNumber(routeSplit.direct), sub: `${safePercent(routeSplit.direct, repairItems.length)}% of repairs · fix before sale` })}
+        ${renderKpiCard({ label: 'Not sellable', value: formatNumber(routeSplit.reject), sub: `${safePercent(routeSplit.reject, repairItems.length)}% of repairs · reject`, tone: routeSplit.reject ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Batches with repair', value: formatNumber(repairBatchRows.filter(row => row.repair > 0).length), sub: `${formatNumber(repairBatchRows.length)} batch${repairBatchRows.length === 1 ? '' : 'es'} in view` })}
+        ${renderKpiCard({ label: 'Worst batch', value: repairBatchRows.length ? `${repairBatchRows.slice().sort((a, b) => b.rate - a.rate)[0].rate}%` : '-', sub: repairBatchRows.length ? `Batch ${repairBatchRows.slice().sort((a, b) => b.rate - a.rate)[0].batch} repair rate` : 'no batches in view', tone: 'warning' })}
       </div>
     </section>
     <section class="analytics-section">
       <div class="analytics-section-head"><h2>Repair bins</h2><span>Sort each laptop to the right bin and clear stock fast</span></div>
       <div class="analytics-grid">
         ${renderAnalyticsPanel('Route split', 'Green = production repair (restock), amber = direct repair, red = not sellable.', renderRepairRouteSplit(routeSplit), 'analytics-wide')}
+        ${renderAnalyticsPanel('Repair per batch', 'Which batch costs the most repair work — rate, route split and volume. Use the Batch filter to zoom in on one.', renderRepairBatchTable(repairBatchRows), 'analytics-wide')}
         ${renderAnalyticsPanel('Repair bins by type', 'One bin per station; light vs heavy vs reject within each bin.', renderRepairBins(repairBinRows))}
         ${renderAnalyticsPanel('Top repair causes', 'The vital few causes driving most repairs (Pareto).', renderPareto(paretoRows, 'No repair causes yet.'))}
       </div>

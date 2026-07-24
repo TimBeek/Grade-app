@@ -666,6 +666,7 @@ async function importSupplierFiles(files) {
         nummer,
         leverancier: 'Supplier import',
         geimporteerd: new Date().toLocaleDateString('nl-NL'),
+        importedAt: new Date().toISOString(),
         laptops,
       };
       clearBatchDeletion(batch.id);
@@ -698,6 +699,7 @@ async function importSupplierFiles(files) {
         nummer,
         leverancier: 'Monitor supplier import',
         geimporteerd: new Date().toLocaleDateString('nl-NL'),
+        importedAt: new Date().toISOString(),
         monitors,
       };
       clearMonitorBatchDeletion(batch.id);

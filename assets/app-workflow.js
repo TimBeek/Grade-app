@@ -2175,17 +2175,50 @@ async function resetUserPassword(id) {
   render();
 }
 
+// Hoeveel vastgelegd werk hangt er nog aan deze gebruiker?
+function countUserRecords(id) {
+  const history = (STATE.history || []).filter(item => item.user_id === id).length;
+  const labels = (STATE.labelPrints || []).filter(item => item.user_id === id).length;
+  const monitors = (STATE.monitorLabelPrints || []).filter(item => item.user_id === id).length;
+  return { history, labels, monitors, total: history + labels + monitors };
+}
+
+// Verwijdert al het werk van een gebruiker, zodat de medewerker ook uit Insights
+// verdwijnt. Alleen na expliciete bevestiging: dit gooit echte gradings weg.
+function removeUserRecords(id) {
+  STATE.history = (STATE.history || []).filter(item => item.user_id !== id);
+  STATE.labelPrints = (STATE.labelPrints || []).filter(item => item.user_id !== id);
+  STATE.monitorLabelPrints = (STATE.monitorLabelPrints || []).filter(item => item.user_id !== id);
+  if (typeof rebuildHistoryIndexes === 'function') rebuildHistoryIndexes();
+  if (typeof rebuildLabelPrintIndexes === 'function') rebuildLabelPrintIndexes();
+}
+
 function deleteUser(id) {
   if (!isAdminUser()) return;
   if (STATE.currentUser && STATE.currentUser.id === id) return;
   const index = USERS.findIndex(u => u.id === id);
   if (index < 0) return;
-  if (!confirm(`Delete user ${USERS[index].naam}?`)) return;
-  logAudit('delete_user', 'user', id, { naam: USERS[index].naam });
+  const user = USERS[index];
+  if (!confirm(`Delete user ${user.naam}?`)) return;
+
+  // Zonder de gradings mee te verwijderen blijft de medewerker in Insights staan,
+  // dus vraag dat expliciet na (standaard = data behouden).
+  const owned = countUserRecords(id);
+  let purge = false;
+  if (owned.total) {
+    purge = confirm(
+      `${user.naam} still has ${owned.total} records: ${owned.history} gradings, ${owned.labels} label prints, ${owned.monitors} monitor prints.\n\n`
+      + `OK = also delete this data (the employee disappears from Insights too).\n`
+      + `Cancel = keep the data and only remove the login.`
+    );
+  }
+
+  logAudit('delete_user', 'user', id, { naam: user.naam, purgedData: purge, records: owned.total });
   USERS.splice(index, 1);
+  if (purge) removeUserRecords(id);
   saveUsers();
   saveSharedDemoState({ includeUsers: true, userMutation: { action: 'delete', id } });
-  setAppMessage('User deleted.', 'success');
+  setAppMessage(purge ? `User and ${owned.total} records deleted.` : 'User deleted.', 'success');
   render();
 }
 

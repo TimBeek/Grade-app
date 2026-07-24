@@ -1137,6 +1137,31 @@ Object.assign(NL_COPY, {
   'device graded': 'apparaat gegradeerd',
 });
 
+// Batchstatus (voltooid/nieuw), batch-filter, dag-legenda en de uitgebreide
+// reparatiestatistiek per batch.
+Object.assign(NL_COPY, {
+  'All batches': 'Alle batches',
+  'Completed': 'Voltooid',
+  'New': 'Nieuw',
+  'added ': 'toegevoegd ',
+  'Graded OK': 'Goed gegradeerd',
+  'Repair per batch': 'Reparatie per batch',
+  'Which batch costs the most repair work — rate, route split and volume. Use the Batch filter to zoom in on one.': 'Welke batch kost het meeste reparatiewerk — percentage, routeverdeling en aantallen. Gebruik het Batch-filter om op één batch in te zoomen.',
+  'Repair rate': 'Reparatiepercentage',
+  'repair rate': 'reparatiepercentage',
+  'Direct repair': 'Directe reparatie',
+  'Batches with repair': 'Batches met reparatie',
+  'Worst batch': 'Slechtste batch',
+  'No repair data in this selection.': 'Geen reparatiedata in deze selectie.',
+  'Production': 'Productie',
+  'batches in view': 'batches in beeld',
+  'batch in view': 'batch in beeld',
+  'no batches in view': 'geen batches in beeld',
+  'of repairs · back to stock': 'van reparaties · terug naar voorraad',
+  'of repairs · fix before sale': 'van reparaties · repareren voor verkoop',
+  'of repairs · reject': 'van reparaties · afkeur',
+});
+
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt', 'data-preview-label'];
 
 function normalizeLanguagePreference(value) {

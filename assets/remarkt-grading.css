@@ -2080,3 +2080,37 @@ html[data-theme="dark"] .grade-mix-total, html[data-theme="dark"] .grade-mix-val
 html[data-theme="dark"] .grade-mix-track { background: #33333A; }
 html[data-theme="dark"] .grade-mix-row:hover { background: rgba(255, 255, 255, 0.06); }
 @media (prefers-reduced-motion: reduce) { .grade-mix-fill, .grade-mix-row.is-top .grade-mix-badge { animation: none; } }
+
+/* ============================================================================
+   Batch-status (voltooid / nieuw), legenda bij de dag-grafiek, kleur per
+   medewerker en de reparatie-per-batch tabel.
+   ============================================================================ */
+.batch-badge { display: inline-flex; align-items: center; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 900; letter-spacing: 0.02em; text-transform: uppercase; vertical-align: middle; }
+.batch-badge.done { background: rgba(26, 127, 55, 0.14); color: #17692F; }
+.batch-badge.new { background: rgba(20, 115, 230, 0.14); color: #0C447C; }
+.batch-card.is-complete { border-color: rgba(26, 127, 55, 0.45); }
+html[data-theme="dark"] .batch-badge.done { background: rgba(26, 127, 55, 0.26); color: #7FE0A0; }
+html[data-theme="dark"] .batch-badge.new { background: rgba(20, 115, 230, 0.26); color: #9EC9FF; }
+
+/* Legenda onder "Output per dag" — maakt duidelijk wat het rode deel betekent. */
+.trend-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-size: 11.5px; color: var(--remarkt-muted); }
+.trend-legend b { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.trend-dot.ok { background: #1473E6; }
+.trend-dot.repair { background: #E12B35; }
+html[data-theme="dark"] .trend-legend { color: var(--dark-muted); }
+
+/* Vaste kleurstip per medewerker. */
+.analytics-table td .employee-cell { display: flex; align-items: center; gap: 9px; }
+.analytics-table td .employee-dot { display: block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.analytics-table td .employee-meta { display: block; min-width: 0; }
+
+/* Reparatie per batch. */
+.repair-batch-table .repair-rate-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.repair-batch-table .repair-rate-track { display: block; width: 64px; height: 7px; border-radius: 999px; background: #ECECE8; overflow: hidden; flex-shrink: 0; }
+.repair-batch-table .repair-rate-fill { display: block; height: 100%; border-radius: 999px; }
+.repair-batch-table .repair-rate-fill.low { background: #1A7F37; }
+.repair-batch-table .repair-rate-fill.mid { background: #B45309; }
+.repair-batch-table .repair-rate-fill.high { background: #C8102E; }
+.repair-batch-table tr.is-high-repair td { background: rgba(200, 16, 46, 0.05); }
+html[data-theme="dark"] .repair-batch-table .repair-rate-track { background: #33333A; }
+html[data-theme="dark"] .repair-batch-table tr.is-high-repair td { background: rgba(200, 16, 46, 0.14); }

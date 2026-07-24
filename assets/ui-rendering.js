@@ -988,12 +988,14 @@ function getDashboardData() {
     const progress = total ? Math.round((done / total) * 100) : 0;
     const rp = typeof getBatchRepairStatsFor === 'function' ? getBatchRepairStatsFor(batch, batchRepairStats) : { repair: 0, production: 0, reject: 0 };
     const expanded = STATE.expandedBatchStats === batch.id;
+    const complete = typeof isBatchComplete === 'function' && isBatchComplete(batch);
+    const fresh = typeof isBatchNew === 'function' && isBatchNew(batch);
     return `
-      <div class="batch-card">
+      <div class="batch-card${complete ? ' is-complete' : ''}">
         <div class="batch-card-head">
           <div>
-            <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}</div>
-            <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · ${escapeHtml(batch.geimporteerd || 'today')}</div>
+            <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}${complete ? '<span class="batch-badge done">Completed</span>' : ''}${fresh ? '<span class="batch-badge new">New</span>' : ''}</div>
+            <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · added ${escapeHtml(batch.geimporteerd || 'today')}</div>
           </div>
           <div class="batch-status-count"><strong>${open}</strong> open<span class="card-sub">${done}/${total} done</span></div>
         </div>
