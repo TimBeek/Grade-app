@@ -352,10 +352,10 @@ function renderSupplierComparisonPanel(items) {
               </tr>
             </thead>
             <tbody>
-              ${batches.map(batch => `
+              ${batches.map((batch, index) => `
                 <tr class="${batch.netDelta < 0 ? 'is-negative' : batch.netDelta > 0 ? 'is-positive' : ''}">
                   <td>
-                    <strong>${escapeHtml(batch.batchNummer)}</strong>
+                    <strong><span class="repair-bin-cat" style="background: ${chartColor(index)};" aria-hidden="true"></span>${escapeHtml(batch.batchNummer)}</strong>
                     ${batch.batchSupplier || batch.batchImportedAt ? `<span class="comparison-batch-meta">${escapeHtml([batch.batchSupplier, batch.batchImportedAt].filter(Boolean).join(' · '))}</span>` : ''}
                   </td>
                   <td>${batch.total}</td>
@@ -1703,14 +1703,14 @@ function renderPareto(rows, emptyText) {
   let cumulative = 0;
   return `
     <div class="analytics-pareto">
-      ${rows.map(row => {
+      ${rows.map((row, index) => {
         cumulative += row.value;
         const cumPct = Math.round((cumulative / total) * 100);
         return `
           <div class="pareto-row">
-            <div class="pareto-label"><strong>${escapeHtml(row.label)}</strong></div>
+            <div class="pareto-label"><strong><span class="repair-bin-cat" style="background: ${chartColor(index)};" aria-hidden="true"></span>${escapeHtml(row.label)}</strong></div>
             <div class="pareto-track">
-              <span class="pareto-fill" style="width:${Math.max(3, (row.value / max) * 100)}%;"></span>
+              <span class="pareto-fill" style="width:${Math.max(3, (row.value / max) * 100)}%; background: ${chartColor(index)};"></span>
               <span class="pareto-cum" style="left:${cumPct}%;"></span>
             </div>
             <div class="pareto-value">${formatNumber(row.value)}<em>${cumPct}%</em></div>

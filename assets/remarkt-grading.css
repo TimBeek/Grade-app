@@ -2149,3 +2149,55 @@ html[data-theme="dark"] .chart-legend-item { background: rgba(255, 255, 255, 0.0
 html[data-theme="dark"] .area-chart .chart-grid { stroke: var(--dark-line); }
 html[data-theme="dark"] .area-chart .chart-axis { fill: var(--dark-muted); }
 html[data-theme="dark"] .area-chart .chart-dot { stroke: #25252A; }
+
+/* ============================================================================
+   INSIGHTS-STIJL, DEEL 2 — grafieken, kaarten en tabellen in één taal.
+   1) staven met ronde uiteinden + echte tussenruimte i.p.v. witte randjes
+   2) rustigere, ruimere kaarten (de donkere look uit het voorbeeld)
+   3) tabellen: hairlines, uitgelijnde getallen, categorie-stip per rij
+   ============================================================================ */
+
+/* ---- 1. Staven in dezelfde taal ---- */
+.diverging-fill, .score-bar-fill, .pareto-fill, .analytics-batch-progress span { border-radius: 999px; }
+.score-bar-track, .pareto-track, .analytics-batch-progress > div { border-radius: 999px; }
+
+/* Gestapelde balken: echte 2px tussenruimte i.p.v. een witte inset-rand. */
+.grade-stacked-bar, .route-bar, .repair-bin-track { gap: 2px; background: transparent; overflow: visible; }
+.grade-stacked-bar .grade-seg, .route-bar .route-seg, .repair-bin-track .bin-seg { border-radius: 999px; box-shadow: none; }
+.grade-stacked-bar { height: 26px; }
+.route-bar { height: 22px; }
+.repair-bin-track { height: 16px; }
+
+/* ---- 2. Rustigere, ruimere kaarten ---- */
+.analytics-panel { border-radius: 14px; padding: 18px; }
+.analytics-panel h3 { font-size: 15.5px; font-weight: 850; margin-bottom: 10px; }
+.analytics-panel-title-row p { font-size: 12.5px; line-height: 1.4; }
+.analytics-grid { gap: 18px; }
+
+/* Stat-tegel zonder zware bovenrand; de toon zit in een stip + het getal. */
+.analytics-kpi-card { border-radius: 14px; padding: 17px; border-top-width: 1px; border-top-color: var(--remarkt-line); }
+.analytics-kpi-label { display: inline-flex; align-items: center; gap: 7px; }
+.analytics-kpi-card.primary .analytics-kpi-label::before,
+.analytics-kpi-card.warning .analytics-kpi-label::before,
+.analytics-kpi-card.danger .analytics-kpi-label::before { content: ""; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.analytics-kpi-card.primary .analytics-kpi-label::before { background: var(--remarkt-red); }
+.analytics-kpi-card.warning .analytics-kpi-label::before { background: #B45309; }
+.analytics-kpi-card.danger .analytics-kpi-label::before { background: #C8102E; }
+.analytics-kpi-card.warning strong { color: #B45309; }
+.analytics-kpi-card.danger strong { color: #C8102E; }
+html[data-theme="dark"] .analytics-kpi-card { border-top-color: var(--dark-line); }
+html[data-theme="dark"] .analytics-kpi-card.warning strong { color: #F0A94A; }
+html[data-theme="dark"] .analytics-kpi-card.danger strong { color: #FF8A93; }
+
+/* ---- 3. Tabellen ---- */
+.analytics-table, .comparison-table { font-variant-numeric: tabular-nums; }
+.analytics-table th, .analytics-table td { padding: 12px 10px; }
+.analytics-table th { letter-spacing: 0.03em; font-weight: 900; }
+.analytics-table tr:last-child td { border-bottom: 0; }
+/* Getallen rechts uitlijnen; de eerste kolom blijft de naam. */
+.analytics-table th:not(:first-child), .analytics-table td:not(:first-child) { text-align: right; }
+.repair-batch-table th:not(:first-child), .repair-batch-table td:not(:first-child) { text-align: right; }
+.repair-batch-table .repair-rate-cell { justify-content: flex-end; }
+.comparison-table th { letter-spacing: 0.03em; font-weight: 900; }
+.comparison-table td strong { display: inline-flex; align-items: center; }
+html[data-theme="dark"] .analytics-table th, html[data-theme="dark"] .comparison-table th { color: var(--dark-muted); }
