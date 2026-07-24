@@ -2440,7 +2440,7 @@ test('specs-label bevat kernspecificaties en grade', () => {
   assert.equal(rows[3], 'Accu 88%');
 });
 
-test('origineel specs-label houdt lange laptoptekst binnen 54x25mm', () => {
+test('specs-label met grade-visual houdt lange laptoptekst binnen 54x25mm', () => {
   const app = loadAppSandbox();
   const rows = app.getLabelRows({
     merk: 'HP',
@@ -2451,22 +2451,24 @@ test('origineel specs-label houdt lange laptoptekst binnen 54x25mm', () => {
     display: '15"',
     battery: '74%',
     gpu: 'NVIDIA GA107GLM [RTX A2000 Mobile]',
-  }, { eindgrade: 'A' }, 'specs');
+  }, { eindgrade: 'A' }, 'specs', { gradeVisual: true });
 
-  assert.equal(rows[2], 'Grade A / Touch Nee');
+  assert.equal(rows[2], 'Touch Nee');
   assert.equal(rows[3], 'Accu 74% / NVIDIA RTX A2000');
   assert.doesNotMatch(rows[3], /GA107GLM/);
 
-  const xml = app.buildDymoLabelXml(rows, 'specs');
+  const xml = app.buildDymoLabelXml(rows, 'specs', 'A');
   assert.match(xml, /HP ZBook Fury 15 G8 Mobile Workstation/);
   assert.match(xml, /<Bounds X="170" Y="50" Width="2770" Height="330"/);
+  assert.match(xml, /<Name>GRADE_BADGE<\/Name>/);
+  assert.match(xml, /<String>A<\/String>/);
+  assert.match(xml, /<Name>GRADE_BAR_1<\/Name>/);
+  assert.match(xml, /<Name>GRADE_BAR_4<\/Name>/);
   assert.doesNotMatch(xml, /<Name>GRADE_DIVIDER<\/Name>/);
-  assert.doesNotMatch(xml, /<Name>GRADE_BADGE<\/Name>/);
-  assert.doesNotMatch(xml, /<Name>GRADE_BAR_/);
 
   const bounds = Array.from(xml.matchAll(/<Bounds X="(\d+)" Y="(\d+)" Width="(\d+)" Height="(\d+)"/g))
     .map(match => match.slice(1).map(Number));
-  assert.equal(bounds.length, 4);
+  assert.equal(bounds.length, 9);
   bounds.forEach(([x, y, width, height]) => {
     assert.ok(x >= 0, `negative X ${x}`);
     assert.ok(y >= 0, `negative Y ${y}`);
@@ -2486,18 +2488,19 @@ test('origineel specs-label houdt lange laptoptekst binnen 54x25mm', () => {
         print() {}
       };
     };
-    openBrowserPrintLabel(${JSON.stringify(rows)}, 'specs', null, getBrowserPrintProfiles().dymoLabel);
+    openBrowserPrintLabel(${JSON.stringify(rows)}, 'specs', null, getBrowserPrintProfiles().dymoLabel, 'A');
     html;
   `, app);
 
+  assert.match(printHtml, /specs-grade-visual/);
   assert.doesNotMatch(printHtml, /specs-has-grade/);
   assert.doesNotMatch(printHtml, /specs-grade-box/);
-  assert.doesNotMatch(printHtml, /grade-bars/);
+  assert.match(printHtml, /grade-bars/);
   assert.match(printHtml, /NVIDIA RTX A2000/);
   assert.doesNotMatch(printHtml, /GA107GLM/);
 });
 
-test('DYMO originele specs-layout blijft full-width bij ThinkPad tekst', () => {
+test('DYMO specs-grade visual houdt tekstregels full-width bij ThinkPad tekst', () => {
   const app = loadAppSandbox();
   const rows = app.getLabelRows({
     merk: 'Lenovo',
@@ -2508,19 +2511,21 @@ test('DYMO originele specs-layout blijft full-width bij ThinkPad tekst', () => {
     display: '15"',
     battery: '81%',
     gpu: '',
-  }, { eindgrade: 'B' }, 'specs');
-  const xml = app.buildDymoLabelXml(rows, 'specs');
+  }, { eindgrade: 'B' }, 'specs', { gradeVisual: true });
+  const xml = app.buildDymoLabelXml(rows, 'specs', 'B');
 
   assert.equal(rows[0], 'Lenovo ThinkPad T590');
-  assert.equal(rows[2], 'Grade B / Touch Nee');
+  assert.equal(rows[2], 'Touch Nee');
   assert.equal(rows[3], 'Accu 81%');
-  assert.doesNotMatch(xml, /<Name>GRADE_BADGE<\/Name>/);
+  assert.match(xml, /<Name>GRADE_BADGE<\/Name>/);
+  assert.match(xml, /<String>B<\/String>/);
+  assert.match(xml, /<Name>GRADE_BAR_3<\/Name>/);
   assert.doesNotMatch(xml, /<Name>GRADE_DIVIDER<\/Name>/);
-  assert.match(xml, /<Bounds X="170" Y="970" Width="2770" Height="310"/);
+  assert.match(xml, /<Bounds X="170" Y="1070" Width="2770" Height="300"/);
 
   const bounds = Array.from(xml.matchAll(/<Bounds X="(\d+)" Y="(\d+)" Width="(\d+)" Height="(\d+)"/g))
     .map(match => match.slice(1).map(Number));
-  assert.equal(bounds.length, 4);
+  assert.equal(bounds.length, 9);
   bounds.forEach(([x, y, width, height]) => {
     assert.ok(x >= 0 && y >= 0, `object starts outside label: ${x},${y}`);
     assert.ok(x + width <= 3060, `object exceeds label width: ${x} + ${width}`);
@@ -3725,7 +3730,7 @@ test('laatste guided foto-keuze wacht met printen tot Akkoord grade', async () =
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
   assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
-  assert.equal(vm.runInContext('window.__printCalls[0].grade', app), '');
+  assert.equal(vm.runInContext('window.__printCalls[0].grade', app), 'A');
 });
 
 test('expert score Confirm print automatisch en slaat direct op', async () => {

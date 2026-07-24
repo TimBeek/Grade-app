@@ -168,7 +168,7 @@ function getProblemLabelRows(laptop, result) {
 }
 
 function getSpecsLabelRows(laptop, result, options = {}) {
-  const grade = result && result.eindgrade === 'D' ? 'X' : result && result.eindgrade;
+  const grade = result && result.eindgrade === 'D' ? 'X' : (result && result.eindgrade) || '';
   const touch = isTouchscreenLaptop(laptop) ? 'Ja' : 'Nee';
   const battery = formatBatteryForLabel(laptop.battery);
   const gpu = compactGpuForLabel(laptop.labelGpu || getNoteworthyGpu(laptop.gpu));
@@ -179,7 +179,9 @@ function getSpecsLabelRows(laptop, result, options = {}) {
   return [
     dedupeLabelBrand(`${labelValue(laptop.merk, '')} ${labelValue(laptop.model, '')}`.trim()),
     `${labelValue(laptop.processor)} / ${labelValue(laptop.ram)} / ${labelValue(laptop.ssd)}`,
-    options.hideGrade ? `Grade ...... / Touch ${touch}` : `Grade ${grade} / Touch ${touch}`,
+    options.hideGrade
+      ? `Grade ...... / Touch ${touch}`
+      : options.gradeVisual ? `Touch ${touch}` : `Grade ${grade} / Touch ${touch}`,
     row4Parts.join(' / ')
   ];
 }
@@ -458,17 +460,73 @@ function wrapLabelTitleForDymo(title) {
   return `${text.slice(0, splitAt).trim()}\n${text.slice(splitAt + 1).trim()}`;
 }
 
+const GRADE_BAR_COUNT = 4;
+const GRADE_BAR_LEVELS = { A: 4, B: 3, C: 2, X: 1, D: 1 };
+
+function normalizeSpecsGradeBadge(grade) {
+  const value = String(grade || '').trim().toUpperCase();
+  if (!value) return '';
+  return value === 'D' ? 'X' : value;
+}
+
+function getGradeBarLevel(grade) {
+  return GRADE_BAR_LEVELS[normalizeSpecsGradeBadge(grade)] || 0;
+}
+
+function dymoShapeObject(name, bounds, filled) {
+  const fill = filled
+    ? '<FillColor Alpha="255" Red="0" Green="0" Blue="0" />'
+    : '<FillColor Alpha="0" Red="255" Green="255" Blue="255" />';
+  return `
+    <ObjectInfo>
+      <ShapeObject>
+        <Name>${name}</Name>
+        <ForeColor Alpha="255" Red="0" Green="0" Blue="0" />
+        <BackColor Alpha="0" Red="255" Green="255" Blue="255" />
+        <LinkedObjectName></LinkedObjectName>
+        <Rotation>Rotation0</Rotation>
+        <IsMirrored>False</IsMirrored>
+        <IsVariable>False</IsVariable>
+        <ShapeType>Rectangle</ShapeType>
+        ${fill}
+        <LineColor Alpha="255" Red="0" Green="0" Blue="0" />
+        <LineWidth>18</LineWidth>
+      </ShapeObject>
+      <Bounds X="${Math.round(bounds.x)}" Y="${Math.round(bounds.y)}" Width="${Math.round(bounds.width)}" Height="${Math.round(bounds.height)}" />
+    </ObjectInfo>`;
+}
+
+function buildGradeBarsDymo(level, area) {
+  const gap = Math.round(area.width * 0.08);
+  const barWidth = Math.round((area.width - gap * (GRADE_BAR_COUNT - 1)) / GRADE_BAR_COUNT);
+  const bottom = area.y + area.height;
+  let xml = '';
+  for (let i = 0; i < GRADE_BAR_COUNT; i++) {
+    const height = Math.round(area.height * (0.4 + 0.2 * i));
+    xml += dymoShapeObject(`GRADE_BAR_${i + 1}`, {
+      x: area.x + i * (barWidth + gap),
+      y: bottom - height,
+      width: barWidth,
+      height,
+    }, i < level);
+  }
+  return xml;
+}
+
 function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const isMonitorLabel = type === 'monitor';
-  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : '';
-  const showGradeBadge = Boolean(gradeBadge);
+  const isSpecsLabel = type === 'specs';
+  const specsGrade = isSpecsLabel ? normalizeSpecsGradeBadge(grade) : '';
+  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : specsGrade;
+  const showMonitorGrade = isMonitorLabel && Boolean(gradeBadge);
+  const showSpecsGrade = isSpecsLabel && Boolean(specsGrade);
   const cleanRows = rows.map(row => String(row || '').trim()).slice(0, isMonitorLabel ? 3 : 4);
   const longestRow = Math.max(...cleanRows.map(row => row.length), 1);
   const tight = longestRow > 46;
   const compact = longestRow > 34;
   // Reserve a tidy column on the right for the grade (caption + value) on
   // monitor labels, with the spec rows kept in a clean left column.
-  const monitorRowWidth = showGradeBadge ? 1900 : 2770;
+  const monitorRowWidth = showMonitorGrade ? 1900 : 2770;
   // A long device name gets a taller first row so it wraps to two lines and
   // stays readable, instead of being shrunk down to fit a single line.
   const monitorTitleLong = isMonitorLabel && (cleanRows[0] || '').length > 24;
@@ -476,12 +534,13 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const monitorSpecSize = monitorSpecsLongest > 40 ? 8.2 : monitorSpecsLongest > 30 ? 8.9 : 9.6;
   const fontSizes = isMonitorLabel
     ? [monitorTitleLong ? 11 : 13, monitorSpecSize, monitorSpecSize]
-    : showGradeBadge
-      ? (tight
-        ? [8, 6.1, 6.3, 5.5]
-        : compact
-          ? [8.5, 6.5, 6.7, 5.8]
-          : [9.1, 7, 7.1, 6.1])
+    : showSpecsGrade
+      ? [
+        (cleanRows[0] || '').length > 42 ? 9.2 : (cleanRows[0] || '').length > 32 ? 10.4 : 12,
+        (cleanRows[1] || '').length > 34 ? 7.2 : 8.2,
+        8.8,
+        (cleanRows[3] || '').length > 38 ? 6.2 : 7.2,
+      ]
     : (tight
       ? [9.5, 6.8, 6.8, 6.2]
       : compact
@@ -499,26 +558,39 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
         { x: 170, y: 520, width: monitorRowWidth, height: 345 },
         { x: 170, y: 885, width: monitorRowWidth, height: 345 },
       ])
-    : (() => {
-      return [
+    : (showSpecsGrade
+      ? [
+        { x: 170, y: 50, width: 2770, height: 330 },
+        { x: 170, y: 390, width: 2770, height: 260 },
+        { x: 1010, y: 735, width: 1080, height: 290 },
+        { x: 170, y: 1070, width: 2770, height: 300 },
+      ]
+      : [
         { x: 170, y: 50, width: 2770, height: 330 },
         { x: 170, y: 390, width: 2770, height: 285 },
         { x: 170, y: 680, width: 2770, height: 285 },
         { x: 170, y: 970, width: 2770, height: 310 },
-      ];
-    })();
+      ]);
   // DYMO does not wrap, so pre-split a long monitor title into two lines.
   const xmlRows = cleanRows.slice();
   if (monitorTitleLong) xmlRows[0] = wrapLabelTitleForDymo(xmlRows[0]);
-  const objects = xmlRows
-    .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
-    .join('');
-  const gradeObject = !showGradeBadge
+  const objects = showSpecsGrade
+    ? [
+      dymoTextObject('ROW_1', xmlRows[0], bounds[0], fontSizes[0], true),
+      dymoTextObject('ROW_2', xmlRows[1], bounds[1], fontSizes[1], true),
+      dymoTextObject('ROW_3', xmlRows[2], bounds[2], fontSizes[2], true),
+      dymoTextObject('ROW_4', xmlRows[3], bounds[3], fontSizes[3], true),
+    ].join('')
+    : xmlRows
+      .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
+      .join('');
+  const gradeObject = !gradeBadge
     ? ''
-    : isMonitorLabel
+    : showMonitorGrade
       ? dymoTextObject('GRADE_CAPTION', 'GRADE', { x: 2120, y: 150, width: 820, height: 210 }, 7.6, true, 'Center')
         + dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2120, y: 360, width: 820, height: 790 }, 39, true, 'Center')
-      : '';
+      : dymoTextObject('GRADE_BADGE', specsGrade, { x: 170, y: 660, width: 430, height: 420 }, 25, true, 'Center')
+        + buildGradeBarsDymo(getGradeBarLevel(specsGrade), { x: 650, y: 805, width: 310, height: 230 });
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -579,16 +651,19 @@ async function printRowsWithDymo(rows, type = 'specs', grade = '') {
 function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PROFILES.dymoLabel, grade = '') {
   const longestRow = Math.max(...rows.map(row => String(row || '').length), 1);
   const isMonitorLabel = type === 'monitor';
-  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : '';
-  const showGradeBadge = Boolean(gradeBadge);
-  const scaleClass = `${isMonitorLabel ? 'monitor-label' : ''} ${isMonitorLabel && showGradeBadge ? 'monitor-has-grade' : ''} ${longestRow > 46 ? 'tight' : longestRow > 34 ? 'compact' : ''}`.trim();
+  const isSpecsLabel = type === 'specs';
+  const specsGrade = isSpecsLabel ? normalizeSpecsGradeBadge(grade) : '';
+  const gradeBadge = isMonitorLabel ? displayMonitorGrade(grade) : specsGrade;
+  const showMonitorGrade = isMonitorLabel && Boolean(gradeBadge);
+  const showSpecsGrade = isSpecsLabel && Boolean(specsGrade);
+  const scaleClass = `${isMonitorLabel ? 'monitor-label' : ''} ${showMonitorGrade ? 'monitor-has-grade' : ''} ${showSpecsGrade ? 'specs-grade-visual' : ''} ${longestRow > 46 ? 'tight' : longestRow > 34 ? 'compact' : ''}`.trim();
   if (profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id) {
     const safeRows = rows.map(row => String(row || '').trim());
     const labelHtml = `
       <div class="receipt-brand">REMARKT.</div>
       <div class="receipt-type">${type === 'monitor' ? 'MONITOR LABEL' : type === 'problems' ? 'REPAIR LABEL' : 'SPECS LABEL'}</div>
       <div class="receipt-main">${escapeHtml(safeRows[0] || 'Device')}</div>
-      ${showGradeBadge ? `<div class="receipt-grade">GRADE ${escapeHtml(gradeBadge)}</div>` : ''}
+      ${gradeBadge ? `<div class="receipt-grade">GRADE ${escapeHtml(gradeBadge)}</div>` : ''}
       ${safeRows.slice(1).map(row => row ? `<div class="receipt-row">${escapeHtml(row)}</div>` : '').join('')}
       <div class="receipt-footer">Printed via HP Engage · ${new Date().toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })}</div>
     `;
@@ -602,8 +677,12 @@ function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PRO
   const rowsHtml = rows
     .map((row, index) => row ? `<div class="label-row row-${index + 1}">${escapeHtml(row)}</div>` : '')
     .join('');
-  const labelHtml = showGradeBadge
+  const gradeBarsHtml = Array.from({ length: GRADE_BAR_COUNT }, (unused, index) =>
+    `<span class="grade-bar${index < getGradeBarLevel(specsGrade) ? ' is-on' : ''}"></span>`).join('');
+  const labelHtml = showMonitorGrade
     ? `<div class="monitor-label-text">${rowsHtml}</div><div class="monitor-grade-box"><span class="monitor-grade-caption">GRADE</span><span class="monitor-grade-value">${escapeHtml(gradeBadge)}</span></div>`
+    : showSpecsGrade
+      ? `<div class="label-row row-1">${escapeHtml(rows[0] || '')}</div><div class="label-row row-2">${escapeHtml(rows[1] || '')}</div><div class="specs-grade-line"><span class="specs-grade-value">${escapeHtml(specsGrade)}</span><span class="grade-bars">${gradeBarsHtml}</span><span class="label-row row-3">${escapeHtml(rows[2] || '')}</span></div><div class="label-row row-4">${escapeHtml(rows[3] || '')}</div>`
     : rowsHtml;
 
   return {
@@ -706,6 +785,57 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
         .tight .label-row { line-height: 1; }
         .tight .row-1 { font-size: 8.7pt; }
         .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
+        .label.specs-grade-visual {
+          grid-template-rows: 6.2mm 4.8mm 7.4mm 4.9mm;
+          row-gap: 0;
+          padding: 1mm 1.4mm 0.9mm 3mm;
+        }
+        .specs-grade-visual .row-1 { font-size: 10.8pt; font-weight: 900; }
+        .specs-grade-visual .row-2 { font-size: 7.7pt; font-weight: 800; }
+        .specs-grade-visual .row-4 { font-size: 6.8pt; font-weight: 800; }
+        .specs-grade-visual.compact .row-1,
+        .specs-grade-visual.tight .row-1 { font-size: 9.2pt; }
+        .specs-grade-visual.compact .row-2,
+        .specs-grade-visual.tight .row-2 { font-size: 6.8pt; }
+        .specs-grade-visual.compact .row-4,
+        .specs-grade-visual.tight .row-4 { font-size: 6.1pt; }
+        .specs-grade-line {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 1mm;
+          overflow: hidden;
+        }
+        .specs-grade-value {
+          flex: 0 0 7.2mm;
+          text-align: center;
+          font-size: 18pt;
+          font-weight: 900;
+          line-height: 0.9;
+        }
+        .grade-bars {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: flex-end;
+          gap: 0.35mm;
+          height: 3.8mm;
+        }
+        .grade-bar {
+          width: 1.35mm;
+          border: 0.25mm solid #000;
+          background: #fff;
+        }
+        .grade-bar.is-on { background: #000; }
+        .grade-bar:nth-child(1) { height: 40%; }
+        .grade-bar:nth-child(2) { height: 60%; }
+        .grade-bar:nth-child(3) { height: 80%; }
+        .grade-bar:nth-child(4) { height: 100%; }
+        .specs-grade-line .row-3 {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-size: 8.4pt;
+          font-weight: 900;
+        }
         .monitor-label {
           grid-template-rows: 8mm 6.7mm 6.7mm;
         }
@@ -948,6 +1078,57 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
         .tight .label-row { line-height: 1; }
         .tight .row-1 { font-size: 8.7pt; }
         .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
+        .label.specs-grade-visual {
+          grid-template-rows: 6.2mm 4.8mm 7.4mm 4.9mm;
+          row-gap: 0;
+          padding: 1mm 1.4mm 0.9mm 3mm;
+        }
+        .specs-grade-visual .row-1 { font-size: 10.8pt; font-weight: 900; }
+        .specs-grade-visual .row-2 { font-size: 7.7pt; font-weight: 800; }
+        .specs-grade-visual .row-4 { font-size: 6.8pt; font-weight: 800; }
+        .specs-grade-visual.compact .row-1,
+        .specs-grade-visual.tight .row-1 { font-size: 9.2pt; }
+        .specs-grade-visual.compact .row-2,
+        .specs-grade-visual.tight .row-2 { font-size: 6.8pt; }
+        .specs-grade-visual.compact .row-4,
+        .specs-grade-visual.tight .row-4 { font-size: 6.1pt; }
+        .specs-grade-line {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 1mm;
+          overflow: hidden;
+        }
+        .specs-grade-value {
+          flex: 0 0 7.2mm;
+          text-align: center;
+          font-size: 18pt;
+          font-weight: 900;
+          line-height: 0.9;
+        }
+        .grade-bars {
+          flex: 0 0 auto;
+          display: flex;
+          align-items: flex-end;
+          gap: 0.35mm;
+          height: 3.8mm;
+        }
+        .grade-bar {
+          width: 1.35mm;
+          border: 0.25mm solid #000;
+          background: #fff;
+        }
+        .grade-bar.is-on { background: #000; }
+        .grade-bar:nth-child(1) { height: 40%; }
+        .grade-bar:nth-child(2) { height: 60%; }
+        .grade-bar:nth-child(3) { height: 80%; }
+        .grade-bar:nth-child(4) { height: 100%; }
+        .specs-grade-line .row-3 {
+          flex: 1 1 auto;
+          min-width: 0;
+          font-size: 8.4pt;
+          font-weight: 900;
+        }
         .monitor-label {
           grid-template-rows: 8mm 6.7mm 6.7mm;
         }
@@ -1100,11 +1281,14 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
 
 function createLaptopLabelPrintJob(laptop, result, type = 'specs', options = {}) {
   const browserProfile = getBrowserPrintProfile(options);
+  const specsGrade = type === 'specs' && !options.hideGrade
+    ? normalizeSpecsGradeBadge(result && result.eindgrade)
+    : '';
   return {
-    rows: getLabelRows(laptop, result, type, options),
+    rows: getLabelRows(laptop, result, type, { ...options, gradeVisual: Boolean(specsGrade) }),
     type,
     browserProfile,
-    grade: '',
+    grade: specsGrade,
     audit: {
       action: 'print_label',
       entityType: 'laptop',
@@ -1180,7 +1364,10 @@ async function printLabelJobsWithDymoFallback(jobs, options = {}) {
 }
 
 async function printLabelFor(laptop, result, type = 'specs', options = {}) {
-  const rows = getLabelRows(laptop, result, type, options);
+  const specsGrade = type === 'specs' && !options.hideGrade
+    ? normalizeSpecsGradeBadge(result && result.eindgrade)
+    : '';
+  const rows = getLabelRows(laptop, result, type, { ...options, gradeVisual: Boolean(specsGrade) });
   const browserProfile = getBrowserPrintProfile(options);
   const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile, options);
   logAudit('print_label', 'laptop', laptop && laptop.sticker, { type, hideGrade: Boolean(options.hideGrade), browserProfile: browserProfile.id });
@@ -1189,7 +1376,7 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
     : null;
 
   try {
-    const printResult = await withPrintTimeout(printRowsWithDymo(rows, type));
+    const printResult = await withPrintTimeout(printRowsWithDymo(rows, type, specsGrade));
     closePreparedPrintWindow(fallbackWindow);
     if (!options.suppressMessage) {
       setAppMessage(`${type === 'problems' ? 'Repair label' : 'Specs label'} sent to ${printResult.printerName} (${DYMO_LABEL_CONFIG.labelSize} / ${DYMO_LABEL_CONFIG.productCode}).`, 'success');
@@ -1207,7 +1394,7 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
     }
   }
 
-  if (openBrowserPrintLabel(rows, type, fallbackWindow, browserProfile)) {
+  if (openBrowserPrintLabel(rows, type, fallbackWindow, browserProfile, specsGrade)) {
     if (!options.suppressMessage) {
       setAppMessage(browserProfile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id
         ? 'DYMO direct print is unavailable. An HP Engage print window opened automatically with 80x297 mm paper size.'
