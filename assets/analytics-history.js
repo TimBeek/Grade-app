@@ -1620,16 +1620,26 @@ function renderRepairRouteSplit(split) {
 function renderRepairBins(binRows) {
   if (!binRows.length) return '<div class="empty-analytics">No repair items in this selection.</div>';
   const max = Math.max(...binRows.map(bin => bin.total), 1);
+  // De segmentkleuren betekenen de zwaarte (licht/zwaar/afkeur), dus die krijgen
+  // een legenda. Geen categoriekleur per bak erbij: twee kleursystemen in één
+  // grafiek maakt het onleesbaar.
   return `
+    <div class="chart-legend chart-legend--left">
+      <span class="chart-legend-item"><b style="background: #1A7F37;"></b>Light</span>
+      <span class="chart-legend-item"><b style="background: #C77700;"></b>Heavy</span>
+      <span class="chart-legend-item"><b style="background: #C8102E;"></b>Reject</span>
+    </div>
     <div class="repair-bins">
-      ${binRows.map((bin, index) => `
+      ${binRows.map(bin => `
         <div class="repair-bin-row">
-          <div class="repair-bin-head"><strong><span class="repair-bin-cat" style="background: ${chartColor(index)};" aria-hidden="true"></span>${escapeHtml(bin.bin)}</strong><em>${bin.total}</em></div>
-          <div class="repair-bin-track-wrap"><div class="repair-bin-track" style="width:${Math.max(6, (bin.total / max) * 100)}%;">
-            ${bin.light ? `<span class="bin-seg light" style="flex:${bin.light};" title="Light ${bin.light}"></span>` : ''}
-            ${bin.heavy ? `<span class="bin-seg heavy" style="flex:${bin.heavy};" title="Heavy ${bin.heavy}"></span>` : ''}
-            ${bin.reject ? `<span class="bin-seg reject" style="flex:${bin.reject};" title="Reject ${bin.reject}"></span>` : ''}
-          </div></div>
+          <div class="repair-bin-head"><strong>${escapeHtml(bin.bin)}</strong><em>${formatNumber(bin.total)}</em></div>
+          <div class="repair-bin-track-wrap">
+            <div class="repair-bin-track" style="width:${Math.max(4, (bin.total / max) * 100)}%;">
+              ${bin.light ? `<span class="bin-seg light" style="flex:${bin.light};" title="Light ${bin.light}"></span>` : ''}
+              ${bin.heavy ? `<span class="bin-seg heavy" style="flex:${bin.heavy};" title="Heavy ${bin.heavy}"></span>` : ''}
+              ${bin.reject ? `<span class="bin-seg reject" style="flex:${bin.reject};" title="Reject ${bin.reject}"></span>` : ''}
+            </div>
+          </div>
           <div class="repair-bin-meta">${bin.light} light · ${bin.heavy} heavy · ${bin.reject} reject</div>
         </div>
       `).join('')}
@@ -1665,7 +1675,8 @@ function buildRepairBatchRows(filteredItems) {
 
 function renderRepairBatchTable(rows) {
   if (!rows.length) return '<div class="empty-analytics">No repair data in this selection.</div>';
-  const worst = rows.reduce((max, row) => Math.max(max, row.rate), 0);
+  // Balk op een vaste 0-100%-schaal: 25% vult een kwart. Schalen op de slechtste
+  // batch gaf een volle balk bij 25%, wat het percentage tegensprak.
   return `
     <div class="analytics-table-wrap">
       <table class="comparison-table repair-batch-table">
@@ -1680,7 +1691,7 @@ function renderRepairBatchTable(rows) {
               <td><b>${formatNumber(row.repair)}</b></td>
               <td>
                 <span class="repair-rate-cell">
-                  <span class="repair-rate-track"><span class="repair-rate-fill ${row.rate >= 25 ? 'high' : row.rate >= 10 ? 'mid' : 'low'}" style="width:${worst ? Math.round((row.rate / worst) * 100) : 0}%;"></span></span>
+                  <span class="repair-rate-track"><span class="repair-rate-fill ${row.rate >= 25 ? 'high' : row.rate >= 10 ? 'mid' : 'low'}" style="width:${Math.max(2, Math.min(100, row.rate))}%;"></span></span>
                   <b>${row.rate}%</b>
                 </span>
               </td>
@@ -1699,21 +1710,19 @@ function renderRepairBatchTable(rows) {
 function renderPareto(rows, emptyText) {
   if (!rows.length) return `<div class="empty-analytics">${escapeHtml(emptyText || 'No data yet.')}</div>`;
   const total = rows.reduce((sum, row) => sum + row.value, 0) || 1;
-  const max = Math.max(...rows.map(row => row.value), 1);
-  let cumulative = 0;
+  // Balk en percentage tonen nu hetzelfde: het aandeel van deze oorzaak in alle
+  // reparaties. Eén kleur, want dit is een rangorde van grootte en geen set
+  // categorieen — verschillende kleuren zouden een betekenis suggereren die er
+  // niet is. Het cumulatieve streepje is eruit: dat las als een losse lijn.
   return `
     <div class="analytics-pareto">
-      ${rows.map((row, index) => {
-        cumulative += row.value;
-        const cumPct = Math.round((cumulative / total) * 100);
+      ${rows.map(row => {
+        const share = Math.round((row.value / total) * 100);
         return `
           <div class="pareto-row">
-            <div class="pareto-label"><strong><span class="repair-bin-cat" style="background: ${chartColor(index)};" aria-hidden="true"></span>${escapeHtml(row.label)}</strong></div>
-            <div class="pareto-track">
-              <span class="pareto-fill" style="width:${Math.max(3, (row.value / max) * 100)}%; background: ${chartColor(index)};"></span>
-              <span class="pareto-cum" style="left:${cumPct}%;"></span>
-            </div>
-            <div class="pareto-value">${formatNumber(row.value)}<em>${cumPct}%</em></div>
+            <div class="pareto-label"><strong>${escapeHtml(row.label)}</strong></div>
+            <div class="pareto-track"><span class="pareto-fill" style="width:${Math.max(2, share)}%;"></span></div>
+            <div class="pareto-value">${formatNumber(row.value)}<em>${share}%</em></div>
           </div>
         `;
       }).join('')}
@@ -1845,7 +1854,7 @@ function renderAnalytics() {
         ${renderAnalyticsPanel('Route split', 'Green = production repair (restock), amber = direct repair, red = not sellable.', renderRepairRouteSplit(routeSplit), 'analytics-wide')}
         ${renderAnalyticsPanel('Repair per batch', 'Which batch costs the most repair work — rate, route split and volume. Use the Batch filter to zoom in on one.', renderRepairBatchTable(repairBatchRows), 'analytics-wide')}
         ${renderAnalyticsPanel('Repair bins by type', 'One bin per station; light vs heavy vs reject within each bin.', renderRepairBins(repairBinRows))}
-        ${renderAnalyticsPanel('Top repair causes', 'The vital few causes driving most repairs (Pareto).', renderPareto(paretoRows, 'No repair causes yet.'))}
+        ${renderAnalyticsPanel('Top repair causes', 'Biggest causes, each as a share of all repair labels.', renderPareto(paretoRows, 'No repair causes yet.'))}
       </div>
     </section>
   `;

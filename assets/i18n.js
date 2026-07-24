@@ -1160,6 +1160,9 @@ Object.assign(NL_COPY, {
   'of repairs · back to stock': 'van reparaties · terug naar voorraad',
   'of repairs · fix before sale': 'van reparaties · repareren voor verkoop',
   'of repairs · reject': 'van reparaties · afkeur',
+  'Heavy': 'Zwaar',
+  'Reject': 'Afkeur',
+  'Biggest causes, each as a share of all repair labels.': 'Grootste oorzaken, elk als aandeel van alle reparatielabels.',
 });
 
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt', 'data-preview-label'];

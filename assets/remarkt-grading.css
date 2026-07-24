@@ -2201,3 +2201,22 @@ html[data-theme="dark"] .analytics-kpi-card.danger strong { color: #FF8A93; }
 .comparison-table th { letter-spacing: 0.03em; font-weight: 900; }
 .comparison-table td strong { display: inline-flex; align-items: center; }
 html[data-theme="dark"] .analytics-table th, html[data-theme="dark"] .comparison-table th { color: var(--dark-muted); }
+
+/* ============================================================================
+   Correcties reparatie-grafieken: gemeenschappelijke schaal, legenda links en
+   staven die niet langer een ander verhaal vertellen dan hun eigen percentage.
+   ============================================================================ */
+/* Legenda links uitlijnen (boven een lijst met staven i.p.v. rechts bij een grafiek). */
+.chart-legend--left { justify-content: flex-start; margin-bottom: 12px; }
+
+/* Volle-breedte baan achter elke bak-staaf: zo liggen alle rijen op dezelfde
+   schaal en zijn ze onderling vergelijkbaar. */
+.repair-bin-track-wrap { background: #EFEFEC; border-radius: 999px; overflow: hidden; }
+html[data-theme="dark"] .repair-bin-track-wrap { background: #2D2D32; }
+.repair-bin-track { min-width: 8px; }
+
+/* Pareto: vaste baan op 0-100%, staaf in een enkele kleur. */
+.pareto-track { background: #EFEFEC; }
+html[data-theme="dark"] .pareto-track { background: #2D2D32; }
+.pareto-fill { background: var(--remarkt-red); }
+.pareto-value em { font-variant-numeric: tabular-nums; }
