@@ -72,6 +72,33 @@ function formatBatteryForLabel(value) {
   return clean;
 }
 
+function shortenLabelText(text, maxLength) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length <= maxLength) return clean;
+  return `${clean.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+}
+
+function compactGpuForLabel(value) {
+  const clean = String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .trim();
+  if (!clean) return '';
+
+  const bracketModel = clean.match(/\[([^\]]*(?:rtx|gtx|quadro|radeon)[^\]]*)\]/i);
+  const gpu = bracketModel ? bracketModel[1] : clean.replace(/\[[^\]]*\]/g, ' ');
+  const normalized = gpu
+    .replace(/\bNVIDIA\s+(Corporation\s+)?/i, 'NVIDIA ')
+    .replace(/\b(GeForce|Laptop GPU|Mobile|Graphics|Adapter|GPU)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const withBrand = /^nvidia|radeon|amd|intel/i.test(normalized)
+    ? normalized
+    : clean.toLowerCase().includes('nvidia') ? `NVIDIA ${normalized}` : normalized;
+  return shortenLabelText(withBrand, 26);
+}
+
 function compactProblemText(text) {
   return String(text || '')
     .replace(/\s*\([^)]*\)/g, '')
@@ -144,7 +171,7 @@ function getSpecsLabelRows(laptop, result, options = {}) {
   const grade = result && result.eindgrade === 'D' ? 'X' : result && result.eindgrade;
   const touch = isTouchscreenLaptop(laptop) ? 'Ja' : 'Nee';
   const battery = formatBatteryForLabel(laptop.battery);
-  const gpu = labelValue(laptop.labelGpu || getNoteworthyGpu(laptop.gpu), '');
+  const gpu = compactGpuForLabel(laptop.labelGpu || getNoteworthyGpu(laptop.gpu));
   const row4Parts = [];
   if (battery) row4Parts.push(`Accu ${battery}`);
   if (gpu) row4Parts.push(gpu);
@@ -504,6 +531,7 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const longestRow = Math.max(...cleanRows.map(row => row.length), 1);
   const tight = longestRow > 46;
   const compact = longestRow > 34;
+  const specsTitleLong = isSpecsLabel && showGradeBadge && (cleanRows[0] || '').length > 22;
   // Reserve a tidy column on the right for the grade (caption + value) on
   // monitor labels, with the spec rows kept in a clean left column.
   const monitorRowWidth = showGradeBadge ? 1900 : 2770;
@@ -514,6 +542,12 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
   const monitorSpecSize = monitorSpecsLongest > 40 ? 8.2 : monitorSpecsLongest > 30 ? 8.9 : 9.6;
   const fontSizes = isMonitorLabel
     ? [monitorTitleLong ? 11 : 13, monitorSpecSize, monitorSpecSize]
+    : showGradeBadge
+      ? (tight
+        ? [8.1, 6.1, 6.5, 5.7]
+        : compact
+          ? [8.6, 6.5, 6.8, 5.9]
+          : [9.4, 7, 7.2, 6.2])
     : (tight
       ? [9.5, 6.8, 6.8, 6.2]
       : compact
@@ -533,17 +567,26 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
       ])
     : (() => {
       // Met een gradekolom rechts krijgen de specs-regels een smallere kolom.
-      const specsRowWidth = showGradeBadge ? 1880 : 2770;
+      const specsRowWidth = showGradeBadge ? 2050 : 2770;
+      if (!showGradeBadge) {
+        return [
+          { x: 170, y: 50, width: specsRowWidth, height: 330 },
+          { x: 170, y: 390, width: specsRowWidth, height: 285 },
+          { x: 170, y: 680, width: specsRowWidth, height: 285 },
+          { x: 170, y: 970, width: specsRowWidth, height: 310 },
+        ];
+      }
       return [
-        { x: 170, y: 50, width: specsRowWidth, height: 330 },
-        { x: 170, y: 390, width: specsRowWidth, height: 285 },
-        { x: 170, y: 680, width: specsRowWidth, height: 285 },
-        { x: 170, y: 970, width: specsRowWidth, height: 310 },
+        { x: 150, y: 80, width: specsRowWidth, height: specsTitleLong ? 430 : 350 },
+        { x: 150, y: specsTitleLong ? 520 : 450, width: specsRowWidth, height: 260 },
+        { x: 150, y: specsTitleLong ? 790 : 720, width: specsRowWidth, height: 245 },
+        { x: 150, y: specsTitleLong ? 1045 : 975, width: specsRowWidth, height: 250 },
       ];
     })();
   // DYMO does not wrap, so pre-split a long monitor title into two lines.
   const xmlRows = cleanRows.slice();
   if (monitorTitleLong) xmlRows[0] = wrapLabelTitleForDymo(xmlRows[0]);
+  if (specsTitleLong) xmlRows[0] = wrapLabelTitleForDymo(xmlRows[0]);
   const objects = xmlRows
     .map((row, index) => dymoTextObject(`ROW_${index + 1}`, row, bounds[index], fontSizes[index], index === 0 || index === 2))
     .join('');
@@ -553,8 +596,8 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
       ? dymoTextObject('GRADE_CAPTION', 'GRADE', { x: 2120, y: 150, width: 820, height: 210 }, 7.6, true, 'Center')
         + dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2120, y: 360, width: 820, height: 790 }, 39, true, 'Center')
       // Laptop: grote letter bovenin, kwaliteitsbalken eronder.
-      : dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2080, y: 90, width: 880, height: 800 }, 36, true, 'Center')
-        + buildGradeBarsDymo(getGradeBarLevel(gradeBadge), { x: 2170, y: 950, width: 700, height: 330 });
+      : dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2280, y: 120, width: 640, height: 650 }, 30, true, 'Center')
+        + buildGradeBarsDymo(getGradeBarLevel(gradeBadge), { x: 2335, y: 925, width: 520, height: 285 });
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -752,39 +795,63 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
            rechts. Balken lopen op in hoogte; gevuld = beter (A=4 ... X=1). */
         .label.specs-has-grade {
           grid-template-rows: none;
-          grid-template-columns: minmax(0, 1fr) 12.5mm;
+          grid-template-columns: minmax(0, 1fr) 10mm;
           align-items: stretch;
           column-gap: 0;
-          padding-right: 1mm;
+          padding: 2.4mm 1mm 1.2mm 2.4mm;
         }
         .specs-label-text {
           min-width: 0;
           display: grid;
-          grid-template-rows: 6.4mm 5.4mm 5.4mm 5.5mm;
+          grid-template-rows: 6.7mm 4.9mm 4.8mm 4.7mm;
           align-content: center;
+          padding-right: 0.8mm;
+        }
+        .label.specs-has-grade .row-1 {
+          white-space: normal;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.02;
+          font-size: 8.8pt;
+        }
+        .label.specs-has-grade .row-2 { font-size: 6.7pt; }
+        .label.specs-has-grade .row-3 { font-size: 7.2pt; }
+        .label.specs-has-grade .row-4 { font-size: 5.9pt; }
+        .label.specs-has-grade.compact .row-1,
+        .label.specs-has-grade.tight .row-1 { font-size: 8.1pt; }
+        .label.specs-has-grade.compact .row-2,
+        .label.specs-has-grade.tight .row-2 { font-size: 6.1pt; }
+        .label.specs-has-grade.compact .row-3,
+        .label.specs-has-grade.tight .row-3 { font-size: 6.5pt; }
+        .label.specs-has-grade.compact .row-4,
+        .label.specs-has-grade.tight .row-4 { font-size: 5.4pt; }
+        .label.specs-has-grade .label-row {
+          min-width: 0;
         }
         .specs-grade-box {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 0.9mm;
-          border-left: 0.3mm solid #000;
-          padding-left: 1mm;
+          gap: 0.65mm;
+          border-left: 0.25mm solid #000;
+          padding-left: 0.6mm;
         }
         .specs-grade-value {
-          font-size: 20pt;
+          font-size: 18pt;
           font-weight: 900;
           line-height: 0.85;
         }
         .grade-bars {
           display: flex;
           align-items: flex-end;
-          gap: 0.5mm;
-          height: 4mm;
+          gap: 0.35mm;
+          height: 3.6mm;
         }
         .grade-bar {
-          width: 1.6mm;
+          width: 1.35mm;
           border: 0.25mm solid #000;
           background: #fff;
         }
@@ -1039,39 +1106,63 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
            rechts. Balken lopen op in hoogte; gevuld = beter (A=4 ... X=1). */
         .label.specs-has-grade {
           grid-template-rows: none;
-          grid-template-columns: minmax(0, 1fr) 12.5mm;
+          grid-template-columns: minmax(0, 1fr) 10mm;
           align-items: stretch;
           column-gap: 0;
-          padding-right: 1mm;
+          padding: 2.4mm 1mm 1.2mm 2.4mm;
         }
         .specs-label-text {
           min-width: 0;
           display: grid;
-          grid-template-rows: 6.4mm 5.4mm 5.4mm 5.5mm;
+          grid-template-rows: 6.7mm 4.9mm 4.8mm 4.7mm;
           align-content: center;
+          padding-right: 0.8mm;
+        }
+        .label.specs-has-grade .row-1 {
+          white-space: normal;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.02;
+          font-size: 8.8pt;
+        }
+        .label.specs-has-grade .row-2 { font-size: 6.7pt; }
+        .label.specs-has-grade .row-3 { font-size: 7.2pt; }
+        .label.specs-has-grade .row-4 { font-size: 5.9pt; }
+        .label.specs-has-grade.compact .row-1,
+        .label.specs-has-grade.tight .row-1 { font-size: 8.1pt; }
+        .label.specs-has-grade.compact .row-2,
+        .label.specs-has-grade.tight .row-2 { font-size: 6.1pt; }
+        .label.specs-has-grade.compact .row-3,
+        .label.specs-has-grade.tight .row-3 { font-size: 6.5pt; }
+        .label.specs-has-grade.compact .row-4,
+        .label.specs-has-grade.tight .row-4 { font-size: 5.4pt; }
+        .label.specs-has-grade .label-row {
+          min-width: 0;
         }
         .specs-grade-box {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: 0.9mm;
-          border-left: 0.3mm solid #000;
-          padding-left: 1mm;
+          gap: 0.65mm;
+          border-left: 0.25mm solid #000;
+          padding-left: 0.6mm;
         }
         .specs-grade-value {
-          font-size: 20pt;
+          font-size: 18pt;
           font-weight: 900;
           line-height: 0.85;
         }
         .grade-bars {
           display: flex;
           align-items: flex-end;
-          gap: 0.5mm;
-          height: 4mm;
+          gap: 0.35mm;
+          height: 3.6mm;
         }
         .grade-bar {
-          width: 1.6mm;
+          width: 1.35mm;
           border: 0.25mm solid #000;
           background: #fff;
         }

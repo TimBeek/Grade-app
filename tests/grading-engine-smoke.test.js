@@ -2406,6 +2406,51 @@ test('specs-label bevat kernspecificaties en grade', () => {
   assert.equal(rows[3], 'Accu 88%');
 });
 
+test('specs-label met grade-badge houdt lange laptoptekst binnen 54x25 fallback', () => {
+  const app = loadAppSandbox();
+  const rows = app.getLabelRows({
+    merk: 'HP',
+    model: 'ZBook Fury 15 G8 Mobile Workstation',
+    processor: 'i7-11850H',
+    ram: '32GB',
+    ssd: '510GB',
+    display: '15"',
+    battery: '74%',
+    gpu: 'NVIDIA GA107GLM [RTX A2000 Mobile]',
+  }, { eindgrade: 'A' }, 'specs', { gradeInBadge: true });
+
+  assert.equal(rows[2], 'Touch Nee');
+  assert.equal(rows[3], 'Accu 74% / NVIDIA RTX A2000');
+  assert.doesNotMatch(rows[3], /GA107GLM/);
+
+  const xml = app.buildDymoLabelXml(rows, 'specs', 'A');
+  assert.match(xml, /HP ZBook Fury 15 G8\s+Mobile Workstation/);
+  assert.match(xml, /<Bounds X="150" Y="80" Width="2050" Height="430"/);
+  assert.match(xml, /<Bounds X="2280" Y="120" Width="640" Height="650"/);
+
+  const printHtml = vm.runInContext(`
+    let html = '';
+    window.open = function() {
+      return {
+        document: {
+          write(value) { html += value; },
+          close() {}
+        },
+        focus() {},
+        print() {}
+      };
+    };
+    openBrowserPrintLabel(${JSON.stringify(rows)}, 'specs', null, getBrowserPrintProfiles().dymoLabel, 'A');
+    html;
+  `, app);
+
+  assert.match(printHtml, /grid-template-columns: minmax\(0, 1fr\) 10mm/);
+  assert.match(printHtml, /padding: 2\.4mm 1mm 1\.2mm 2\.4mm/);
+  assert.match(printHtml, /-webkit-line-clamp: 2/);
+  assert.match(printHtml, /NVIDIA RTX A2000/);
+  assert.doesNotMatch(printHtml, /GA107GLM/);
+});
+
 test('touchcorrectie overschrijft leveranciersdisplay op specs-label', () => {
   const app = loadAppSandbox();
   const correctedNo = app.getLabelRows({
