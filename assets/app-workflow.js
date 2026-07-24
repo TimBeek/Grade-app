@@ -118,13 +118,13 @@ function bindRenderedControlHandlers() {
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
     if (!ond) return;
-    applyComponentChoice(ond.id, button.dataset.keuze, button.dataset.autoAdvance === 'true');
+    return applyComponentChoice(ond.id, button.dataset.keuze, button.dataset.autoAdvance === 'true');
   });
 
   bindClick('[data-expert-keuze]', button => {
     if (!canGradeUser()) return;
     if (STATE.pendingDecision) return;
-    applyComponentChoice(button.dataset.ond, button.dataset.letter, false);
+    return applyComponentChoice(button.dataset.ond, button.dataset.letter, false);
   });
 
   bindClick('[data-expert-trigger]', button => {
@@ -249,7 +249,7 @@ async function handleDelegatedClick(e) {
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
     const keuze = keuzeButton.dataset.keuze;
-    applyComponentChoice(ond.id, keuze, keuzeButton.dataset.autoAdvance === 'true');
+    await applyComponentChoice(ond.id, keuze, keuzeButton.dataset.autoAdvance === 'true');
     return;
   }
 
@@ -258,7 +258,7 @@ async function handleDelegatedClick(e) {
     if (!canGradeUser()) return;
     const ond = expertChoiceButton.dataset.ond;
     const letter = expertChoiceButton.dataset.letter;
-    applyComponentChoice(ond, letter, false);
+    await applyComponentChoice(ond, letter, false);
     return;
   }
 
@@ -659,7 +659,11 @@ function handleDelegatedKeydown(e) {
     if (!canGradeUser()) return;
     const letter = key === 'x' ? 'D' : key.toUpperCase();
     e.preventDefault();
-    applyGradingShortcut(letter);
+    Promise.resolve(applyGradingShortcut(letter)).catch(error => {
+      reportAppError('Grade shortcut failed', error);
+      setAppMessage('Grade shortcut failed. Try again.');
+      render();
+    });
     return;
   }
 
@@ -681,12 +685,12 @@ function applyGradingShortcut(letter) {
   const onderdelen = getGradingOnderdelen();
   if (STATE.currentScreen === 'grading_beginner') {
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
-    if (ond) applyComponentChoice(ond.id, letter, true);
+    if (ond) return applyComponentChoice(ond.id, letter, true);
     return;
   }
 
   const target = onderdelen.find(ond => !STATE.currentGrading.keuzes[ond.id]) || onderdelen[onderdelen.length - 1];
-  if (target) applyComponentChoice(target.id, letter, false);
+  if (target) return applyComponentChoice(target.id, letter, false);
 }
 
 function openImagePreviewFromElement(element) {
@@ -807,7 +811,8 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
     return;
   }
 
-  advanceAfterChoice(autoAdvance);
+  const advanced = advanceAfterChoice(autoAdvance);
+  if (advanced) return advanced;
   if (STATE.currentScreen === 'grading_expert') {
     updateExpertChoiceUI(componentId, letter);
     queueExpertScoreUpdate();
@@ -867,7 +872,8 @@ async function resolvePendingDecision(optionIndex) {
     return;
   }
   STATE.pendingDecision = null;
-  advanceAfterChoice(decision.autoAdvance);
+  const advanced = advanceAfterChoice(decision.autoAdvance);
+  if (advanced) return advanced;
   render();
 }
 
@@ -885,12 +891,18 @@ function cancelPendingDecision() {
 }
 
 function advanceAfterChoice(autoAdvance) {
-  if (!autoAdvance || !STATE.currentGrading) return;
+  if (!autoAdvance || !STATE.currentGrading) return false;
   if (STATE.currentGrading.huidigeIndex < getGradingOnderdelen().length - 1) {
     STATE.currentGrading.huidigeIndex++;
     updateSupplierNoticeForCurrentStep();
+    return false;
   } else {
-    finishGrading();
+    return finishGradingAndMaybeConfirm().catch(error => {
+      reportAppError('Confirm grade failed', error);
+      setAppMessage('Confirm grade failed. Try again.');
+      render();
+      return true;
+    });
   }
 }
 
