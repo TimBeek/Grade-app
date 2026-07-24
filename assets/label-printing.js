@@ -1232,11 +1232,17 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
 
 function createLaptopLabelPrintJob(laptop, result, type = 'specs', options = {}) {
   const browserProfile = getBrowserPrintProfile(options);
+  // Dit is het pad dat bij het opslaan van een grading wordt gebruikt, dus hier
+  // gelden dezelfde regels als in printLabelFor: alleen een echt gegradeerd
+  // specs-label krijgt de badge met kwaliteitsbalken.
+  const specsGrade = type === 'specs' && !options.hideGrade
+    ? normalizeSpecsGradeBadge(result && result.eindgrade)
+    : '';
   return {
-    rows: getLabelRows(laptop, result, type, options),
+    rows: getLabelRows(laptop, result, type, { ...options, gradeInBadge: Boolean(specsGrade) }),
     type,
     browserProfile,
-    grade: '',
+    grade: specsGrade,
     audit: {
       action: 'print_label',
       entityType: 'laptop',
