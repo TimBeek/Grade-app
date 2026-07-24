@@ -1064,6 +1064,38 @@ function renderActionCard(opts) {
   `;
 }
 
+// Speelse, interactieve grade-mix voor het zijpaneel: staafjes groeien met een
+// animatie, tonen aantal én percentage, de dominante grade licht op, en klikken
+// opent Insights. Gedeeld door de laptop- en monitor-werkstroom.
+function renderGradeMix(counts) {
+  const grades = ['A', 'B', 'C', 'D'];
+  const safe = g => Number(counts[g] || 0);
+  const total = grades.reduce((sum, g) => sum + safe(g), 0);
+  const maxCount = Math.max(safe('A'), safe('B'), safe('C'), safe('D'), 1);
+  const topGrade = total ? grades.reduce((best, g) => (safe(g) > safe(best) ? g : best), 'A') : null;
+  return `
+    <div class="grade-mix" role="group" aria-label="Grade mix">
+      <div class="grade-mix-total"><strong>${total}</strong> ${total === 1 ? 'device graded' : 'devices graded'}</div>
+      <div class="grade-mix-bars">
+        ${grades.map(g => {
+          const c = safe(g);
+          const pct = total ? Math.round((c / total) * 100) : 0;
+          const barPct = Math.round((c / maxCount) * 100);
+          const disp = g === 'D' ? 'X' : g;
+          const isTop = total > 0 && g === topGrade && c > 0;
+          return `
+            <button class="grade-mix-row ${g}${isTop ? ' is-top' : ''}" data-action="analytics" type="button" title="Grade ${disp}: ${c} device${c === 1 ? '' : 's'} (${pct}%) — open Insights" aria-label="Grade ${disp}: ${c} of ${total}, ${pct} percent. Open Insights.">
+              <span class="grade-mix-badge ${g}">${disp}</span>
+              <span class="grade-mix-track"><span class="grade-mix-fill ${g}" style="--w: ${barPct}%;"></span></span>
+              <span class="grade-mix-val"><b>${c}</b><small>${pct}%</small></span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboardTabs(active) {
   if (isStickerUser()) {
     return `
@@ -1180,15 +1212,7 @@ function renderWorkflowDashboard(data) {
         </div>
         <div class="ops-side-row">
           <div class="side-label">Grade Mix</div>
-          <div class="grade-mini-bars">
-            ${['A','B','C','D'].map(grade => `
-              <div class="grade-mini-bar">
-                <strong>${grade === 'D' ? 'X' : grade}</strong>
-                <div class="grade-mini-track"><div class="grade-mini-fill ${grade}" style="width: ${(counts[grade] / maxGradeCount) * 100}%;"></div></div>
-                <span>${counts[grade]}</span>
-              </div>
-            `).join('')}
-          </div>
+          ${renderGradeMix(counts)}
         </div>
       </div>
     </div>
@@ -1238,15 +1262,7 @@ function renderMonitorWorkflowDashboard(data) {
         </div>
         <div class="ops-side-row">
           <div class="side-label">Grade Mix</div>
-          <div class="grade-mini-bars">
-            ${['A','B','C','D'].map(grade => `
-              <div class="grade-mini-bar">
-                <strong>${grade === 'D' ? 'X' : grade}</strong>
-                <div class="grade-mini-track"><div class="grade-mini-fill ${grade}" style="width: ${(monitorCounts[grade] / monitorMaxGradeCount) * 100}%;"></div></div>
-                <span>${monitorCounts[grade]}</span>
-              </div>
-            `).join('')}
-          </div>
+          ${renderGradeMix(monitorCounts)}
         </div>
       </div>
     </div>
@@ -1275,14 +1291,7 @@ function renderSupportDashboard(data) {
             <div class="ops-section-sub">Rules, examples and score checks</div>
           </div>
           <div class="panel-actions">
-            <button class="action-card support-work knowledge-card" data-action="explain">
-              <div class="action-icon">${uiIcon('explain')}</div>
-              <div class="action-text">
-                <p class="action-title">Grade Rules</p>
-                <p class="action-desc">Review how damage, score impact and repair decisions are calculated.</p>
-                <p class="action-sub">Rules, examples and decision logic</p>
-              </div>
-            </button>
+            ${renderActionCard({ action: 'explain', key: 'graderules', extraClass: 'support-work knowledge-card', icon: 'explain', title: 'Grade Rules', desc: 'See how grades and repairs are decided.', info: 'Review how damage, score impact and repair decisions are calculated. Includes the rules, examples and the full decision logic.' })}
           </div>
         </div>
 
@@ -1293,22 +1302,8 @@ function renderSupportDashboard(data) {
           </div>
           ${isAdmin ? `
             <div class="panel-actions">
-              <button class="action-card import-work" data-action="import">
-                <div class="action-icon">${uiIcon('uploadSheet')}</div>
-                <div class="action-text">
-                  <p class="action-title">Batch Import</p>
-                  <p class="action-desc">Upload supplier lists and turn them into active grading batches.</p>
-                  <p class="action-sub">Only eligible laptop rows are added</p>
-                </div>
-              </button>
-              <button class="action-card accounts-work" data-action="accounts">
-                <div class="action-icon">${uiIcon('accountKey')}</div>
-                <div class="action-text">
-                  <p class="action-title">User Management</p>
-                  <p class="action-desc">Create users and control who can grade, label or manage the system.</p>
-                  <p class="action-sub">Users, passwords and access</p>
-                </div>
-              </button>
+              ${renderActionCard({ action: 'import', key: 'batchimport', extraClass: 'import-work', icon: 'uploadSheet', title: 'Batch Import', desc: 'Turn supplier lists into batches.', info: 'Upload supplier lists and turn them into active grading batches. Only eligible laptop rows are added.' })}
+              ${renderActionCard({ action: 'accounts', key: 'usermgmt', extraClass: 'accounts-work', icon: 'accountKey', title: 'User Management', desc: 'Manage users and access.', info: 'Create users and control who can grade, label or manage the system. Users, passwords and access.' })}
             </div>
           ` : `
             <div class="access-note">Management tools are hidden because this account has no manager access.</div>

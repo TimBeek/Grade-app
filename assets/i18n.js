@@ -1127,6 +1127,16 @@ Object.assign(NL_COPY, {
   'The app prints the monitor label right after the grade.': 'De app print het monitorlabel direct na de grade.',
 });
 
+// Ontrommelde Operations-kaarten (i-toggle) en de interactieve grade-mix.
+Object.assign(NL_COPY, {
+  'See how grades and repairs are decided.': 'Zie hoe grades en reparaties worden bepaald.',
+  'Includes the rules, examples and the full decision logic.': 'Inclusief de regels, voorbeelden en de volledige beslislogica.',
+  'Turn supplier lists into batches.': 'Zet leverancierslijsten om naar batches.',
+  'Manage users and access.': 'Beheer gebruikers en toegang.',
+  'devices graded': 'apparaten gegradeerd',
+  'device graded': 'apparaat gegradeerd',
+});
+
 const TRANSLATABLE_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt', 'data-preview-label'];
 
 function normalizeLanguagePreference(value) {

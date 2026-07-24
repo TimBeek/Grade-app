@@ -1627,6 +1627,7 @@ function renderAnalytics() {
 
   return `
     <div class="screen analytics-screen analytics-pro-screen">
+      ${renderDashboardTabs('analytics')}
       <div class="analytics-hero">
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
@@ -1638,7 +1639,6 @@ function renderAnalytics() {
           <button class="btn btn-primary" data-action="export_supplier_comparison" data-export-batch="all" type="button">Export Report</button>
         </div>
       </div>
-      ${renderDashboardTabs('analytics')}
       ${renderAnalyticsFilters(filters, allItems)}
       ${renderAnalyticsSubTabs(activeTab)}
       ${tabBody}

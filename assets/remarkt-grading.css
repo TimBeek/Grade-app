@@ -2025,3 +2025,58 @@ html[data-theme="dark"] .batch-mini-btn.danger:hover { background: #351115; }
 html[data-theme="dark"] .batch-stats-panel { background: #1E1E22; border-color: var(--dark-line); }
 html[data-theme="dark"] .batch-stat span, html[data-theme="dark"] .batch-grade-legend { color: var(--dark-muted); }
 html[data-theme="dark"] .batch-grade-mix { background: #151518; }
+
+/* ============================================================================
+   Actiekaarten: inhoud gecentreerd (icoon boven, titel + tekst eronder). Rustiger,
+   mooier beeld op het dashboard. De accent-rail links en de "i" rechtsboven blijven.
+   ============================================================================ */
+.workflow-actions .action-card,
+.panel-actions .action-card {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+}
+.workflow-actions .action-card .action-text,
+.panel-actions .action-card .action-text { width: 100%; }
+.workflow-actions .action-info-panel,
+.panel-actions .action-info-panel { text-align: left; }
+
+/* ============================================================================
+   Grade-mix (zijpaneel): klikbare rijen naar Insights, staafjes groeien met een
+   animatie, tonen aantal + percentage, en de dominante grade licht op.
+   ============================================================================ */
+.grade-mix { display: grid; gap: 10px; }
+.grade-mix-total { font-size: 12px; color: var(--remarkt-muted); }
+.grade-mix-total strong { font-size: 15px; color: var(--remarkt-ink); font-weight: 850; }
+.grade-mix-bars { display: grid; gap: 5px; }
+.grade-mix-row { display: grid; grid-template-columns: 26px 1fr auto; gap: 9px; align-items: center; width: 100%; padding: 5px 7px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; transition: background 0.15s ease, transform 0.08s ease; }
+.grade-mix-row:hover { background: rgba(15,15,15,0.05); }
+.grade-mix-row:active { transform: scale(0.985); }
+.grade-mix-row:focus-visible { outline: 2px solid var(--remarkt-red); outline-offset: 1px; }
+.grade-mix-badge { width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; color: #fff; }
+.grade-mix-badge.A { background: #F6C400; color: #3A2E00; }
+.grade-mix-badge.B { background: #1473E6; }
+.grade-mix-badge.C { background: #EF3E86; }
+.grade-mix-badge.D { background: #E12B35; }
+.grade-mix-track { height: 10px; background: #EDEDEA; border-radius: 999px; overflow: hidden; }
+.grade-mix-fill { display: block; height: 100%; border-radius: 999px; width: var(--w); animation: gradeMixGrow 0.65s cubic-bezier(0.2, 0.75, 0.25, 1) both; }
+.grade-mix-fill.A { background: #F6C400; }
+.grade-mix-fill.B { background: #1473E6; }
+.grade-mix-fill.C { background: #EF3E86; }
+.grade-mix-fill.D { background: #E12B35; }
+@keyframes gradeMixGrow { from { width: 0; } to { width: var(--w); } }
+.grade-mix-val { display: flex; align-items: baseline; gap: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.grade-mix-val b { font-size: 14px; font-weight: 850; color: var(--remarkt-ink); }
+.grade-mix-val small { font-size: 11px; color: var(--remarkt-muted); min-width: 30px; text-align: right; }
+.grade-mix-row.is-top.A .grade-mix-badge { box-shadow: 0 0 0 3px rgba(246, 196, 0, 0.30); animation: gradeTopPop 0.6s ease-out both; }
+.grade-mix-row.is-top.B .grade-mix-badge { box-shadow: 0 0 0 3px rgba(20, 115, 230, 0.30); animation: gradeTopPop 0.6s ease-out both; }
+.grade-mix-row.is-top.C .grade-mix-badge { box-shadow: 0 0 0 3px rgba(239, 62, 134, 0.30); animation: gradeTopPop 0.6s ease-out both; }
+.grade-mix-row.is-top.D .grade-mix-badge { box-shadow: 0 0 0 3px rgba(225, 43, 53, 0.30); animation: gradeTopPop 0.6s ease-out both; }
+@keyframes gradeTopPop { 0% { transform: scale(0.7); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+html[data-theme="dark"] .grade-mix-total strong, html[data-theme="dark"] .grade-mix-val b { color: var(--dark-text); }
+html[data-theme="dark"] .grade-mix-total, html[data-theme="dark"] .grade-mix-val small { color: var(--dark-muted); }
+html[data-theme="dark"] .grade-mix-track { background: #33333A; }
+html[data-theme="dark"] .grade-mix-row:hover { background: rgba(255, 255, 255, 0.06); }
+@media (prefers-reduced-motion: reduce) { .grade-mix-fill, .grade-mix-row.is-top .grade-mix-badge { animation: none; } }
