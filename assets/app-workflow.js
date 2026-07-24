@@ -136,7 +136,12 @@ function bindRenderedControlHandlers() {
     queueExpertScoreUpdate();
   });
 
-  bindClick('[data-expert-final-grade]', button => {
+  bindClick('[data-expert-final-grade]', (button, event) => {
+    if (event.target.closest('[data-monitor-grade-info]')) {
+      toggleMonitorGradeInfo(event.target.closest('[data-monitor-grade-info]').dataset.monitorGradeInfo);
+      return;
+    }
+    if (event.target.closest('[data-monitor-grade-info-panel]')) return;
     return confirmExpertFinalGrade(button.dataset.expertFinalGrade);
   });
 }

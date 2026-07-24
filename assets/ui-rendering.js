@@ -29,9 +29,9 @@ function renderExpertSupplierInlineNotice(laptop = STATE.currentLaptop) {
   const uniqueRows = Array.from(new Set(rows));
   if (!uniqueRows.length) return '';
   return `
-    <div class="component-notice component-notice-inline expert-supplier-inline">
+    <div class="component-notice component-notice-inline component-notice-compact expert-supplier-inline">
       <strong>Supplier notice</strong>
-      <ul>${uniqueRows.map(row => `<li>${escapeHtml(row)}</li>`).join('')}</ul>
+      <div class="component-notice-lines">${uniqueRows.map(row => `<span>${escapeHtml(row)}</span>`).join('')}</div>
     </div>
   `;
 }
@@ -2233,7 +2233,6 @@ function renderGradingExpert() {
         <div>
           <div class="ops-kicker">Expert mode</div>
           <h1>Choose the final grade</h1>
-          <p>For experienced graders: choose A, B, C or X. For A/B/C the app prints the specs label immediately and then returns to Grade Device.</p>
         </div>
         <button class="btn btn-secondary" data-action="back_scan" type="button">Back</button>
       </div>
@@ -2253,13 +2252,21 @@ function renderGradingExpert() {
       ${renderExpertSupplierInlineNotice(l)}
 
       <div class="expert-direct-grade-grid">
-        ${gradeOptions.map(option => `
+        ${gradeOptions.map(option => {
+          const isInfoOpen = STATE.monitorGradeInfoOpen === option.grade;
+          const gradeLabel = option.grade === 'D' ? 'X' : option.grade;
+          return `
           <button class="monitor-grade-button expert-grade-button grade-${option.grade}" data-expert-final-grade="${option.grade}" type="button">
-            <span class="monitor-grade-letter">${option.grade === 'D' ? 'X' : option.grade}</span>
-            <span class="monitor-grade-copy"><strong>${escapeHtml(option.label)}</strong><span>${escapeHtml(option.detail)}</span></span>
-            <em>${option.grade === 'D' ? 'Enter description' : 'Print label'}</em>
+            <span class="monitor-grade-letter">${gradeLabel}</span>
+            <span class="monitor-grade-copy"><strong>${escapeHtml(option.label)}</strong></span>
+            <span class="monitor-grade-info" data-monitor-grade-info="${option.grade}" role="button" aria-expanded="${isInfoOpen ? 'true' : 'false'}" aria-label="${escapeHtml(`${option.label}: ${option.detail}`)}">i</span>
+            <span class="monitor-grade-info-panel ${isInfoOpen ? 'is-open' : ''}" data-monitor-grade-info-panel="${option.grade}" aria-hidden="${isInfoOpen ? 'false' : 'true'}">
+              <strong>${escapeHtml(option.label)}</strong>
+              <span>${escapeHtml(option.detail)}</span>
+            </span>
           </button>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
 
       ${selectedGrade === 'D' ? `

@@ -3496,6 +3496,10 @@ test('expertmodus kiest direct een grade en print automatisch', async () => {
   vm.runInContext(`render();`, app);
   assert.match(app.__appElement.innerHTML, /data-expert-final-grade="A"/);
   assert.match(app.__appElement.innerHTML, /data-expert-final-grade="D"/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-grade-info="A"/);
+  assert.match(app.__appElement.innerHTML, /data-monitor-grade-info-panel="D"/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /For experienced graders/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Print label/);
 
   await app.confirmExpertFinalGrade('B');
 
@@ -3504,6 +3508,50 @@ test('expertmodus kiest direct een grade en print automatisch', async () => {
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
   assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+});
+
+test('expertmodus info-knop opent uitleg zonder grade te bevestigen', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    let printCount = 0;
+    printRowsWithDymo = async function() {
+      printCount += 1;
+      return { printerName: 'DYMO LabelWriter 450' };
+    };
+    window.__getPrintCount = () => printCount;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('expert');
+    render();
+  `, app);
+
+  await vm.runInContext(`(async () => {
+    const fakeExpertButton = {
+      disabled: false,
+      dataset: { expertFinalGrade: 'B' },
+      onclick: null
+    };
+    document.querySelectorAll = selector => selector === '[data-expert-final-grade]' ? [fakeExpertButton] : [];
+    bindRenderedControlHandlers();
+    fakeExpertButton.onclick({
+      preventDefault() {},
+      stopPropagation() {},
+      target: {
+        closest(selector) {
+          if (selector === '[data-monitor-grade-info]') return { dataset: { monitorGradeInfo: 'B' } };
+          if (selector === '[data-monitor-grade-info-panel]') return null;
+          if (selector === '[data-expert-final-grade]') return fakeExpertButton;
+          return null;
+        }
+      }
+    });
+    await Promise.resolve();
+  })()`, app);
+
+  assert.equal(vm.runInContext('STATE.monitorGradeInfoOpen', app), 'B');
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(vm.runInContext('window.__getPrintCount()', app), 0);
 });
 
 test('terug vanuit expertmodus gaat naar apparaat graden scan', async () => {
