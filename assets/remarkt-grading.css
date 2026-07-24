@@ -215,8 +215,8 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .modal.image-decision.options-2 { max-width: min(720px, calc(100vw - 40px)); }
 .modal.image-decision.options-2 .decision-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .decision-inline .modal.image-decision.options-2 { width: min(980px, 100%); max-width: 100%; }
-.modal.image-decision .decision-option img { height: clamp(180px, 18vw, 240px); aspect-ratio: 16 / 9; }
-.modal.image-decision.options-2 .decision-option img { height: clamp(220px, 24vw, 300px); }
+.modal.image-decision .decision-option img { aspect-ratio: 3 / 2; }
+.modal.image-decision.options-2 .decision-option img { aspect-ratio: 3 / 2; }
 .modal.grade-review { max-width: 520px; padding: 28px; border-top: 6px solid var(--remarkt-red); box-shadow: 0 26px 80px rgba(0,0,0,0.28); }
 .modal.grade-review h3 { font-size: 24px; color: var(--remarkt-red); margin-bottom: 10px; }
 .modal.grade-review p { font-size: 15px; line-height: 1.55; color: #333; }
@@ -227,7 +227,7 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .decision-option, .choice, .expert-btn, .detail-pill, .btn, .btn-secondary, .btn-primary { touch-action: manipulation; }
 .decision-option.has-image { padding: 0; overflow: hidden; gap: 0; }
 .decision-image-wrap { position: relative; display: block; min-width: 0; }
-.decision-option img { width: 100%; height: 190px; object-fit: contain; object-position: center center; display: block; border-bottom: 1px solid #E5E5E0; background: #fff; }
+.decision-option img { width: 100%; aspect-ratio: 3 / 2; object-fit: contain; object-position: center center; display: block; border-bottom: 1px solid #E5E5E0; background: #fff; }
 .decision-zoom-action { position: absolute; top: 10px; right: 10px; z-index: 30; width: 44px; height: 44px; border: 1px solid rgba(23,23,23,0.16); border-radius: 999px; background: rgba(255,255,255,0.94); color: var(--remarkt-ink); display: flex; align-items: center; justify-content: center; cursor: zoom-in; touch-action: manipulation; box-shadow: 0 8px 22px rgba(0,0,0,0.18); }
 .decision-zoom-action:hover { color: var(--remarkt-red); background: #fff; }
 .decision-zoom-action svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.3; fill: none; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -255,7 +255,7 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 /* Mobile */
 @media (max-width: 768px) {
   .modal { max-height: calc(100vh - 32px); overflow: auto; }
-  .modal.image-decision .decision-option img { height: min(46vw, 230px); min-height: 160px; }
+  .modal.image-decision .decision-option img { aspect-ratio: 3 / 2; }
   .modal.image-decision.options-2 .decision-options,
   .modal.image-decision .decision-options { grid-template-columns: 1fr; }
   .expert-grid { grid-template-columns: 1fr; }
@@ -537,7 +537,7 @@ html[data-theme="dark"] .repair-alert-reasons span { color: #C8102E; }
 .visual-choice { display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(104px, auto); gap: 0; padding: 0; overflow: hidden; align-items: stretch; text-align: left; min-height: 100%; }
 .visual-choice.selected, .visual-choice-shell.selected { padding: 0; box-shadow: 0 0 0 2px var(--remarkt-red); border-color: var(--remarkt-red); }
 .grading-visual-screen { max-width: 1240px; }
-.visual-thumb { position: relative; aspect-ratio: 16 / 9; background: #fff; border-bottom: 1px solid var(--remarkt-line); overflow: hidden; }
+.visual-thumb { position: relative; aspect-ratio: 3 / 2; background: #fff; border-bottom: 1px solid var(--remarkt-line); overflow: hidden; }
 .visual-thumb img { width: 100%; height: 100%; object-fit: contain; object-position: center center; display: block; transform: none; box-sizing: border-box; padding: 6px; }
 .visual-letter { position: absolute; top: 10px; left: 10px; min-width: 38px; height: 34px; padding: 0 10px; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 800; }
 .visual-letter.A { background: #F6C400; color: #111; }

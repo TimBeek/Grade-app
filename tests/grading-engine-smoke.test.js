@@ -3130,7 +3130,7 @@ test('keuze-afbeeldingen zijn gecentreerd voor tabletweergave', () => {
   assert.match(css, /\.workflow-route-card\.monitor-route-card \.workflow-route-banner img \{[^}]*object-fit: cover/s);
   assert.match(css, /\.workflow-route-labels\.route-steps-6 \{[^}]*repeat\(6, minmax\(0, 1fr\)\)/s);
   assert.match(css, /\.visual-thumb img \{[^}]*object-position: center center/s);
-  assert.match(css, /\.visual-thumb \{[^}]*aspect-ratio: 16 \/ 9/s);
+  assert.match(css, /\.visual-thumb \{[^}]*aspect-ratio: 3 \/ 2/s);
   assert.match(css, /\.grading-visual-screen \.visual-thumb \{[^}]*height: clamp\(288px, 34vh, 394px\)/s);
   assert.match(css, /@media \(max-width: 1100px\) and \(min-width: 641px\) \{[\s\S]*\.grading-visual-screen \.visual-thumb \{ height: clamp\(263px, 31vh, 356px\)/);
   assert.match(css, /\.visual-choice \{[^}]*grid-template-columns: 1fr/s);
