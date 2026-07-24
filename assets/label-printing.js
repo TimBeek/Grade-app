@@ -473,42 +473,21 @@ function getGradeBarLevel(grade) {
   return GRADE_BAR_LEVELS[normalizeSpecsGradeBadge(grade)] || 0;
 }
 
-function dymoShapeObject(name, bounds, filled) {
-  const fill = filled
-    ? '<FillColor Alpha="255" Red="0" Green="0" Blue="0" />'
-    : '<FillColor Alpha="0" Red="255" Green="255" Blue="255" />';
-  return `
-    <ObjectInfo>
-      <ShapeObject>
-        <Name>${name}</Name>
-        <ForeColor Alpha="255" Red="0" Green="0" Blue="0" />
-        <BackColor Alpha="0" Red="255" Green="255" Blue="255" />
-        <LinkedObjectName></LinkedObjectName>
-        <Rotation>Rotation0</Rotation>
-        <IsMirrored>False</IsMirrored>
-        <IsVariable>False</IsVariable>
-        <ShapeType>Rectangle</ShapeType>
-        ${fill}
-        <LineColor Alpha="255" Red="0" Green="0" Blue="0" />
-        <LineWidth>18</LineWidth>
-      </ShapeObject>
-      <Bounds X="${Math.round(bounds.x)}" Y="${Math.round(bounds.y)}" Width="${Math.round(bounds.width)}" Height="${Math.round(bounds.height)}" />
-    </ObjectInfo>`;
-}
-
 function buildGradeBarsDymo(level, area) {
-  const gap = Math.round(area.width * 0.08);
+  const activeBars = Math.max(0, Math.min(GRADE_BAR_COUNT, Number(level) || 0));
+  if (!activeBars) return '';
+  const gap = Math.round(area.width * 0.06);
   const barWidth = Math.round((area.width - gap * (GRADE_BAR_COUNT - 1)) / GRADE_BAR_COUNT);
   const bottom = area.y + area.height;
   let xml = '';
-  for (let i = 0; i < GRADE_BAR_COUNT; i++) {
+  for (let i = 0; i < activeBars; i++) {
     const height = Math.round(area.height * (0.4 + 0.2 * i));
-    xml += dymoShapeObject(`GRADE_BAR_${i + 1}`, {
+    xml += dymoTextObject(`GRADE_BAR_${i + 1}`, 'I', {
       x: area.x + i * (barWidth + gap),
       y: bottom - height,
       width: barWidth,
       height,
-    }, i < level);
+    }, 12 + i * 3, true, 'Center');
   }
   return xml;
 }

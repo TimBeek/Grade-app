@@ -2525,7 +2525,7 @@ test('DYMO specs-grade visual houdt tekstregels full-width bij ThinkPad tekst', 
 
   const bounds = Array.from(xml.matchAll(/<Bounds X="(\d+)" Y="(\d+)" Width="(\d+)" Height="(\d+)"/g))
     .map(match => match.slice(1).map(Number));
-  assert.equal(bounds.length, 9);
+  assert.equal(bounds.length, 8);
   bounds.forEach(([x, y, width, height]) => {
     assert.ok(x >= 0 && y >= 0, `object starts outside label: ${x},${y}`);
     assert.ok(x + width <= 3060, `object exceeds label width: ${x} + ${width}`);
