@@ -1004,6 +1004,40 @@ test('scan-en-print herkent voorloopnullen en print reparatie-label indien nodig
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /repair label printed|Device completed/);
 });
 
+test('scan-en-print met DYMO-direct opent geen Chrome printvenster', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const openedPrintWindows = [];
+    const printCalls = [];
+    window.open = function(url, name) {
+      openedPrintWindows.push({ url, name });
+      return {
+        closed: false,
+        document: { write() {}, close() {} },
+        close() { this.closed = true; },
+        focus() {},
+        print() {},
+      };
+    };
+    printRowsWithDymo = async function(rows, type, grade) {
+      printCalls.push({ rows: rows.slice(), type, grade });
+      return { printerName: 'DYMO LabelWriter 450' };
+    };
+    window.__openedPrintWindows = openedPrintWindows;
+    window.__printCalls = printCalls;
+    STATE.currentUser = { id: 'labelaar', naam: 'Labelaar', rol: 'Stickeraar', initialen: 'L', voorkeur: 'label' };
+    STATE.currentScreen = 'sticker_scan';
+  `, app);
+
+  await app.scanAndPrintStickerLabel('7771198');
+
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+  assert.equal(vm.runInContext("isLaptopLabelPrinted('7771198')", app), true);
+});
+
 test('laptoplabel toont accuwaarde als percentage', () => {
   const app = loadAppSandbox();
   const rows = app.getLabelRows({
@@ -2419,15 +2453,15 @@ test('specs-label met grade-badge houdt lange laptoptekst binnen 54x25 fallback'
     gpu: 'NVIDIA GA107GLM [RTX A2000 Mobile]',
   }, { eindgrade: 'A' }, 'specs', { gradeInBadge: true });
 
-  assert.equal(rows[2], 'Touch Nee / Accu 74%');
-  assert.equal(rows[3], 'NVIDIA RTX A2000');
+  assert.equal(rows[2], 'Touch Nee');
+  assert.equal(rows[3], 'Accu 74% / NVIDIA RTX A2000');
   assert.doesNotMatch(rows[3], /GA107GLM/);
 
   const xml = app.buildDymoLabelXml(rows, 'specs', 'A');
   assert.match(xml, /HP ZBook Fury 15 G8\s+Mobile Workstation/);
-  assert.match(xml, /<Bounds X="920" Y="80" Width="1980" Height="430"/);
+  assert.match(xml, /<Bounds X="130" Y="80" Width="1840" Height="430"/);
   assert.match(xml, /<Name>GRADE_DIVIDER<\/Name>/);
-  assert.match(xml, /<Bounds X="125" Y="120" Width="610" Height="650"/);
+  assert.match(xml, /<Bounds X="2180" Y="120" Width="640" Height="650"/);
 
   const bounds = Array.from(xml.matchAll(/<Bounds X="(\d+)" Y="(\d+)" Width="(\d+)" Height="(\d+)"/g))
     .map(match => match.slice(1).map(Number));
@@ -2455,9 +2489,9 @@ test('specs-label met grade-badge houdt lange laptoptekst binnen 54x25 fallback'
     html;
   `, app);
 
-  assert.match(printHtml, /grid-template-columns: 11mm minmax\(0, 1fr\)/);
-  assert.match(printHtml, /padding: 1\.7mm 2mm 1\.1mm 1\.2mm/);
-  assert.match(printHtml, /border-right: 0\.25mm solid #000/);
+  assert.match(printHtml, /grid-template-columns: minmax\(0, 1fr\) 12mm/);
+  assert.match(printHtml, /padding: 1\.7mm 2mm 1\.1mm 2\.2mm/);
+  assert.match(printHtml, /border-left: 0\.25mm solid #000/);
   assert.match(printHtml, /-webkit-line-clamp: 2/);
   assert.match(printHtml, /NVIDIA RTX A2000/);
   assert.doesNotMatch(printHtml, /GA107GLM/);
@@ -2478,8 +2512,8 @@ test('DYMO specs-grade layout blijft binnen snijmarge bij lange ThinkPad tekst',
   const xml = app.buildDymoLabelXml(rows, 'specs', 'B');
 
   assert.equal(rows[0], 'Lenovo ThinkPad T590');
-  assert.equal(rows[2], 'Touch Nee / Accu 81%');
-  assert.equal(rows[3], '');
+  assert.equal(rows[2], 'Touch Nee');
+  assert.equal(rows[3], 'Accu 81%');
   assert.match(xml, /<Name>GRADE_BADGE<\/Name>/);
   assert.match(xml, /<String>B<\/String>/);
   assert.match(xml, /<Name>GRADE_DIVIDER<\/Name>/);
@@ -3579,6 +3613,51 @@ test('automatisch akkoord print niet via browserfallback bij DYMO-fout', async (
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /not saved/);
 });
 
+test('Akkoord grade gebruikt in Edge direct DYMO zonder Chrome/Edge printvenster', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    navigator = {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0',
+      platform: 'Win32',
+      maxTouchPoints: 0
+    };
+    const openedPrintWindows = [];
+    const printCalls = [];
+    window.open = function(url, name) {
+      openedPrintWindows.push({ url, name });
+      return {
+        closed: false,
+        document: { write() {}, close() {} },
+        close() { this.closed = true; },
+        focus() {},
+        print() {},
+      };
+    };
+    printRowsWithDymo = async function(rows, type, grade) {
+      printCalls.push({ rows: rows.slice(), type, grade });
+      return { printerName: 'DYMO LabelWriter 450' };
+    };
+    window.__openedPrintWindows = openedPrintWindows;
+    window.__printCalls = printCalls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    finishGrading();
+  `, app);
+
+  await app.handleAction('confirm_save', {});
+
+  assert.equal(vm.runInContext('getBrowserPrintProfile().id', app), 'dymo-label-54x25');
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+});
+
 test('laatste guided Confirm print automatisch en slaat direct op', async () => {
   const app = loadAppSandbox();
 
@@ -3607,7 +3686,7 @@ test('laatste guided Confirm print automatisch en slaat direct op', async () => 
   assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
 });
 
-test('laatste guided foto-keuze print automatisch en slaat direct op', async () => {
+test('laatste guided foto-keuze wacht met printen tot Akkoord grade', async () => {
   const app = loadAppSandbox();
 
   vm.runInContext(`
@@ -3633,6 +3712,12 @@ test('laatste guided foto-keuze print automatisch en slaat direct op', async () 
       true
     );
   `, app);
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'result');
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 0);
+
+  await app.handleAction('confirm_save', {});
 
   assert.equal(vm.runInContext('STATE.history.length', app), 1);
   assert.equal(vm.runInContext('STATE.history[0].sticker', app), '8460024');

@@ -182,9 +182,9 @@ function getSpecsLabelRows(laptop, result, options = {}) {
     options.hideGrade
       ? `Grade ...... / Touch ${touch}`
       // Staat de grade al groot in de badge? Dan hoeft hij niet nog eens klein
-      // in de regel. Accu blijft bij touch; GPU krijgt een eigen korte regel.
-      : options.gradeInBadge ? [`Touch ${touch}`, battery ? `Accu ${battery}` : ''].filter(Boolean).join(' / ') : `Grade ${grade} / Touch ${touch}`,
-    options.gradeInBadge ? gpu : row4Parts.join(' / ')
+      // in de regel, en houden de specs meer ruimte over.
+      : options.gradeInBadge ? `Touch ${touch}` : `Grade ${grade} / Touch ${touch}`,
+    row4Parts.join(' / ')
   ];
 }
 
@@ -550,10 +550,10 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
     ? [monitorTitleLong ? 11 : 13, monitorSpecSize, monitorSpecSize]
     : showGradeBadge
       ? (tight
-        ? [8.2, 6.4, 6.6, 5.8]
+        ? [8, 6.1, 6.3, 5.5]
         : compact
-          ? [8.8, 6.8, 6.9, 6]
-          : [9.6, 7.2, 7.2, 6.2])
+          ? [8.5, 6.5, 6.7, 5.8]
+          : [9.1, 7, 7.1, 6.1])
     : (tight
       ? [9.5, 6.8, 6.8, 6.2]
       : compact
@@ -572,9 +572,9 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
         { x: 170, y: 885, width: monitorRowWidth, height: 345 },
       ])
     : (() => {
-      // Met de grade links blijft de tekstkolom weg van de rand die op de
-      // LabelWriter het snelst afsnijdt.
-      const specsRowWidth = showGradeBadge ? 1980 : 2770;
+      // Grade rechts zoals voorheen, maar met meer veiligheidsmarge zodat
+      // lange modelnamen niet tegen divider of snijrand eindigen.
+      const specsRowWidth = showGradeBadge ? 1840 : 2770;
       if (!showGradeBadge) {
         return [
           { x: 170, y: 50, width: specsRowWidth, height: 330 },
@@ -584,10 +584,10 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
         ];
       }
       return [
-        { x: 920, y: 80, width: specsRowWidth, height: specsTitleLong ? 430 : 350 },
-        { x: 920, y: specsTitleLong ? 520 : 450, width: specsRowWidth, height: 270 },
-        { x: 920, y: specsTitleLong ? 805 : 735, width: specsRowWidth, height: 245 },
-        { x: 920, y: specsTitleLong ? 1065 : 995, width: specsRowWidth, height: 235 },
+        { x: 130, y: 80, width: specsRowWidth, height: specsTitleLong ? 430 : 350 },
+        { x: 130, y: specsTitleLong ? 520 : 450, width: specsRowWidth, height: 270 },
+        { x: 130, y: specsTitleLong ? 805 : 735, width: specsRowWidth, height: 245 },
+        { x: 130, y: specsTitleLong ? 1065 : 995, width: specsRowWidth, height: 235 },
       ];
     })();
   // DYMO does not wrap, so pre-split a long monitor title into two lines.
@@ -602,11 +602,10 @@ function buildDymoLabelXml(rows, type = 'specs', grade = '') {
     : isMonitorLabel
       ? dymoTextObject('GRADE_CAPTION', 'GRADE', { x: 2120, y: 150, width: 820, height: 210 }, 7.6, true, 'Center')
         + dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2120, y: 360, width: 820, height: 790 }, 39, true, 'Center')
-      // Laptop: grade links, tekst rechts. Zo blijft de modeltekst weg van de
-      // afgesneden rechterrand en blijft de grade juist heel zichtbaar.
-      : dymoTextObject('GRADE_BADGE', gradeBadge, { x: 125, y: 120, width: 610, height: 650 }, 31, true, 'Center')
-        + buildGradeBarsDymo(getGradeBarLevel(gradeBadge), { x: 185, y: 915, width: 490, height: 285 })
-        + dymoShapeObject('GRADE_DIVIDER', { x: 800, y: 120, width: 18, height: 1155 }, true);
+      // Laptop: oude leesrichting behouden: specs links, grade rechts.
+      : dymoShapeObject('GRADE_DIVIDER', { x: 2060, y: 120, width: 18, height: 1155 }, true)
+        + dymoTextObject('GRADE_BADGE', gradeBadge, { x: 2180, y: 120, width: 640, height: 650 }, 31, true, 'Center')
+        + buildGradeBarsDymo(getGradeBarLevel(gradeBadge), { x: 2235, y: 925, width: 520, height: 285 });
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <DieCutLabel Version="8.0" Units="twips">
@@ -697,7 +696,7 @@ function getBrowserLabelMarkup(rows, type = 'specs', profile = BROWSER_PRINT_PRO
   const labelHtml = isMonitorLabel && showGradeBadge
     ? `<div class="monitor-label-text">${rowsHtml}</div><div class="monitor-grade-box"><span class="monitor-grade-caption">GRADE</span><span class="monitor-grade-value">${escapeHtml(gradeBadge)}</span></div>`
     : isSpecsLabel && showGradeBadge
-      ? `<div class="specs-grade-box"><span class="specs-grade-value">${escapeHtml(specsBadge)}</span><span class="grade-bars">${gradeBarsHtml}</span></div><div class="specs-label-text">${rowsHtml}</div>`
+      ? `<div class="specs-label-text">${rowsHtml}</div><div class="specs-grade-box"><span class="specs-grade-value">${escapeHtml(specsBadge)}</span><span class="grade-bars">${gradeBarsHtml}</span></div>`
       : rowsHtml;
 
   return {
@@ -800,21 +799,22 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
         .tight .label-row { line-height: 1; }
         .tight .row-1 { font-size: 8.7pt; }
         .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
-        /* Laptoplabel met grade-badge: letter links, specs rechts. Daardoor
-           blijft tekst weg van de rechter snijrand van de LabelWriter. */
+        /* Laptoplabel met grade-badge: specs links, letter + kwaliteitsbalken
+           rechts. Browserprint is alleen fallback/preview; Akkoord grade print
+           direct via DYMO zonder deze dialoog. */
         .label.specs-has-grade {
           grid-template-rows: none;
-          grid-template-columns: 11mm minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1fr) 12mm;
           align-items: stretch;
           column-gap: 0;
-          padding: 1.7mm 2mm 1.1mm 1.2mm;
+          padding: 1.7mm 2mm 1.1mm 2.2mm;
         }
         .specs-label-text {
           min-width: 0;
           display: grid;
           grid-template-rows: 6.7mm 4.9mm 4.8mm 4.7mm;
           align-content: center;
-          padding-left: 1mm;
+          padding-right: 1mm;
         }
         .label.specs-has-grade .row-1 {
           white-space: normal;
@@ -845,8 +845,8 @@ function openBrowserPrintLabel(rows, type = 'specs', preparedWindow = null, prof
           align-items: center;
           justify-content: center;
           gap: 0.65mm;
-          border-right: 0.25mm solid #000;
-          padding-right: 0.7mm;
+          border-left: 0.25mm solid #000;
+          padding-left: 0.7mm;
         }
         .specs-grade-value {
           font-size: 18pt;
@@ -1111,21 +1111,22 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
         .tight .label-row { line-height: 1; }
         .tight .row-1 { font-size: 8.7pt; }
         .tight .row-2, .tight .row-3, .tight .row-4 { font-size: 6.3pt; }
-        /* Laptoplabel met grade-badge: letter links, specs rechts. Daardoor
-           blijft tekst weg van de rechter snijrand van de LabelWriter. */
+        /* Laptoplabel met grade-badge: specs links, letter + kwaliteitsbalken
+           rechts. Browserprint is alleen fallback/preview; Akkoord grade print
+           direct via DYMO zonder deze dialoog. */
         .label.specs-has-grade {
           grid-template-rows: none;
-          grid-template-columns: 11mm minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1fr) 12mm;
           align-items: stretch;
           column-gap: 0;
-          padding: 1.7mm 2mm 1.1mm 1.2mm;
+          padding: 1.7mm 2mm 1.1mm 2.2mm;
         }
         .specs-label-text {
           min-width: 0;
           display: grid;
           grid-template-rows: 6.7mm 4.9mm 4.8mm 4.7mm;
           align-content: center;
-          padding-left: 1mm;
+          padding-right: 1mm;
         }
         .label.specs-has-grade .row-1 {
           white-space: normal;
@@ -1156,8 +1157,8 @@ function openBrowserPrintJobs(jobs, preparedWindow = null) {
           align-items: center;
           justify-content: center;
           gap: 0.65mm;
-          border-right: 0.25mm solid #000;
-          padding-right: 0.7mm;
+          border-left: 0.25mm solid #000;
+          padding-left: 0.7mm;
         }
         .specs-grade-value {
           font-size: 18pt;

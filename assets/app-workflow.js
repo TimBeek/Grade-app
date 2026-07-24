@@ -118,13 +118,13 @@ function bindRenderedControlHandlers() {
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
     if (!ond) return;
-    return applyComponentChoice(ond.id, button.dataset.keuze, button.dataset.autoAdvance === 'true');
+    applyComponentChoice(ond.id, button.dataset.keuze, button.dataset.autoAdvance === 'true');
   });
 
   bindClick('[data-expert-keuze]', button => {
     if (!canGradeUser()) return;
     if (STATE.pendingDecision) return;
-    return applyComponentChoice(button.dataset.ond, button.dataset.letter, false);
+    applyComponentChoice(button.dataset.ond, button.dataset.letter, false);
   });
 
   bindClick('[data-expert-trigger]', button => {
@@ -249,7 +249,7 @@ async function handleDelegatedClick(e) {
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
     const keuze = keuzeButton.dataset.keuze;
-    await applyComponentChoice(ond.id, keuze, keuzeButton.dataset.autoAdvance === 'true');
+    applyComponentChoice(ond.id, keuze, keuzeButton.dataset.autoAdvance === 'true');
     return;
   }
 
@@ -258,7 +258,7 @@ async function handleDelegatedClick(e) {
     if (!canGradeUser()) return;
     const ond = expertChoiceButton.dataset.ond;
     const letter = expertChoiceButton.dataset.letter;
-    await applyComponentChoice(ond, letter, false);
+    applyComponentChoice(ond, letter, false);
     return;
   }
 
@@ -659,11 +659,7 @@ function handleDelegatedKeydown(e) {
     if (!canGradeUser()) return;
     const letter = key === 'x' ? 'D' : key.toUpperCase();
     e.preventDefault();
-    Promise.resolve(applyGradingShortcut(letter)).catch(error => {
-      reportAppError('Grade shortcut failed', error);
-      setAppMessage('Grade shortcut failed. Try again.');
-      render();
-    });
+    applyGradingShortcut(letter);
     return;
   }
 
@@ -685,12 +681,12 @@ function applyGradingShortcut(letter) {
   const onderdelen = getGradingOnderdelen();
   if (STATE.currentScreen === 'grading_beginner') {
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
-    if (ond) return applyComponentChoice(ond.id, letter, true);
+    if (ond) applyComponentChoice(ond.id, letter, true);
     return;
   }
 
   const target = onderdelen.find(ond => !STATE.currentGrading.keuzes[ond.id]) || onderdelen[onderdelen.length - 1];
-  if (target) return applyComponentChoice(target.id, letter, false);
+  if (target) applyComponentChoice(target.id, letter, false);
 }
 
 function openImagePreviewFromElement(element) {
@@ -811,8 +807,7 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
     return;
   }
 
-  const advanced = advanceAfterChoice(autoAdvance);
-  if (advanced) return advanced;
+  advanceAfterChoice(autoAdvance);
   if (STATE.currentScreen === 'grading_expert') {
     updateExpertChoiceUI(componentId, letter);
     queueExpertScoreUpdate();
@@ -872,8 +867,7 @@ async function resolvePendingDecision(optionIndex) {
     return;
   }
   STATE.pendingDecision = null;
-  const advanced = advanceAfterChoice(decision.autoAdvance);
-  if (advanced) return advanced;
+  advanceAfterChoice(decision.autoAdvance);
   render();
 }
 
@@ -891,18 +885,12 @@ function cancelPendingDecision() {
 }
 
 function advanceAfterChoice(autoAdvance) {
-  if (!autoAdvance || !STATE.currentGrading) return false;
+  if (!autoAdvance || !STATE.currentGrading) return;
   if (STATE.currentGrading.huidigeIndex < getGradingOnderdelen().length - 1) {
     STATE.currentGrading.huidigeIndex++;
     updateSupplierNoticeForCurrentStep();
-    return false;
   } else {
-    return finishGradingAndMaybeConfirm().catch(error => {
-      reportAppError('Confirm grade failed', error);
-      setAppMessage('Confirm grade failed. Try again.');
-      render();
-      return true;
-    });
+    finishGrading();
   }
 }
 
@@ -1699,9 +1687,11 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
   const printTypes = ['specs'];
   if (needsProblemLabel(laptop, result)) printTypes.push('problems');
   const preparedWindows = {};
-  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+  const browserProfile = getBrowserPrintProfile();
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile);
+  if (allowBrowserFallback && typeof window !== 'undefined' && typeof window.open === 'function') {
     printTypes.forEach(type => {
-      preparedWindows[type] = createPreparedPrintWindow(type);
+      preparedWindows[type] = createPreparedPrintWindow(type, browserProfile);
     });
   }
 
@@ -1766,9 +1756,11 @@ async function scanAndPrintStickerLabel(sticker, options = {}) {
   const printTypes = ['specs'];
   if (needsProblemLabel(laptop, supplierResult)) printTypes.push('problems');
   const preparedWindows = {};
-  if (typeof window !== 'undefined' && typeof window.open === 'function') {
+  const browserProfile = getBrowserPrintProfile();
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile);
+  if (allowBrowserFallback && typeof window !== 'undefined' && typeof window.open === 'function') {
     printTypes.forEach(type => {
-      preparedWindows[type] = createPreparedPrintWindow(type);
+      preparedWindows[type] = createPreparedPrintWindow(type, browserProfile);
     });
   }
 
@@ -1918,8 +1910,10 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     }
   }
 
-  const preparedWindow = typeof window !== 'undefined' && typeof window.open === 'function'
-    ? createPreparedPrintWindow('monitor')
+  const browserProfile = getMonitorBrowserPrintProfile();
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile);
+  const preparedWindow = allowBrowserFallback && typeof window !== 'undefined' && typeof window.open === 'function'
+    ? createPreparedPrintWindow('monitor', browserProfile)
     : null;
   STATE.monitorPrintInProgress = true;
   setAppMessage(`Monitor label ${displayMonitorGrade(normalizedGrade)} is being printed and saved...`, 'info');
@@ -2022,8 +2016,10 @@ async function reprintMonitorLabel(sticker) {
   STATE.currentMonitor = target;
   STATE.monitorSelectedGrade = grade;
 
-  const preparedWindow = typeof window !== 'undefined' && typeof window.open === 'function'
-    ? createPreparedPrintWindow('monitor')
+  const browserProfile = getMonitorBrowserPrintProfile();
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile);
+  const preparedWindow = allowBrowserFallback && typeof window !== 'undefined' && typeof window.open === 'function'
+    ? createPreparedPrintWindow('monitor', browserProfile)
     : null;
   STATE.monitorPrintInProgress = true;
   setAppMessage(`Monitor label ${displayMonitorGrade(grade)} is being reprinted...`, 'info');
