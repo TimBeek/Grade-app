@@ -266,6 +266,12 @@ function getMonitorBrowserPrintProfile(options = {}) {
   return { ...BROWSER_PRINT_PROFILES.dymoLabel };
 }
 
+function shouldUseBrowserPrintFallback(profile, options = {}) {
+  if (options.allowBrowserFallback === false) return false;
+  if (options.allowBrowserFallback === true) return true;
+  return profile && profile.id === BROWSER_PRINT_PROFILES.hpEngageReceipt.id;
+}
+
 function getHpEngagePageHeightMm(rows, type = 'specs') {
   const cleanRows = rows.map(row => String(row || '').trim()).filter(Boolean);
   const wrapPenalty = cleanRows.reduce((sum, row) => sum + Math.max(0, Math.ceil(row.length / 30) - 1), 0);
@@ -1360,6 +1366,8 @@ function describeDymoPrintError(error) {
 async function printLabelJobsWithDymoFallback(jobs, options = {}) {
   const printJobs = (jobs || []).filter(Boolean);
   if (!printJobs.length) return { ok: true, fallbackUsed: false };
+  const firstProfile = printJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel;
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(firstProfile, options);
 
   printJobs.forEach(job => {
     if (job.audit) {
@@ -1367,10 +1375,12 @@ async function printLabelJobsWithDymoFallback(jobs, options = {}) {
     }
   });
 
-  const preparedWindow = options.preparedWindow || createPreparedPrintWindow(
-    printJobs.length > 1 ? 'labels' : printJobs[0].type,
-    printJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel
-  );
+  const preparedWindow = allowBrowserFallback
+    ? (options.preparedWindow || createPreparedPrintWindow(
+      printJobs.length > 1 ? 'labels' : printJobs[0].type,
+      firstProfile
+    ))
+    : null;
   let fallbackIndex = -1;
   let fallbackReason = '';
 
@@ -1381,7 +1391,7 @@ async function printLabelJobsWithDymoFallback(jobs, options = {}) {
     } catch (error) {
       fallbackIndex = index;
       fallbackReason = describeDymoPrintError(error);
-      reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
+      reportAppWarning(allowBrowserFallback ? 'DYMO direct print unavailable, using browser fallback.' : 'DYMO direct print unavailable.', error);
       break;
     }
   }
@@ -1389,6 +1399,11 @@ async function printLabelJobsWithDymoFallback(jobs, options = {}) {
   if (fallbackIndex === -1) {
     closePreparedPrintWindow(preparedWindow);
     return { ok: true, fallbackUsed: false };
+  }
+
+  if (!allowBrowserFallback) {
+    closePreparedPrintWindow(preparedWindow);
+    return { ok: false, fallbackUsed: false, fallbackReason };
   }
 
   const fallbackJobs = printJobs.slice(fallbackIndex);
@@ -1407,8 +1422,11 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
     : '';
   const rows = getLabelRows(laptop, result, type, { ...options, gradeInBadge: Boolean(specsGrade) });
   const browserProfile = getBrowserPrintProfile(options);
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile, options);
   logAudit('print_label', 'laptop', laptop && laptop.sticker, { type, hideGrade: Boolean(options.hideGrade), browserProfile: browserProfile.id });
-  const fallbackWindow = options.preparedWindow || createPreparedPrintWindow(type, browserProfile);
+  const fallbackWindow = allowBrowserFallback
+    ? (options.preparedWindow || createPreparedPrintWindow(type, browserProfile))
+    : null;
 
   try {
     const printResult = await withPrintTimeout(printRowsWithDymo(rows, type, specsGrade));
@@ -1419,7 +1437,14 @@ async function printLabelFor(laptop, result, type = 'specs', options = {}) {
     }
     return true;
   } catch (error) {
-    reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
+    reportAppWarning(allowBrowserFallback ? 'DYMO direct print unavailable, using browser fallback.' : 'DYMO direct print unavailable.', error);
+    if (!allowBrowserFallback) {
+      if (!options.suppressMessage) {
+        setAppMessage(`DYMO direct print failed. ${describeDymoPrintError(error)} Start DYMO Connect and try again.`);
+        render();
+      }
+      return false;
+    }
   }
 
   if (openBrowserPrintLabel(rows, type, fallbackWindow, browserProfile, specsGrade)) {
@@ -1439,8 +1464,11 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
   const normalizedGrade = normalizeMonitorGrade(grade);
   const rows = getMonitorLabelRows(monitor, normalizedGrade);
   const browserProfile = getMonitorBrowserPrintProfile(options);
+  const allowBrowserFallback = shouldUseBrowserPrintFallback(browserProfile, options);
   logAudit('print_monitor_label', 'monitor', monitor && monitor.sticker, { grade: normalizedGrade, browserProfile: browserProfile.id });
-  const fallbackWindow = options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile);
+  const fallbackWindow = allowBrowserFallback
+    ? (options.preparedWindow || createPreparedPrintWindow('monitor', browserProfile))
+    : null;
 
   try {
     const printResult = await withPrintTimeout(printRowsWithDymo(rows, 'monitor', normalizedGrade));
@@ -1451,7 +1479,14 @@ async function printMonitorLabelFor(monitor, grade, options = {}) {
     }
     return true;
   } catch (error) {
-    reportAppWarning('DYMO direct print unavailable, using browser fallback.', error);
+    reportAppWarning(allowBrowserFallback ? 'DYMO direct print unavailable, using browser fallback.' : 'DYMO direct print unavailable.', error);
+    if (!allowBrowserFallback) {
+      if (!options.suppressMessage) {
+        setAppMessage(`DYMO direct print failed. ${describeDymoPrintError(error)} Start DYMO Connect and try again.`);
+        render();
+      }
+      return false;
+    }
   }
 
   if (openBrowserPrintLabel(rows, 'monitor', fallbackWindow, browserProfile, normalizedGrade)) {

@@ -3489,11 +3489,10 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);
-  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 1);
-  assert.equal(vm.runInContext('window.__openedPrintWindows[0].closed', app), true);
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
 });
 
-test('automatisch printen gebruikt bij DYMO-fout een enkel Edge-vriendelijk fallbackvenster', async () => {
+test('automatisch akkoord print niet via browserfallback bij DYMO-fout', async () => {
   const app = loadAppSandbox();
 
   vm.runInContext(`
@@ -3531,11 +3530,66 @@ test('automatisch printen gebruikt bij DYMO-fout een enkel Edge-vriendelijk fall
 
   await app.handleAction('confirm_save', {});
 
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'result');
+  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Automatic DYMO printing failed/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /not saved/);
+});
+
+test('laatste guided Confirm print automatisch en slaat direct op', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    printRowsWithDymo = async function(rows, type) {
+      calls.push({ type, rows: rows.slice() });
+      return { printerName: 'DYMO LabelWriter 450' };
+    };
+    window.__printCalls = calls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().length - 1;
+  `, app);
+
+  await app.handleAction('next_q', {});
+
   assert.equal(vm.runInContext('STATE.history.length', app), 1);
-  assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 1);
-  assert.match(vm.runInContext('window.__openedPrintWindows[0].document.html', app), /label-sheet/);
-  assert.match(vm.runInContext('window.__openedPrintWindows[0].document.html', app), /REPARATIE/);
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /browser print window/);
+  assert.equal(vm.runInContext('STATE.history[0].sticker', app), '8460024');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
+});
+
+test('expert score Confirm print automatisch en slaat direct op', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const calls = [];
+    printRowsWithDymo = async function(rows, type) {
+      calls.push({ type, rows: rows.slice() });
+      return { printerName: 'DYMO LabelWriter 450' };
+    };
+    window.__printCalls = calls;
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('expert');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+  `, app);
+
+  await app.handleAction('confirm_expert', {});
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext('STATE.history[0].sticker', app), '8460024');
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
+  assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
 });
 
 test('grading-test afronden muteert geen voorraad of historie', () => {

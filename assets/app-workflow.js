@@ -48,7 +48,7 @@ function bindClick(selector, handler) {
 
 function bindRenderedControlHandlers() {
   bindClick('[data-decision-option]', button => {
-    resolvePendingDecision(Number(button.dataset.decisionOption));
+    return resolvePendingDecision(Number(button.dataset.decisionOption));
   });
 
   // "i"-knopje en statistieken-knop zitten NAAST/IN een data-action-kaart. Ze
@@ -166,7 +166,7 @@ async function handleDelegatedClick(e) {
       openImagePreviewFromElement(previewTarget);
       return;
     }
-    resolvePendingDecision(Number(decisionButton.dataset.decisionOption));
+    await resolvePendingDecision(Number(decisionButton.dataset.decisionOption));
     return;
   }
 
@@ -667,8 +667,11 @@ function handleDelegatedKeydown(e) {
     const missing = getMissingGradingOnderdelen(STATE.currentGrading);
     if (!missing.length) {
       e.preventDefault();
-      finishGrading();
-      render();
+      Promise.resolve(finishGradingAndMaybeConfirm()).catch(error => {
+        reportAppError('Confirm grade failed', error);
+        setAppMessage('Confirm grade failed. Try again.');
+        render();
+      });
     }
   }
 }
@@ -813,7 +816,7 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
   render();
 }
 
-function resolvePendingDecision(optionIndex) {
+async function resolvePendingDecision(optionIndex) {
   const decision = STATE.pendingDecision;
   if (!decision || !STATE.currentGrading) return;
   const option = decision.options[optionIndex];
@@ -831,6 +834,7 @@ function resolvePendingDecision(optionIndex) {
     STATE.currentGrading.bevestigd = Date.now();
     STATE.pendingDecision = null;
     STATE.currentScreen = 'result';
+    if (await confirmFinishedGradingIfReady()) return;
     render();
     return;
   }
@@ -1352,12 +1356,13 @@ async function handleAction(action, el) {
         STATE.currentGrading.huidigeIndex++;
         updateSupplierNoticeForCurrentStep();
       } else {
-        finishGrading();
+        await finishGradingAndMaybeConfirm();
+        return;
       }
       break;
     case 'confirm_expert':
-      finishGrading();
-      break;
+      await finishGradingAndMaybeConfirm();
+      return;
     case 'confirm_expert_repair':
       await completeExpertRepairGrade();
       return;
@@ -2444,6 +2449,30 @@ function finishGrading() {
   STATE.currentScreen = 'result';
 }
 
+function isFinishedGradingReadyForAutomaticSave() {
+  const g = STATE.currentGrading;
+  const l = STATE.currentLaptop;
+  return Boolean(
+    g && l && g.result &&
+    STATE.currentScreen === 'result' &&
+    !STATE.pendingDecision &&
+    !(g.testOnly || l.testOnly)
+  );
+}
+
+async function confirmFinishedGradingIfReady() {
+  if (!isFinishedGradingReadyForAutomaticSave()) return false;
+  await confirmSaveWithAutomaticLabels();
+  return true;
+}
+
+async function finishGradingAndMaybeConfirm() {
+  finishGrading();
+  if (await confirmFinishedGradingIfReady()) return true;
+  render();
+  return false;
+}
+
 function getMissingGradingOnderdelen(grading) {
   if (!grading) return getGradingOnderdelen();
   return getGradingOnderdelen().filter(ond => !grading.keuzes[ond.id]);
@@ -2520,25 +2549,19 @@ async function confirmSaveWithAutomaticLabels() {
   const printTypes = ['specs'];
   if (needsProblemLabel(l, g.result)) printTypes.push('problems');
   const printJobs = printTypes.map(type => createLaptopLabelPrintJob(l, g.result, type));
-  let preparedWindow = null;
-  if (typeof window !== 'undefined' && typeof window.open === 'function') {
-    preparedWindow = createPreparedPrintWindow(printTypes.length > 1 ? 'labels' : printTypes[0], printJobs[0] && printJobs[0].browserProfile);
-  }
 
   const printResult = await printLabelJobsWithDymoFallback(
     printJobs,
-    { preparedWindow }
+    { allowBrowserFallback: false }
   );
   if (!printResult.ok) {
-    setAppMessage(`Automatic label printing failed. ${printResult.fallbackReason || 'Check DYMO Connect and pop-ups in Edge.'} The grading was not saved, so you can confirm again.`);
+    setAppMessage(`Automatic DYMO printing failed. ${printResult.fallbackReason || 'Check DYMO Connect on this PC.'} The grading was not saved, so you can confirm again after DYMO works.`);
     render();
     return;
   }
 
   saveGrading();
-  setAppMessage(printResult.fallbackUsed
-    ? `${printTypes.length > 1 ? 'Specs and repair labels' : 'Specs label'} opened in one browser print window. Check Edge/DYMO print settings on this device.`
-    : printTypes.length > 1
+  setAppMessage(printTypes.length > 1
     ? 'Specs and repair labels printed. Grading saved.'
     : 'Specs label printed. Grading saved.',
     'success');
