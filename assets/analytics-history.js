@@ -918,10 +918,13 @@ function buildCountRows(items, keyFn, labelFn = value => value, limit = 8) {
 }
 
 function renderKpiCard(card) {
+  const hasSpark = Array.isArray(card.spark) && card.spark.length > 1 && card.spark.some(value => Number(value) > 0);
+  const spark = hasSpark ? renderSparkline(card.spark, card.sparkColor || '#2563EB') : '';
   return `
-    <div class="analytics-kpi-card ${card.tone || ''}">
+    <div class="analytics-kpi-card ${card.tone || ''}${spark ? ' has-spark' : ''}">
       <span class="analytics-kpi-label">${escapeHtml(card.label)}</span>
       <strong>${escapeHtml(card.value)}</strong>
+      ${spark}
       <small>${escapeHtml(card.sub || '')}</small>
     </div>
   `;
@@ -1004,30 +1007,160 @@ function buildTrendBuckets(items, days = 7) {
   return buckets;
 }
 
-function renderTrendChart(buckets) {
-  const max = Math.max(...buckets.map(bucket => bucket.value), 1);
-  const totalOk = buckets.reduce((sum, bucket) => sum + Math.max(bucket.value - bucket.repair, 0), 0);
-  const totalRepair = buckets.reduce((sum, bucket) => sum + bucket.repair, 0);
+// =============================================================================
+// GRAFIEK-PRIMITIEVEN
+// Vloeiende lijnen met gradient-vlak, mini-sparklines in de KPI-tegels en
+// legenda's als gekleurde pillen. Het categorische palet is gevalideerd op
+// kleurenblindheid en contrast in zowel licht als donker.
+// =============================================================================
+const CHART_CATEGORICAL = ['#2563EB', '#EA580C', '#7C3AED', '#65A30D', '#DB2777', '#0891B2', '#B45309'];
+
+function chartColor(index) {
+  return CHART_CATEGORICAL[Math.abs(Number(index) || 0) % CHART_CATEGORICAL.length];
+}
+
+// Unieke id's binnen één render-pass (de DOM wordt elke render volledig vervangen).
+let chartIdCounter = 0;
+function nextChartId(prefix) {
+  chartIdCounter += 1;
+  return `${prefix}-${chartIdCounter}`;
+}
+
+// Catmull-Rom omgezet naar cubic bezier: vloeiende lijn zonder doorschieten.
+function smoothPath(points) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+// Mini-trendlijntje in een KPI-tegel.
+function renderSparkline(values, color = '#2563EB') {
+  const vals = (values || []).map(value => Number(value) || 0);
+  if (vals.length < 2) return '';
+  const w = 120, h = 34, pad = 3;
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const span = (max - min) || 1;
+  const points = vals.map((value, index) => ({
+    x: pad + (index / (vals.length - 1)) * (w - pad * 2),
+    y: h - pad - ((value - min) / span) * (h - pad * 2),
+  }));
+  const id = nextChartId('spark');
+  const line = smoothPath(points);
+  const area = `${line} L ${points[points.length - 1].x.toFixed(2)} ${h} L ${points[0].x.toFixed(2)} ${h} Z`;
   return `
-    <div class="analytics-trend">
-      ${buckets.map(bucket => {
-        const ok = Math.max(bucket.value - bucket.repair, 0);
-        return `
-        <div class="analytics-trend-day">
-          <div class="analytics-trend-stack" title="${escapeHtml(bucket.label)} — ${bucket.value} graded: ${ok} OK, ${bucket.repair} repair/X">
-            <span class="repair" style="height:${(bucket.repair / max) * 100}%;"></span>
-            <strong style="height:${Math.max(4, (ok / max) * 100)}%;"></strong>
-          </div>
-          <small>${escapeHtml(bucket.label)}</small>
-        </div>
-      `;
-      }).join('')}
-    </div>
-    <div class="trend-legend">
-      <span><b class="trend-dot ok"></b> Graded OK · ${formatNumber(totalOk)}</span>
-      <span><b class="trend-dot repair"></b> Repair / X · ${formatNumber(totalRepair)}</span>
+    <svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.42"></stop>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <path d="${area}" fill="url(#${id})"></path>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+}
+
+function renderChartLegend(series) {
+  if (!series || series.length < 2) return '';
+  return `
+    <div class="chart-legend">
+      ${series.map(item => `
+        <span class="chart-legend-item"><b style="background: ${item.color};"></b>${escapeHtml(item.label)}</span>
+      `).join('')}
     </div>
   `;
+}
+
+// Vloeiende vlakgrafiek met meerdere reeksen, rustig raster en eindpunt-stippen.
+function renderAreaChart(series, labels, opts = {}) {
+  const list = (series || []).filter(item => item && item.values && item.values.length);
+  if (!list.length) return `<div class="empty-analytics">${escapeHtml(opts.empty || 'No data yet.')}</div>`;
+  const count = Math.max(...list.map(item => item.values.length));
+  if (count < 2) return `<div class="empty-analytics">${escapeHtml(opts.empty || 'Not enough data yet.')}</div>`;
+
+  const w = 640, h = 230;
+  const padL = 34, padR = 12, padT = 12, padB = 26;
+  const innerW = w - padL - padR, innerH = h - padT - padB;
+  const rawMax = Math.max(1, ...list.map(item => Math.max(...item.values.map(v => Number(v) || 0))));
+  // Rond het maximum af naar een leesbare stap.
+  const step = Math.max(1, Math.ceil(rawMax / 4));
+  const max = step * 4;
+  const xAt = index => padL + (index / (count - 1)) * innerW;
+  const yAt = value => padT + innerH - (Math.min(Number(value) || 0, max) / max) * innerH;
+
+  const gridLines = Array.from({ length: 5 }, (_, i) => {
+    const value = step * i;
+    const y = yAt(value);
+    return `
+      <line class="chart-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${w - padR}" y2="${y.toFixed(1)}"></line>
+      <text class="chart-axis" x="${padL - 8}" y="${(y + 3.5).toFixed(1)}" text-anchor="end">${formatNumber(value)}</text>
+    `;
+  }).join('');
+
+  const xLabels = (labels || []).map((label, index) => {
+    // Bij veel punten niet elk label tonen, anders loopt de as vol.
+    const skip = count > 8 ? Math.ceil(count / 7) : 1;
+    if (index % skip !== 0 && index !== count - 1) return '';
+    return `<text class="chart-axis" x="${xAt(index).toFixed(1)}" y="${h - 8}" text-anchor="middle">${escapeHtml(label)}</text>`;
+  }).join('');
+
+  const bodies = list.map(item => {
+    const points = item.values.map((value, index) => ({ x: xAt(index), y: yAt(value) }));
+    const id = nextChartId('area');
+    const line = smoothPath(points);
+    const area = `${line} L ${points[points.length - 1].x.toFixed(2)} ${(padT + innerH).toFixed(2)} L ${points[0].x.toFixed(2)} ${(padT + innerH).toFixed(2)} Z`;
+    const dots = points.map((point, index) => `<circle class="chart-dot" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="${index === points.length - 1 ? 4 : 2.6}" fill="${item.color}"><title>${escapeHtml(item.label)} ${escapeHtml(String((labels || [])[index] || ''))}: ${formatNumber(item.values[index])}</title></circle>`).join('');
+    return `
+      <defs>
+        <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${item.color}" stop-opacity="0.34"></stop>
+          <stop offset="100%" stop-color="${item.color}" stop-opacity="0"></stop>
+        </linearGradient>
+      </defs>
+      <path d="${area}" fill="url(#${id})"></path>
+      <path d="${line}" fill="none" stroke="${item.color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+      ${dots}
+    `;
+  }).join('');
+
+  return `
+    ${renderChartLegend(list)}
+    <div class="area-chart-wrap">
+      <svg class="area-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(opts.ariaLabel || 'Trend chart')}">
+        ${gridLines}
+        ${bodies}
+        ${xLabels}
+      </svg>
+    </div>
+  `;
+}
+
+function renderTrendChart(buckets) {
+  const okValues = buckets.map(bucket => Math.max(bucket.value - bucket.repair, 0));
+  const repairValues = buckets.map(bucket => Number(bucket.repair) || 0);
+  const totalOk = okValues.reduce((sum, value) => sum + value, 0);
+  const totalRepair = repairValues.reduce((sum, value) => sum + value, 0);
+  return renderAreaChart(
+    [
+      { key: 'ok', label: `Graded OK · ${formatNumber(totalOk)}`, color: '#2563EB', values: okValues },
+      { key: 'repair', label: `Repair / X · ${formatNumber(totalRepair)}`, color: '#E12B35', values: repairValues },
+    ],
+    buckets.map(bucket => bucket.label),
+    { ariaLabel: 'Graded per day, split into OK and repair/X', empty: 'No gradings in this period yet.' }
+  );
 }
 
 function buildEmployeeRows(items) {
@@ -1489,9 +1622,9 @@ function renderRepairBins(binRows) {
   const max = Math.max(...binRows.map(bin => bin.total), 1);
   return `
     <div class="repair-bins">
-      ${binRows.map(bin => `
+      ${binRows.map((bin, index) => `
         <div class="repair-bin-row">
-          <div class="repair-bin-head"><strong>${escapeHtml(bin.bin)}</strong><em>${bin.total}</em></div>
+          <div class="repair-bin-head"><strong><span class="repair-bin-cat" style="background: ${chartColor(index)};" aria-hidden="true"></span>${escapeHtml(bin.bin)}</strong><em>${bin.total}</em></div>
           <div class="repair-bin-track-wrap"><div class="repair-bin-track" style="width:${Math.max(6, (bin.total / max) * 100)}%;">
             ${bin.light ? `<span class="bin-seg light" style="flex:${bin.light};" title="Light ${bin.light}"></span>` : ''}
             ${bin.heavy ? `<span class="bin-seg heavy" style="flex:${bin.heavy};" title="Heavy ${bin.heavy}"></span>` : ''}
@@ -1635,10 +1768,10 @@ function renderAnalytics() {
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Key figures</h2><span>Output, favourability and quality at a glance · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
-        ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
         ${renderKpiCard({ label: 'Grade uplift Δ', value: supplierSummary.total ? formatSignedNumber(upliftAvg) : '-', sub: supplierSummary.total ? `${formatSignedNumber(supplierSummary.netDelta)} net · ${supplierSummary.improvedPercent}% above supplier` : 'no supplier grades', tone: 'primary' })}
         ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
-        ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '', spark: trendBuckets.map(bucket => bucket.repair), sparkColor: '#E12B35' })}
         ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
         ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
       </div>
@@ -1679,7 +1812,7 @@ function renderAnalytics() {
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Throughput KPIs</h2><span>How fast and by whom · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
-        ${renderKpiCard({ label: 'Output', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary' })}
+        ${renderKpiCard({ label: 'Output', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
         ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
         ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
       </div>

@@ -616,7 +616,8 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
 
   // Doorloop-tab: output per dag + medewerkerprestatie.
   vm.runInContext("setAnalyticsTab('throughput'); render();", app);
-  assert.match(app.__appElement.innerHTML, /analytics-trend/);
+  assert.match(app.__appElement.innerHTML, /area-chart/);
+  assert.match(app.__appElement.innerHTML, /chart-legend-item/);
   assert.match(app.__appElement.innerHTML, /Batch completion/);
 
   // Reparatiebakken-tab: route-split, bakken en Pareto.

@@ -2114,3 +2114,38 @@ html[data-theme="dark"] .trend-legend { color: var(--dark-muted); }
 .repair-batch-table tr.is-high-repair td { background: rgba(200, 16, 46, 0.05); }
 html[data-theme="dark"] .repair-batch-table .repair-rate-track { background: #33333A; }
 html[data-theme="dark"] .repair-batch-table tr.is-high-repair td { background: rgba(200, 16, 46, 0.14); }
+
+/* ============================================================================
+   GRAFIEK-STIJL (naar het dashboard-voorbeeld, met ons eigen palet)
+   Stat-tegels met mini-trendlijn, vloeiende vlakgrafieken met gradient,
+   legenda's als gekleurde pillen en staven met ronde uiteinden.
+   ============================================================================ */
+
+/* Stat-tegel: groot getal links, mini-trendlijn rechts. */
+.analytics-kpi-card.has-spark { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.analytics-kpi-card.has-spark .analytics-kpi-label { grid-column: 1 / -1; }
+.analytics-kpi-card.has-spark strong { grid-column: 1; grid-row: 2; align-self: center; }
+.analytics-kpi-card.has-spark .spark { grid-column: 2; grid-row: 2; width: 104px; height: 34px; align-self: center; }
+.analytics-kpi-card.has-spark small { grid-column: 1 / -1; grid-row: 3; }
+.spark { display: block; }
+
+/* Legenda als pillen, rechtsboven de grafiek. */
+.chart-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+.chart-legend-item { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px 4px 9px; border-radius: 999px; background: rgba(15, 15, 15, 0.05); color: var(--remarkt-muted); font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.chart-legend-item b { display: inline-block; width: 14px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+
+/* Vloeiende vlakgrafiek. */
+.area-chart-wrap { width: 100%; overflow-x: auto; }
+.area-chart { display: block; width: 100%; height: auto; min-width: 320px; }
+.area-chart .chart-grid { stroke: var(--remarkt-line); stroke-width: 1; stroke-dasharray: 3 4; }
+.area-chart .chart-axis { fill: var(--remarkt-muted); font-size: 10px; font-weight: 700; }
+.area-chart .chart-dot { stroke: #fff; stroke-width: 1.5; }
+
+/* Staven met ronde uiteinden + categoriekleur per bak. */
+.repair-bin-track, .bin-seg { border-radius: 999px; }
+.repair-bin-cat { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; flex-shrink: 0; vertical-align: middle; }
+
+html[data-theme="dark"] .chart-legend-item { background: rgba(255, 255, 255, 0.08); color: var(--dark-muted); }
+html[data-theme="dark"] .area-chart .chart-grid { stroke: var(--dark-line); }
+html[data-theme="dark"] .area-chart .chart-axis { fill: var(--dark-muted); }
+html[data-theme="dark"] .area-chart .chart-dot { stroke: #25252A; }
