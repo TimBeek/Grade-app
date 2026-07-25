@@ -546,8 +546,11 @@ function setAnalyticsFilter(key, value) {
   filters[key] = sanitizeExternalText(value, key === 'query' ? 160 : 80) || ANALYTICS_FILTER_DEFAULTS[key];
 }
 
-function resetAnalyticsFilters() {
-  STATE.analyticsFilters = { ...ANALYTICS_FILTER_DEFAULTS };
+function clearAnalyticsAdvancedFilters() {
+  const filters = getAnalyticsFilters();
+  ['employee', 'batch', 'brand', 'grade', 'status'].forEach(key => {
+    filters[key] = ANALYTICS_FILTER_DEFAULTS[key];
+  });
 }
 
 function analyticsText(value) {
@@ -839,19 +842,21 @@ function renderAnalyticsSelect(name, label, selected, options) {
   `;
 }
 
-function renderAnalyticsFilters(filters, allItems) {
+function renderAnalyticsFilters(filters, allItems, resultCount) {
   const employeeOptions = [{ value: 'all', label: 'All employees' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'employeeName').map(name => ({ value: name, label: name })));
   const brandOptions = [{ value: 'all', label: 'All brands' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'brand').map(brand => ({ value: brand, label: brand })));
   const batchOptions = [{ value: 'all', label: 'All batches' }]
     .concat(getUniqueAnalyticsOptions(allItems, 'batch').map(batch => ({ value: batch, label: `Batch ${batch}` })));
+  const advancedFilterCount = ['employee', 'batch', 'brand', 'grade', 'status']
+    .filter(key => filters[key] && filters[key] !== 'all').length;
 
   return `
     <div class="analytics-filter-bar">
       <div class="analytics-search-wrap">
-        <span>Search</span>
-        <input id="analyticsSearch" type="search" placeholder="Barcode, batch, brand, model, note..." value="${escapeHtml(filters.query || '')}">
+        <span>Search records</span>
+        <input id="analyticsSearch" type="search" placeholder="Barcode, batch, brand or model" value="${escapeHtml(filters.query || '')}">
       </div>
       ${renderAnalyticsSelect('dateRange', 'Period', filters.dateRange, [
         { value: 'all', label: 'All data' },
@@ -859,41 +864,51 @@ function renderAnalyticsFilters(filters, allItems) {
         { value: 'week', label: 'Last 7 days' },
         { value: 'month', label: 'Last 30 days' },
       ])}
-      ${renderAnalyticsSelect('employee', 'Employee', filters.employee, employeeOptions)}
-      ${renderAnalyticsSelect('batch', 'Batch', filters.batch, batchOptions)}
-      ${renderAnalyticsSelect('brand', 'Brand', filters.brand, brandOptions)}
-      ${renderAnalyticsSelect('grade', 'Grade', filters.grade, [
-        { value: 'all', label: 'All grades' },
-        { value: 'A', label: 'A' },
-        { value: 'B', label: 'B' },
-        { value: 'C', label: 'C' },
-        { value: 'X', label: 'X' },
-      ])}
-      ${renderAnalyticsSelect('status', 'Status', filters.status, Object.keys(ANALYTICS_STATUS_LABELS).map(key => ({
-        value: key,
-        label: ANALYTICS_STATUS_LABELS[key],
-      })))}
-      <button class="btn btn-secondary analytics-reset" data-action="analytics_filters_reset" type="button">Reset</button>
+      <details class="analytics-filter-disclosure ${advancedFilterCount ? 'has-active' : ''}" ${advancedFilterCount ? 'open' : ''}>
+        <summary>
+          <span class="analytics-filter-summary-icon">${typeof uiIcon === 'function' ? uiIcon('settings') : ''}</span>
+          <span>More filters</span>
+          ${advancedFilterCount ? `<b>${advancedFilterCount}</b>` : ''}
+        </summary>
+        <div class="analytics-filter-advanced">
+          ${renderAnalyticsSelect('employee', 'Employee', filters.employee, employeeOptions)}
+          ${renderAnalyticsSelect('batch', 'Batch', filters.batch, batchOptions)}
+          ${renderAnalyticsSelect('brand', 'Brand', filters.brand, brandOptions)}
+          ${renderAnalyticsSelect('grade', 'Grade', filters.grade, [
+            { value: 'all', label: 'All grades' },
+            { value: 'A', label: 'A' },
+            { value: 'B', label: 'B' },
+            { value: 'C', label: 'C' },
+            { value: 'X', label: 'X' },
+          ])}
+          ${renderAnalyticsSelect('status', 'Status', filters.status, Object.keys(ANALYTICS_STATUS_LABELS).map(key => ({
+            value: key,
+            label: ANALYTICS_STATUS_LABELS[key],
+          })))}
+          <button class="btn btn-secondary analytics-reset" data-action="analytics_filters_clear_advanced" type="button">Clear filters</button>
+        </div>
+      </details>
+      <div class="analytics-result-count"><strong>${formatNumber(resultCount)}</strong><span>records in view</span></div>
     </div>
   `;
 }
 
 function renderAnalyticsProductScope(activeScope) {
   const scopes = [
-    { value: 'all', label: 'Overall', detail: 'Combined output, separate timing' },
-    { value: 'laptop', label: 'Laptops', detail: 'Scan to first label' },
-    { value: 'monitor', label: 'Monitors', detail: `${MONITOR_TIMING_IDLE_MINUTES} min session rule` },
+    { value: 'all', label: 'All products', detail: 'Combined output' },
+    { value: 'laptop', label: 'Laptops', detail: 'Scan to label' },
+    { value: 'monitor', label: 'Monitors', detail: 'Active sessions' },
   ];
   return `
-    <div class="analytics-product-scope" role="tablist" aria-label="Product analysis">
+    <div class="analytics-product-scope" role="radiogroup" aria-label="Product scope">
       ${scopes.map(scope => `
         <button
           class="analytics-product-scope-button ${scope.value === activeScope ? 'active' : ''}"
           data-action="analytics_product_scope"
           data-analytics-product-scope="${scope.value}"
           type="button"
-          role="tab"
-          aria-selected="${scope.value === activeScope ? 'true' : 'false'}"
+          role="radio"
+          aria-checked="${scope.value === activeScope ? 'true' : 'false'}"
         >
           <strong>${escapeHtml(scope.label)}</strong>
           <span>${escapeHtml(scope.detail)}</span>
@@ -1538,11 +1553,11 @@ function renderRecentActivity(items) {
 // the strip in the analytics hero. Falls back silently when offline or when
 // running from file:// (no shared backend).
 async function refreshAnalyticsServerStats() {
-  const container = document.getElementById('analytics-server-stats');
+  const container = document.getElementById('manager-live-stats');
   if (!container) return;
   if (typeof canUseSharedDemoState === 'function' && !canUseSharedDemoState()) {
     container.setAttribute('data-state', 'offline');
-    container.innerHTML = '<span class="analytics-server-stats-label">Local mode · database figures unavailable</span>';
+    container.innerHTML = '<span class="manager-live-label">Local mode · database figures unavailable</span>';
     return;
   }
   try {
@@ -1557,7 +1572,7 @@ async function refreshAnalyticsServerStats() {
     const cells = [
       { label: 'Graded today', value: formatNumber(totals.gradedToday || 0) },
       { label: 'Last 7 days', value: formatNumber(totals.gradedLast7Days || 0) },
-      { label: 'Graded total (DB)', value: formatNumber(totals.graded || 0) },
+      { label: 'Graded total', value: formatNumber(totals.graded || 0) },
       { label: 'Laptops graded', value: formatNumber(totals.laptopGraded || 0) },
       { label: 'Monitors graded', value: formatNumber(totals.monitorGraded || 0) },
       { label: 'Laptops in stock', value: formatNumber(totals.laptopsInVoorraad || 0) },
@@ -1567,19 +1582,19 @@ async function refreshAnalyticsServerStats() {
     ];
     container.setAttribute('data-state', 'ready');
     container.innerHTML = `
-      <span class="analytics-server-stats-label">Live from database</span>
-      <div class="analytics-server-stats-cells">
+      <span class="manager-live-label">Live operations</span>
+      <div class="manager-live-cells">
         ${cells.map(cell => `
-          <div class="analytics-server-stat">
-            <span class="analytics-server-stat-value">${cell.value}</span>
-            <span class="analytics-server-stat-label">${cell.label}</span>
+          <div class="manager-live-metric">
+            <strong>${cell.value}</strong>
+            <span>${cell.label}</span>
           </div>
         `).join('')}
       </div>
     `;
   } catch (error) {
     container.setAttribute('data-state', 'error');
-    container.innerHTML = '<span class="analytics-server-stats-label">Database figures could not be loaded</span>';
+    container.innerHTML = '<span class="manager-live-label">Database figures could not be loaded</span>';
     if (typeof reportAppWarning === 'function') reportAppWarning('Dashboard statistics could not be loaded', error);
   }
 }
@@ -1589,10 +1604,38 @@ async function refreshAnalyticsServerStats() {
 // (diverging bar, favourability score, repair bins, route split, Pareto, stacked)
 // =============================================================================
 const ANALYTICS_TABS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'batch', label: 'Batch quality' },
-  { key: 'throughput', label: 'Throughput & staff' },
-  { key: 'repair', label: 'Repair bins' },
+  {
+    key: 'overview',
+    label: 'Overview',
+    detail: 'Decision snapshot',
+    title: 'Operations overview',
+    description: 'The essential output, quality and workload signals in one view.',
+    icon: 'analytics',
+  },
+  {
+    key: 'batch',
+    label: 'Quality & value',
+    detail: 'Supplier and grade',
+    title: 'Quality & value',
+    description: 'Compare ReMarkt grades with supplier grades and find value by batch.',
+    icon: 'grade',
+  },
+  {
+    key: 'throughput',
+    label: 'Output & time',
+    detail: 'Flow and capacity',
+    title: 'Output & time',
+    description: 'Analyse reliable cycle times, active capacity and team output.',
+    icon: 'workflow',
+  },
+  {
+    key: 'repair',
+    label: 'Repairs',
+    detail: 'Routes and causes',
+    title: 'Repairs',
+    description: 'See repair volume, routing, batches and the most common causes.',
+    icon: 'support',
+  },
 ];
 
 function getAnalyticsTab() {
@@ -1605,11 +1648,44 @@ function setAnalyticsTab(tab) {
 
 function renderAnalyticsSubTabs(activeTab) {
   return `
-    <div class="analytics-subtabs" role="tablist" aria-label="Insights sections">
+    <nav class="analytics-subtabs" aria-label="Insights sections">
       ${ANALYTICS_TABS.map(tab => `
-        <button class="analytics-subtab ${tab.key === activeTab ? 'active' : ''}" data-action="analytics_tab" data-analytics-tab="${tab.key}" type="button" role="tab" aria-selected="${tab.key === activeTab ? 'true' : 'false'}">${escapeHtml(tab.label)}</button>
+        <button class="analytics-subtab ${tab.key === activeTab ? 'active' : ''}" data-action="analytics_tab" data-analytics-tab="${tab.key}" type="button"${tab.key === activeTab ? ' aria-current="page"' : ''}>
+          <span class="analytics-subtab-icon">${typeof uiIcon === 'function' ? uiIcon(tab.icon) : ''}</span>
+          <span><strong>${escapeHtml(tab.label)}</strong><small>${escapeHtml(tab.detail)}</small></span>
+        </button>
       `).join('')}
-    </div>
+    </nav>
+  `;
+}
+
+function renderAnalyticsSidebar(activeTab, activeScope) {
+  return `
+    <aside class="analytics-sidebar">
+      <div class="analytics-sidebar-head">
+        <span>Management</span>
+        <strong>Insights</strong>
+      </div>
+      <div class="analytics-sidebar-group">
+        <span class="analytics-sidebar-label">Analysis</span>
+        ${renderAnalyticsSubTabs(activeTab)}
+      </div>
+      <div class="analytics-sidebar-group">
+        <span class="analytics-sidebar-label">Product scope</span>
+        ${renderAnalyticsProductScope(activeScope)}
+      </div>
+      <div class="analytics-sidebar-group analytics-sidebar-actions">
+        <span class="analytics-sidebar-label">Tools</span>
+        <button class="analytics-sidebar-action" data-action="history" type="button">
+          <span>${typeof uiIcon === 'function' ? uiIcon('history') : ''}</span>
+          <strong>Full history</strong>
+        </button>
+        <button class="analytics-sidebar-action" data-action="export_supplier_comparison" data-export-batch="all" type="button">
+          <span>${typeof uiIcon === 'function' ? uiIcon('uploadSheet') : ''}</span>
+          <strong>Supplier export</strong>
+        </button>
+      </div>
+    </aside>
   `;
 }
 
@@ -1917,9 +1993,7 @@ function renderProductTimingKpis(productScope, laptop, monitor) {
       ${renderKpiCard({ label: 'Median app cycle', value: formatSeconds(monitor.medianCycleSec), sub: 'first scan/manual input to first label' })}
       ${renderKpiCard({ label: 'P90 app cycle', value: formatSeconds(monitor.p90CycleSec), sub: '90% of reliable cycles below this' })}
       ${renderKpiCard({ label: 'Per active hour', value: monitor.perActiveHour ? String(monitor.perActiveHour).replace('.', ',') : '-', sub: 'completed monitors per measured hour' })}
-      ${renderKpiCard({ label: 'Active sessions', value: formatNumber(monitor.sessions), sub: `${monitor.avgUnitsPerSession || 0} monitors per session` })}
       ${renderKpiCard({ label: 'Timing coverage', value: `${monitor.coverage}%`, sub: `${monitor.interrupted} interrupted cycles excluded`, tone: monitor.coverage < 70 && monitor.total ? 'warning' : '' })}
-      ${renderKpiCard({ label: 'Entry method', value: `${monitor.manual} / ${monitor.barcode}`, sub: 'manual / barcode' })}
     `;
   }
   return `
@@ -1927,6 +2001,40 @@ function renderProductTimingKpis(productScope, laptop, monitor) {
     ${renderKpiCard({ label: 'Monitor output', value: formatNumber(monitor.total), sub: `${monitor.measured} reliably timed`, tone: 'primary' })}
     ${renderKpiCard({ label: 'Laptop avg. time', value: formatSeconds(laptop.avgSec), sub: 'scan to successful first label' })}
     ${renderKpiCard({ label: 'Monitor active time', value: formatSeconds(monitor.avgActiveSec), sub: `separate metric · ${MONITOR_TIMING_IDLE_MINUTES} min idle rule` })}
+  `;
+}
+
+function renderOverviewKpis(options) {
+  const {
+    productScope, totalCompleted, todayCompleted, weekCompleted, laptop, monitor,
+    premiumYield, premiumBase, counts, rejectRate, openCount, completionRate, trendBuckets,
+  } = options;
+  const qualityCards = `
+    ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
+    ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '' })}
+    ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+  `;
+  if (productScope === 'laptop') {
+    return `
+      ${renderKpiCard({ label: 'Laptop output', value: formatNumber(laptop.total), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
+      ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(laptop.avgSec), sub: 'scan to successful first label' })}
+      ${renderKpiCard({ label: 'Timing coverage', value: `${laptop.coverage}%`, sub: `${laptop.measured} reliable measurements`, tone: laptop.coverage < 70 && laptop.total ? 'warning' : '' })}
+      ${qualityCards}
+    `;
+  }
+  if (productScope === 'monitor') {
+    return `
+      ${renderKpiCard({ label: 'Monitor output', value: formatNumber(monitor.total), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
+      ${renderKpiCard({ label: 'Avg. active time', value: formatSeconds(monitor.avgActiveSec), sub: `${monitor.sessions} measured sessions` })}
+      ${renderKpiCard({ label: 'Timing coverage', value: `${monitor.coverage}%`, sub: `${monitor.measured} reliable measurements`, tone: monitor.coverage < 70 && monitor.total ? 'warning' : '' })}
+      ${qualityCards}
+    `;
+  }
+  return `
+    ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
+    ${renderKpiCard({ label: 'Laptop output', value: formatNumber(laptop.total), sub: `${laptop.measured} reliably timed` })}
+    ${renderKpiCard({ label: 'Monitor output', value: formatNumber(monitor.total), sub: `${monitor.measured} reliably timed` })}
+    ${qualityCards}
   `;
 }
 
@@ -1955,6 +2063,11 @@ function renderTimingMethodRows(productScope, laptop, monitor) {
       sub: 'Active average with 15% room for personal time, fatigue and unavoidable delay.',
       value: formatSeconds(monitor.planningSec),
     });
+    rows.push({
+      title: 'Sessions & entry method',
+      sub: `${monitor.avgUnitsPerSession || 0} monitors per measured session.`,
+      value: `${monitor.sessions} · ${monitor.manual}/${monitor.barcode}`,
+    });
   }
   if (productScope === 'all') {
     rows.push({
@@ -1971,6 +2084,9 @@ function renderAnalytics() {
   const filters = getAnalyticsFilters();
   const activeTab = getAnalyticsTab();
   const allItems = buildAnalyticsItems(isAdmin);
+  const filterOptionItems = filters.productType === 'all'
+    ? allItems
+    : allItems.filter(item => item.productType === filters.productType);
   const filteredItems = filterAnalyticsItems(allItems, filters);
   const completedItems = filteredItems.filter(item => item.status === 'graded' || item.status === 'repair');
   const activeWorkItems = filteredItems.filter(item => item.status !== 'label');
@@ -2009,26 +2125,33 @@ function renderAnalytics() {
   const productScopeLabel = filters.productType === 'laptop' ? 'laptops'
     : filters.productType === 'monitor' ? 'monitors'
       : 'all products';
+  const activeTabMeta = ANALYTICS_TABS.find(tab => tab.key === activeTab) || ANALYTICS_TABS[0];
 
   const overviewTab = `
-    <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
-      <span class="analytics-server-stats-label">Loading live figures from database…</span>
-    </div>
     <section class="analytics-section analytics-section-first">
-      <div class="analytics-section-head"><h2>Key figures</h2><span>Output, favourability and quality at a glance · ${rangeLabel}</span></div>
-      <div class="analytics-kpi-grid analytics-kpi-grid--auto">
-        ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
-        ${renderProductTimingKpis(filters.productType, laptopTiming, monitorTiming)}
-        ${renderKpiCard({ label: 'Grade uplift Δ', value: supplierSummary.total ? formatSignedNumber(upliftAvg) : '-', sub: supplierSummary.total ? `${formatSignedNumber(supplierSummary.netDelta)} net · ${supplierSummary.improvedPercent}% above supplier` : 'no supplier grades', tone: 'primary' })}
-        ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
-        ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '', spark: trendBuckets.map(bucket => bucket.repair), sparkColor: '#E12B35' })}
-        ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
+      <div class="analytics-section-head"><h2>At a glance</h2><span>Six signals for ${productScopeLabel} · ${rangeLabel}</span></div>
+      <div class="analytics-kpi-grid analytics-kpi-grid--overview">
+        ${renderOverviewKpis({
+          productScope: filters.productType,
+          totalCompleted,
+          todayCompleted,
+          weekCompleted,
+          laptop: laptopTiming,
+          monitor: monitorTiming,
+          premiumYield,
+          premiumBase,
+          counts,
+          rejectRate,
+          openCount,
+          completionRate,
+          trendBuckets,
+        })}
       </div>
     </section>
     <section class="analytics-section">
-      <div class="analytics-section-head"><h2>Favourability</h2><span>Did each batch beat or miss the supplier grade · ${rangeLabel}</span></div>
+      <div class="analytics-section-head"><h2>Current picture</h2><span>Trend and grade distribution</span></div>
       <div class="analytics-grid">
-        ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device — green beats the supplier grade, red misses it.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }), 'analytics-wide')}
+        ${renderAnalyticsPanel('Output trend', 'Completed grading per day; red marks repair or X.', renderTrendChart(trendBuckets))}
         ${renderAnalyticsPanel('Grade mix', 'Where the value lands across A/B/C/X.', render100StackedGradeBar(counts))}
       </div>
     </section>
@@ -2036,20 +2159,21 @@ function renderAnalytics() {
 
   const batchTab = `
     <section class="analytics-section analytics-section-first">
-      <div class="analytics-section-head"><h2>Favourability KPIs</h2><span>Is this batch/supplier favourable for us · ${rangeLabel}</span></div>
+      <div class="analytics-section-head"><h2>Quality signals</h2><span>Grade outcome and supplier value · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
+        ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
+        ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '' })}
+        ${renderKpiCard({ label: 'Usable yield', value: `${usableYield}%`, sub: 'A, B or C after grading' })}
         ${renderKpiCard({ label: 'Above supplier', value: supplierSummary.total ? `${supplierSummary.improvedPercent}%` : '-', sub: `${formatNumber(supplierSummary.improved || 0)} devices upgraded`, tone: 'primary' })}
         ${renderKpiCard({ label: 'Below supplier', value: supplierSummary.total ? `${supplierSummary.downgradedPercent}%` : '-', sub: `${formatNumber(supplierSummary.downgraded || 0)} devices downgraded`, tone: supplierSummary.downgradedPercent > 0 ? 'danger' : '' })}
-        ${renderKpiCard({ label: 'Grade concordance', value: supplierSummary.total ? `${concordance}%` : '-', sub: 'matched the supplier grade' })}
         ${renderKpiCard({ label: 'Net grade delta', value: supplierSummary.total ? formatSignedNumber(supplierSummary.netDelta) : '-', sub: `⌀ ${formatSignedNumber(upliftAvg)}/device` })}
-        ${renderKpiCard({ label: 'Usable yield (A/B/C)', value: `${usableYield}%`, sub: `${rejectRate}% rejected` })}
-        ${renderKpiCard({ label: 'Upgraded to A', value: formatNumber(supplierSummary.toAFromLower || 0), sub: 'from a lower supplier grade' })}
       </div>
     </section>
     <section class="analytics-section">
-      <div class="analytics-section-head"><h2>Supplier &amp; batch detail</h2><span>Where the margin sits: ReMarkt grade vs supplier grade</span></div>
+      <div class="analytics-section-head"><h2>Grade &amp; supplier detail</h2><span>Drill down from distribution to batch and supplier</span></div>
       <div class="analytics-grid">
-        ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device per batch — green beats, red misses.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }), 'analytics-wide')}
+        ${renderAnalyticsPanel('Grade mix', 'Distribution across A/B/C/X for the current filters.', render100StackedGradeBar(counts))}
+        ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device; green beats and red misses.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }))}
         ${renderSupplierComparisonPanel(supplierComparisonItems)}
         ${renderAnalyticsPanel('Supplier favourability index', 'One 0–100 buy/avoid score per supplier (uplift + % above − % below).', renderScoreBars(favorabilityRows, { empty: 'No supplier grades yet.' }), 'analytics-wide')}
         ${renderAnalyticsPanel('Supplier scorecard', 'Per supplier: who under- or over-grades and the average uplift per device.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
@@ -2059,19 +2183,17 @@ function renderAnalytics() {
 
   const throughputTab = `
     <section class="analytics-section analytics-section-first">
-      <div class="analytics-section-head"><h2>Throughput KPIs</h2><span>How fast and by whom · ${rangeLabel}</span></div>
+      <div class="analytics-section-head"><h2>Flow &amp; capacity</h2><span>Reliable output and timing · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
-        ${renderKpiCard({ label: 'Output', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
         ${renderProductTimingKpis(filters.productType, laptopTiming, monitorTiming)}
-        ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
       </div>
     </section>
     <section class="analytics-section">
-      <div class="analytics-section-head"><h2>Production &amp; staff</h2><span>Output per day, per employee, and batch progress</span></div>
+      <div class="analytics-section-head"><h2>Operational detail</h2><span>Trend, team measurement and remaining stock</span></div>
       <div class="analytics-grid">
         ${renderAnalyticsPanel('Output per day', 'Graded per day; the red part is repair/X. Last 7 days.', renderTrendChart(trendBuckets))}
         ${renderAnalyticsPanel('Team measurement', 'Alphabetical, not ranked. Time appears after at least 3 reliable measurements.', renderEmployeeTable(employeeRows, filters.productType))}
-        ${renderAnalyticsPanel('Timing method & coverage', 'Definitions and data quality for this selection.', renderTimingMethodRows(filters.productType, laptopTiming, monitorTiming))}
+        ${renderAnalyticsPanel('Timing & data quality', 'Measurement rules, coverage and planning context.', renderTimingMethodRows(filters.productType, laptopTiming, monitorTiming))}
         ${renderAnalyticsPanel('Batch completion (live)', 'Where stock is still open — respects the Product filter only.', renderBatchProgress(batchProgressRows), 'analytics-wide')}
       </div>
     </section>
@@ -2108,21 +2230,20 @@ function renderAnalytics() {
   return `
     <div class="screen analytics-screen analytics-pro-screen">
       ${renderDashboardTabs('analytics')}
-      <div class="analytics-hero">
-        <div>
-          <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
-          <h1>Operations &amp; Value Analytics</h1>
-          <p>Steer on quality, output and fair active-time measurement — ${productScopeLabel}, ${rangeLabel}.</p>
-        </div>
-        <div class="analytics-hero-actions">
-          <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
-          <button class="btn btn-primary" data-action="export_supplier_comparison" data-export-batch="all" type="button">Export Report</button>
-        </div>
+      <div class="analytics-workspace">
+        ${renderAnalyticsSidebar(activeTab, filters.productType)}
+        <main class="analytics-main">
+          <header class="analytics-page-head">
+            <div>
+              <div class="analytics-breadcrumb">Insights <span>/</span> ${escapeHtml(productScopeLabel)} <span>/</span> ${escapeHtml(rangeLabel)}</div>
+              <h1>${escapeHtml(activeTabMeta.title)}</h1>
+              <p>${escapeHtml(activeTabMeta.description)}</p>
+            </div>
+          </header>
+          ${renderAnalyticsFilters(filters, filterOptionItems, filteredItems.length)}
+          ${tabBody}
+        </main>
       </div>
-      ${renderAnalyticsProductScope(filters.productType)}
-      ${renderAnalyticsFilters(filters, allItems)}
-      ${renderAnalyticsSubTabs(activeTab)}
-      ${tabBody}
     </div>
   `;
 }

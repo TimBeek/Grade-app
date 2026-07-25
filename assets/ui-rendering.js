@@ -115,7 +115,7 @@ function render() {
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
   attachListeners();
   scheduleScreenWarmup();
-  if (STATE.currentScreen === 'analytics' && typeof refreshAnalyticsServerStats === 'function') {
+  if (document.getElementById('manager-live-stats') && typeof refreshAnalyticsServerStats === 'function') {
     refreshAnalyticsServerStats();
   }
   if (perf && perf.mark && perf.measure) {
@@ -1098,6 +1098,15 @@ function renderGradeMix(counts) {
   `;
 }
 
+function renderManagerLiveStrip() {
+  if (!isAdminUser()) return '';
+  return `
+    <div class="manager-live-strip" id="manager-live-stats" data-state="loading" aria-live="polite">
+      <span class="manager-live-label">Loading live operations…</span>
+    </div>
+  `;
+}
+
 function renderDashboardTabs(active) {
   if (isStickerUser()) {
     return `
@@ -1108,6 +1117,7 @@ function renderDashboardTabs(active) {
     `;
   }
   return `
+    ${renderManagerLiveStrip()}
     <div class="dashboard-tabs" role="tablist" aria-label="Dashboard navigation">
       <button class="dashboard-tab workflow-tab ${active === 'workflow' ? 'active' : ''}" data-action="home_workflow" type="button">${uiIcon('workflow')} Laptop Workflow</button>
       <button class="dashboard-tab monitor-tab ${active === 'monitor' ? 'active' : ''}" data-action="home_monitor_workflow" type="button">${uiIcon('monitor')} Monitor Workflow</button>

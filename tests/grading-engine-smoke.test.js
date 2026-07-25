@@ -485,6 +485,7 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
     render();
   `, app);
 
+  assert.match(app.__appElement.innerHTML, /id="manager-live-stats"/);
   assert.match(app.__appElement.innerHTML, /Grade Device/);
   assert.match(app.__appElement.innerHTML, /Laptop Workflow/);
   assert.match(app.__appElement.innerHTML, /Monitor Workflow/);
@@ -527,8 +528,10 @@ test('dashboard scheidt werkstroom, support en analyse', () => {
   assert.doesNotMatch(app.__appElement.innerHTML, /Grade Device/);
 
   vm.runInContext(`STATE.currentScreen = 'analytics'; render();`, app);
-  assert.match(app.__appElement.innerHTML, /Management dashboard/);
-  assert.match(app.__appElement.innerHTML, /Open Full History/);
+  assert.match(app.__appElement.innerHTML, /id="manager-live-stats"/);
+  assert.match(app.__appElement.innerHTML, /analytics-sidebar/);
+  assert.match(app.__appElement.innerHTML, /Operations overview/);
+  assert.match(app.__appElement.innerHTML, /Full history/);
 });
 
 test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
@@ -594,15 +597,20 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
     render();
   `, app);
 
-  // Standaard = Overzicht-tab: sub-tabs + de nieuwe favourability-charts.
+  // Standaard = compact overzicht met vaste sectienavigatie.
   assert.match(app.__appElement.innerHTML, /analytics-pro-screen/);
+  assert.match(app.__appElement.innerHTML, /analytics-workspace/);
+  assert.match(app.__appElement.innerHTML, /analytics-sidebar/);
   assert.match(app.__appElement.innerHTML, /analytics-kpi-grid/);
   assert.match(app.__appElement.innerHTML, /data-analytics-filter="dateRange"/);
+  assert.match(app.__appElement.innerHTML, /analytics-filter-disclosure/);
   assert.match(app.__appElement.innerHTML, /analytics-subtabs/);
   assert.match(app.__appElement.innerHTML, /data-analytics-tab="repair"/);
-  assert.match(app.__appElement.innerHTML, /Grade uplift/);
-  assert.match(app.__appElement.innerHTML, /Yield per batch/);
+  assert.match(app.__appElement.innerHTML, /Operations overview/);
+  assert.match(app.__appElement.innerHTML, /At a glance/);
+  assert.match(app.__appElement.innerHTML, /Output trend/);
   assert.match(app.__appElement.innerHTML, /grade-stacked/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /Yield per batch/);
   // "Recent activity" en de oude losse panelen zijn bewust weg.
   assert.doesNotMatch(app.__appElement.innerHTML, /Recent activity/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Repair bottlenecks/);
@@ -610,12 +618,14 @@ test('analytics dashboard toont KPI filters en operationele BI-panelen', () => {
 
   // Batchkwaliteit-tab: leveranciersvergelijking + favourability-index.
   vm.runInContext("setAnalyticsTab('batch'); render();", app);
+  assert.match(app.__appElement.innerHTML, /Quality &amp; value/);
   assert.match(app.__appElement.innerHTML, /Supplier vs ReMarkt/);
   assert.match(app.__appElement.innerHTML, /supplier-scorecard-table/);
   assert.match(app.__appElement.innerHTML, /score-bar/);
 
   // Doorloop-tab: output per dag + medewerkerprestatie.
   vm.runInContext("setAnalyticsTab('throughput'); render();", app);
+  assert.match(app.__appElement.innerHTML, /Flow &amp; capacity/);
   assert.match(app.__appElement.innerHTML, /area-chart/);
   assert.match(app.__appElement.innerHTML, /chart-legend-item/);
   assert.match(app.__appElement.innerHTML, /Batch completion/);
@@ -736,6 +746,9 @@ test('grader ziet alleen begeleide modus en kan expertmodus niet starten', async
   vm.runInContext(`STATE.appMessage = null; STATE.currentScreen = 'test_start'; render();`, app);
   assert.match(app.__appElement.innerHTML, /Guided Mode/);
   assert.doesNotMatch(app.__appElement.innerHTML, /data-action="start_test_expert"/);
+
+  vm.runInContext(`STATE.currentScreen = 'home'; STATE.homeTab = 'workflow'; render();`, app);
+  assert.doesNotMatch(app.__appElement.innerHTML, /id="manager-live-stats"/);
 });
 
 test('expert-grader kan expertmodus gebruiken zonder managerrechten', async () => {
@@ -3911,14 +3924,15 @@ test('analytics maakt Overall Laptops en Monitoren expliciet apart', () => {
   assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="all"/);
   assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="laptop"/);
   assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="monitor"/);
-  assert.match(app.__appElement.innerHTML, /Combined output, separate timing/);
+  assert.match(app.__appElement.innerHTML, /Combined output/);
+  assert.match(app.__appElement.innerHTML, /Product scope/);
 
   vm.runInContext(`
     setAnalyticsFilter('productType', 'monitor');
     render();
   `, app);
   assert.match(app.__appElement.innerHTML, /analytics-product-scope-button active[^>]+data-analytics-product-scope="monitor"/);
-  assert.match(app.__appElement.innerHTML, /Avg\. active monitor time/);
+  assert.match(app.__appElement.innerHTML, /Avg\. active time/);
   assert.doesNotMatch(app.__appElement.innerHTML, /data-analytics-filter="productType"/);
 });
 

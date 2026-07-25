@@ -1233,8 +1233,8 @@ async function handleAction(action, el) {
       }
       STATE.currentScreen = 'analytics';
       break;
-    case 'analytics_filters_reset':
-      resetAnalyticsFilters();
+    case 'analytics_filters_clear_advanced':
+      if (typeof clearAnalyticsAdvancedFilters === 'function') clearAnalyticsAdvancedFilters();
       break;
     case 'analytics_product_scope':
       if (typeof setAnalyticsFilter === 'function') {
