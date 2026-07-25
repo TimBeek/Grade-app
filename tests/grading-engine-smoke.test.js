@@ -3825,3 +3825,136 @@ test('grading-test afronden muteert geen voorraad of historie', () => {
     assert.equal(vm.runInContext('GRADED_STICKERS.size', app), 0);
   });
 });
+
+test('monitor timing bewaart eerste scan tot eerste print en behoudt die bij regrade', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    MONITOR_BATCHES.splice(0, MONITOR_BATCHES.length, {
+      id: 'monitor_batch_timing',
+      nummer: 'TIMING',
+      leverancier: 'Test',
+      monitors: [{
+        sticker: 'MON-TIME-1',
+        deviceName: 'Dell P2422H',
+        merk: 'Dell',
+        model: 'P2422H',
+        batchId: 'monitor_batch_timing',
+        batchNummer: 'TIMING'
+      }]
+    });
+    rebuildMonitorIndex();
+    startMonitorTiming('MON-TIME-1', 'barcode', Date.now() - 120000);
+    recordMonitorLabelPrint(getMonitorBySticker('MON-TIME-1'), 'B');
+    window.__firstMonitorPrint = STATE.monitorLabelPrints[0].firstPrintedAt;
+    upsertMonitorLabelPrint(getMonitorBySticker('MON-TIME-1'), 'C');
+  `, app);
+
+  const record = JSON.parse(vm.runInContext('JSON.stringify(STATE.monitorLabelPrints[0])', app));
+  assert.equal(record.entryMode, 'barcode');
+  assert.equal(record.timingVersion, 1);
+  assert.ok(record.durationSec >= 119 && record.durationSec <= 121);
+  assert.equal(record.firstPrintedAt, vm.runInContext('window.__firstMonitorPrint', app));
+  assert.equal(record.grade, 'C');
+  assert.equal(vm.runInContext("Boolean(getMonitorTiming('MON-TIME-1'))", app), false);
+});
+
+test('monitoranalyse groepeert actieve sessies en sluit onderbrekingen eerlijk uit', () => {
+  const app = loadAppSandbox();
+
+  const stats = JSON.parse(vm.runInContext(`
+    (() => {
+      STATE.currentUser = USERS.find(user => user.id === 'tim');
+      STATE.monitorLabelPrints = [
+        {
+          sticker: 'MON-SESSION-1', grade: 'A', user_id: 'tim', user_naam: 'Tim',
+          startedAt: '2026-07-25T08:00:00.000Z', firstPrintedAt: '2026-07-25T08:05:00.000Z',
+          printedAt: '2026-07-25T08:05:00.000Z', durationSec: 300, entryMode: 'barcode', timingVersion: 1
+        },
+        {
+          sticker: 'MON-SESSION-2', grade: 'B', user_id: 'tim', user_naam: 'Tim',
+          startedAt: '2026-07-25T08:10:00.000Z', firstPrintedAt: '2026-07-25T08:15:00.000Z',
+          printedAt: '2026-07-25T08:15:00.000Z', durationSec: 300, entryMode: 'manual', timingVersion: 1
+        },
+        {
+          sticker: 'MON-INTERRUPTED', grade: 'C', user_id: 'tim', user_naam: 'Tim',
+          startedAt: '2026-07-25T09:00:00.000Z', firstPrintedAt: '2026-07-25T09:30:00.000Z',
+          printedAt: '2026-07-25T09:30:00.000Z', durationSec: 1800, entryMode: 'manual', timingVersion: 1
+        }
+      ];
+      rebuildMonitorLabelPrintIndexes();
+      return JSON.stringify(buildMonitorTimingStats(buildAnalyticsItems(true)));
+    })()
+  `, app));
+
+  assert.equal(stats.total, 3);
+  assert.equal(stats.measured, 2);
+  assert.equal(stats.sessions, 1);
+  assert.equal(stats.avgActiveSec, 450);
+  assert.equal(stats.medianCycleSec, 300);
+  assert.equal(stats.interrupted, 1);
+  assert.equal(stats.coverage, 67);
+  assert.equal(stats.manual, 2);
+  assert.equal(stats.barcode, 1);
+});
+
+test('analytics maakt Overall Laptops en Monitoren expliciet apart', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'analytics';
+    render();
+  `, app);
+
+  assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="all"/);
+  assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="laptop"/);
+  assert.match(app.__appElement.innerHTML, /data-analytics-product-scope="monitor"/);
+  assert.match(app.__appElement.innerHTML, /Combined output, separate timing/);
+
+  vm.runInContext(`
+    setAnalyticsFilter('productType', 'monitor');
+    render();
+  `, app);
+  assert.match(app.__appElement.innerHTML, /analytics-product-scope-button active[^>]+data-analytics-product-scope="monitor"/);
+  assert.match(app.__appElement.innerHTML, /Avg\. active monitor time/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-analytics-filter="productType"/);
+});
+
+test('serverstatistiek telt laptop en monitor apart en overall samen', async () => {
+  const { computeStats } = await import('../api/_lib/state-core.mjs');
+  const stats = computeStats({
+    users: [{ id: 'tim' }],
+    batches: [],
+    monitorBatches: [],
+    labelPrints: [],
+    history: [{
+      id: 'grading_1784966400000_LAP-1',
+      sticker: 'LAP-1',
+      grade: 'A',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      savedAt: '2026-07-25T08:00:00.000Z',
+      duurSec: 120,
+    }],
+    monitorLabelPrints: [{
+      sticker: 'MON-1',
+      batchId: 'monitor_batch_1',
+      grade: 'B',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      startedAt: '2026-07-25T08:10:00.000Z',
+      firstPrintedAt: '2026-07-25T08:15:00.000Z',
+      printedAt: '2026-07-25T08:15:00.000Z',
+      durationSec: 300,
+    }],
+  });
+
+  assert.equal(stats.totals.graded, 2);
+  assert.equal(stats.totals.laptopGraded, 1);
+  assert.equal(stats.totals.monitorGraded, 1);
+  assert.equal(stats.totals.laptopAvgDurationSec, 120);
+  assert.equal(stats.totals.monitorAvgActiveSec, 300);
+  assert.equal(stats.totals.monitorTimingCoveragePct, 100);
+});

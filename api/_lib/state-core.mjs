@@ -214,7 +214,7 @@ function labelPrintKey(item) {
 
 function monitorLabelPrintKey(item) {
   if (!item || typeof item !== "object") return "";
-  return [normalizeStickerCode(item.sticker), item.batchNummer, item.grade, item.user_id, item.printedAt]
+  return [normalizeStickerCode(item.sticker), item.batchId || item.batchNummer]
     .map(value => String(value || "")).join("|");
 }
 
@@ -328,9 +328,75 @@ function topCounts(map, limit) {
     .slice(0, limit);
 }
 
+function computeMonitorTimingStats(records) {
+  const idleMs = 20 * 60 * 1000;
+  const measured = [];
+  let interrupted = 0;
+  for (const item of records) {
+    const startMs = Date.parse(item && item.startedAt || "");
+    const endMs = Date.parse(item && (item.firstPrintedAt || item.printedAt) || "");
+    const storedDuration = Number(item && item.durationSec);
+    const durationSec = Number.isFinite(storedDuration) && storedDuration > 0
+      ? storedDuration
+      : Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs
+        ? Math.max(1, Math.round((endMs - startMs) / 1000))
+        : 0;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || durationSec <= 0) continue;
+    if (durationSec * 1000 > idleMs) {
+      interrupted += 1;
+      continue;
+    }
+    measured.push({
+      startMs,
+      endMs,
+      employee: String(item.user_id || item.user_naam || "unknown"),
+    });
+  }
+
+  const sessions = [];
+  const perEmployee = new Map();
+  for (const event of measured) {
+    const rows = perEmployee.get(event.employee) || [];
+    rows.push(event);
+    perEmployee.set(event.employee, rows);
+  }
+  for (const [employee, events] of perEmployee) {
+    events.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+    let current = null;
+    for (const event of events) {
+      const gapMs = current ? Math.max(0, event.startMs - current.endMs) : Infinity;
+      if (!current || gapMs > idleMs) {
+        current = { employee, startMs: event.startMs, endMs: event.endMs, units: 1 };
+        sessions.push(current);
+      } else {
+        current.endMs = Math.max(current.endMs, event.endMs);
+        current.units += 1;
+      }
+    }
+  }
+
+  const activeSec = sessions.reduce(
+    (sum, session) => sum + Math.max(1, Math.round((session.endMs - session.startMs) / 1000)),
+    0
+  );
+  return {
+    measured: measured.length,
+    sessions: sessions.length,
+    interrupted,
+    coveragePct: records.length ? Math.round((measured.length / records.length) * 100) : 0,
+    avgActiveSec: measured.length ? Math.round(activeSec / measured.length) : null,
+  };
+}
+
 // Server-side authoritative KPIs computed straight from the stored data.
 export function computeStats(state) {
   const history = Array.isArray(state.history) ? state.history : [];
+  const monitorPrintMap = new Map();
+  for (const item of Array.isArray(state.monitorLabelPrints) ? state.monitorLabelPrints : []) {
+    const key = monitorLabelPrintKey(item);
+    if (key) monitorPrintMap.set(key, item);
+  }
+  const monitorLabelPrints = Array.from(monitorPrintMap.values());
   const batches = Array.isArray(state.batches) ? state.batches : [];
   const monitorBatches = Array.isArray(state.monitorBatches) ? state.monitorBatches : [];
 
@@ -378,13 +444,33 @@ export function computeStats(state) {
     }
   }
 
-  const totalGraded = history.length;
+  for (const item of monitorLabelPrints) {
+    const grade = String(item.grade || "?").trim() || "?";
+    gradeDistribution[grade] = (gradeDistribution[grade] || 0) + 1;
+    if (/repair|reparat|^[dx]$/i.test(grade)) repairCount += 1;
+
+    const user = String(item.user_naam || item.user_id || "Onbekend").trim() || "Onbekend";
+    perUser.set(user, (perUser.get(user) || 0) + 1);
+
+    const ms = Date.parse(item.firstPrintedAt || item.printedAt || "");
+    const day = dayKeyFromMs(Number.isFinite(ms) ? ms : null);
+    if (day) {
+      perDay.set(day, (perDay.get(day) || 0) + 1);
+      if (day === todayKey) gradedToday += 1;
+      if (ms >= weekAgoMs) gradedLast7Days += 1;
+    }
+  }
+
+  const monitorTiming = computeMonitorTimingStats(monitorLabelPrints);
+  const totalGraded = history.length + monitorLabelPrints.length;
 
   return {
     generatedAt: new Date().toISOString(),
     updatedAt: state.updatedAt || null,
     totals: {
       graded: totalGraded,
+      laptopGraded: history.length,
+      monitorGraded: monitorLabelPrints.length,
       gradedToday,
       gradedLast7Days,
       laptopsInVoorraad: totalLaptops,
@@ -393,10 +479,15 @@ export function computeStats(state) {
       monitorBatches: monitorBatches.length,
       users: Array.isArray(state.users) ? state.users.length : 0,
       labelPrints: Array.isArray(state.labelPrints) ? state.labelPrints.length : 0,
-      monitorLabelPrints: Array.isArray(state.monitorLabelPrints) ? state.monitorLabelPrints.length : 0,
+      monitorLabelPrints: monitorLabelPrints.length,
       repair: repairCount,
       repairRatePct: totalGraded ? Math.round((repairCount / totalGraded) * 1000) / 10 : 0,
       avgDurationSec: durationSamples ? Math.round(totalDurationSec / durationSamples) : null,
+      laptopAvgDurationSec: durationSamples ? Math.round(totalDurationSec / durationSamples) : null,
+      monitorAvgActiveSec: monitorTiming.avgActiveSec,
+      monitorTimingCoveragePct: monitorTiming.coveragePct,
+      monitorTimingSamples: monitorTiming.measured,
+      monitorSessions: monitorTiming.sessions,
     },
     gradeDistribution,
     perUser: topCounts(perUser, 20),

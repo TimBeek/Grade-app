@@ -4,6 +4,11 @@
 // =============================================================================
 let expertScoreFrame = null;
 
+function cancelCurrentMonitorTiming() {
+  if (STATE.currentMonitor && STATE.currentMonitor.sticker) clearMonitorTiming(STATE.currentMonitor.sticker);
+  clearMonitorManualTiming();
+}
+
 // =============================================================================
 // EVENT LISTENERS
 // =============================================================================
@@ -305,6 +310,7 @@ function toggleMonitorGradeInfo(grade) {
 
 function setMonitorManualPortCount(button) {
   if (!button) return;
+  startMonitorManualTiming();
   // De medewerker kiest zelf een poort: vanaf nu handmatig, niet meer 'auto'.
   // Een databasematch voor hetzelfde model overschrijft deze keuze dus niet.
   STATE.monitorManualPortsAutoFilled = false;
@@ -323,6 +329,9 @@ function setMonitorManualPortCount(button) {
 }
 
 async function handleDelegatedChange(e) {
+  if (STATE.currentScreen === 'monitor_manual' && e.target && String(e.target.id || '').startsWith('mm_')) {
+    startMonitorManualTiming();
+  }
   if (e.target.matches('[data-analytics-filter]')) {
     setAnalyticsFilter(e.target.dataset.analyticsFilter, e.target.value);
     render();
@@ -389,6 +398,9 @@ function syncModeSelectForRole(role, modeSelect) {
 }
 
 function handleDelegatedInput(e) {
+  if (STATE.currentScreen === 'monitor_manual' && e.target && String(e.target.id || '').startsWith('mm_')) {
+    startMonitorManualTiming();
+  }
   if (e.target.id === 'analyticsSearch') {
     scheduleAnalyticsSearch(e.target.value);
     return;
@@ -990,6 +1002,7 @@ async function handleAction(action, el) {
       STATE.imagePreview = null;
       break;
     case 'logout':
+      cancelCurrentMonitorTiming();
       clearSessionUser();
       STATE.currentUser = null;
       STATE.currentScreen = 'login';
@@ -1002,6 +1015,7 @@ async function handleAction(action, el) {
       STATE.imagePreview = null;
       break;
     case 'home':
+      cancelCurrentMonitorTiming();
       STATE.currentScreen = 'home';
       STATE.homeTab = 'workflow';
       STATE.currentLaptop = null;
@@ -1012,6 +1026,7 @@ async function handleAction(action, el) {
       STATE.imagePreview = null;
       break;
     case 'home_workflow':
+      cancelCurrentMonitorTiming();
       STATE.currentScreen = 'home';
       STATE.homeTab = 'workflow';
       STATE.currentLaptop = null;
@@ -1021,6 +1036,7 @@ async function handleAction(action, el) {
       STATE.supplierNotice = null;
       break;
     case 'home_monitor_workflow':
+      cancelCurrentMonitorTiming();
       STATE.currentScreen = 'home';
       STATE.homeTab = 'monitor';
       STATE.currentLaptop = null;
@@ -1037,6 +1053,7 @@ async function handleAction(action, el) {
       STATE.supplierNotice = null;
       break;
     case 'monitor_label_scan':
+      cancelCurrentMonitorTiming();
       STATE.currentScreen = 'monitor_label_scan';
       STATE.homeTab = 'monitor';
       STATE.currentMonitor = null;
@@ -1054,6 +1071,7 @@ async function handleAction(action, el) {
       STATE.monitorManualContext = null;
       STATE.monitorSelectedGrade = null;
       STATE.manualError = '';
+      clearMonitorManualTiming();
       // Verse invoer: geen automatisch ingevulde gegevens onthouden.
       STATE.monitorManualAutoKey = null;
       STATE.monitorManualPortsAutoFilled = false;
@@ -1109,6 +1127,7 @@ async function handleAction(action, el) {
       setAppMessage('Cancelled.');
       break;
     case 'monitor_scan_reset':
+      cancelCurrentMonitorTiming();
       STATE.currentMonitor = null;
       STATE.monitorPrintInProgress = false;
       STATE.monitorSelectedGrade = null;
@@ -1216,6 +1235,11 @@ async function handleAction(action, el) {
       break;
     case 'analytics_filters_reset':
       resetAnalyticsFilters();
+      break;
+    case 'analytics_product_scope':
+      if (typeof setAnalyticsFilter === 'function') {
+        setAnalyticsFilter('productType', el && el.dataset ? el.dataset.analyticsProductScope : 'all');
+      }
       break;
     case 'analytics_tab':
       if (typeof setAnalyticsTab === 'function') setAnalyticsTab(el && el.dataset ? el.dataset.analyticsTab : 'overview');
@@ -1491,6 +1515,9 @@ async function submitMonitorManualEntry() {
     videoInputs: readMonitorManualVideoInputs(),
     herkomst: readFormValue('mm_herkomst') || (sourceMonitor ? sourceMonitor.herkomst : 'handmatige monitorinvoer'),
   }, sourceMonitor);
+  const manualStartedMs = Date.parse(STATE.monitorManualStartedAt || '');
+  startMonitorTiming(monitor.sticker, 'manual', Number.isFinite(manualStartedMs) ? manualStartedMs : Date.now());
+  clearMonitorManualTiming();
 
   STATE.currentMonitor = monitor;
   STATE.currentScreen = 'monitor_label_scan';
@@ -1830,6 +1857,7 @@ function selectMonitorForLabel(sticker) {
     return false;
   }
 
+  startMonitorTiming(monitor.sticker, monitor.batchId === 'monitor_manual' ? 'manual' : 'barcode');
   STATE.monitorReprintPrompt = null;
   setAppMessage(null);
   render();
@@ -1895,6 +1923,10 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
     STATE.monitorSelectedGrade = null;
     render();
     return false;
+  }
+
+  if (!isRegrade) {
+    startMonitorTiming(monitor.sticker, monitor.batchId === 'monitor_manual' ? 'manual' : 'barcode');
   }
 
   if (monitorNeedsIdentityChoice(monitor)) {
@@ -1964,6 +1996,7 @@ async function scanAndPrintMonitorLabel(sticker, grade = STATE.monitorSelectedGr
       // Verse start voor de volgende monitor: geen onthouden autofill/poorten.
       STATE.monitorManualAutoKey = null;
       STATE.monitorManualPortsAutoFilled = false;
+      clearMonitorManualTiming();
     }
     return true;
   } catch (error) {
@@ -2573,6 +2606,7 @@ async function confirmSaveWithAutomaticLabels() {
     return;
   }
 
+  g.bevestigd = Date.now();
   saveGrading();
   setAppMessage(printTypes.length > 1
     ? 'Specs and repair labels printed. Grading saved.'

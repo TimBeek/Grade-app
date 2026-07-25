@@ -31,6 +31,8 @@ const STATE = {
   monitorManualContext: null,
   monitorManualAutoKey: null,
   monitorManualPortsAutoFilled: false,
+  monitorManualStartedAt: null,
+  monitorTimingStarts: {},
   monitorReprintPrompt: null,
   monitorRegradeSticker: null,
   analyticsTab: 'overview',
@@ -60,6 +62,8 @@ function reportAppError(...args) {
 const DEMO_AUTH_SALT = 'remarkt-demo:';
 const FIRST_LOGIN_PASSWORD = 'ReMarkt2026!';
 const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20260520-monitor-db';
+const MONITOR_TIMING_IDLE_MINUTES = 20;
+const MONITOR_TIMING_IDLE_MS = MONITOR_TIMING_IDLE_MINUTES * 60 * 1000;
 const DEMO_STORAGE_KEYS = {
   users: 'remarktDemoUsersV2',
   theme: 'remarktThemePreferenceV1',
@@ -1291,7 +1295,29 @@ function rebuildLabelPrintIndexes() {
 }
 
 function rebuildMonitorLabelPrintIndexes() {
-  STATE.monitorLabelPrints = Array.isArray(STATE.monitorLabelPrints) ? STATE.monitorLabelPrints.map(normalizeMonitorLabelPrint).filter(Boolean) : [];
+  const normalized = Array.isArray(STATE.monitorLabelPrints) ? STATE.monitorLabelPrints.map(normalizeMonitorLabelPrint).filter(Boolean) : [];
+  const deduped = new Map();
+  normalized.forEach(item => {
+    const key = `${normalizeStickerCode(item.sticker)}:${item.batchId || item.batchNummer || ''}`;
+    const previous = deduped.get(key);
+    if (!previous) {
+      deduped.set(key, item);
+      return;
+    }
+    const previousMs = Date.parse(previous.printedAt || '');
+    const itemMs = Date.parse(item.printedAt || '');
+    const latest = !Number.isFinite(previousMs) || (Number.isFinite(itemMs) && itemMs >= previousMs) ? item : previous;
+    const earliest = latest === item ? previous : item;
+    deduped.set(key, {
+      ...latest,
+      startedAt: latest.startedAt || earliest.startedAt,
+      firstPrintedAt: earliest.firstPrintedAt || earliest.printedAt || latest.firstPrintedAt,
+      durationSec: latest.durationSec || earliest.durationSec || 0,
+      entryMode: latest.entryMode || earliest.entryMode,
+      timingVersion: latest.timingVersion || earliest.timingVersion || 0,
+    });
+  });
+  STATE.monitorLabelPrints = Array.from(deduped.values());
   MONITOR_LABEL_PRINTED_STICKERS = new Set();
   STATE.monitorLabelPrints.forEach(item => {
     const sticker = String(item.sticker || '');
@@ -1406,6 +1432,9 @@ function normalizeLabelPrint(item) {
 
 function normalizeMonitorLabelPrint(item) {
   if (!item || !item.sticker) return null;
+  const printedAt = sanitizeExternalText(item.printedAt || new Date().toISOString(), 40);
+  const firstPrintedAt = sanitizeExternalText(item.firstPrintedAt || printedAt, 40);
+  const durationSec = Number(item.durationSec);
   return {
     sticker: sanitizeExternalText(item.sticker, 64).replace(/[^\w.-]/g, ''),
     deviceName: sanitizeExternalText(item.deviceName, 180),
@@ -1420,7 +1449,12 @@ function normalizeMonitorLabelPrint(item) {
     batchNummer: sanitizeExternalText(item.batchNummer, 100),
     user_id: sanitizeExternalText(item.user_id, 80),
     user_naam: sanitizeExternalText(item.user_naam, 80),
-    printedAt: sanitizeExternalText(item.printedAt || new Date().toISOString(), 40),
+    startedAt: sanitizeExternalText(item.startedAt, 40),
+    firstPrintedAt,
+    printedAt,
+    durationSec: Number.isFinite(durationSec) && durationSec > 0 ? Math.round(durationSec) : 0,
+    entryMode: item.entryMode === 'manual' ? 'manual' : item.entryMode === 'barcode' ? 'barcode' : '',
+    timingVersion: Number(item.timingVersion) === 1 ? 1 : 0,
   };
 }
 
@@ -1482,6 +1516,48 @@ function upsertManualMonitor(details, sourceMonitor = null) {
   return target;
 }
 
+function getMonitorTimingKey(sticker, userId = STATE.currentUser && STATE.currentUser.id) {
+  const cleanSticker = normalizeStickerCode(sticker);
+  return cleanSticker ? `${sanitizeExternalText(userId || 'unknown', 80)}:${cleanSticker}` : '';
+}
+
+function startMonitorTiming(sticker, entryMode = 'barcode', startedAt = Date.now()) {
+  const key = getMonitorTimingKey(sticker);
+  if (!key) return null;
+  if (!STATE.monitorTimingStarts || typeof STATE.monitorTimingStarts !== 'object') {
+    STATE.monitorTimingStarts = {};
+  }
+  if (STATE.monitorTimingStarts[key]) return STATE.monitorTimingStarts[key];
+  const startMs = startedAt instanceof Date ? startedAt.getTime() : Number(startedAt);
+  const safeStartMs = Number.isFinite(startMs) ? startMs : Date.now();
+  STATE.monitorTimingStarts[key] = {
+    startedAt: new Date(safeStartMs).toISOString(),
+    entryMode: entryMode === 'manual' ? 'manual' : 'barcode',
+  };
+  return STATE.monitorTimingStarts[key];
+}
+
+function getMonitorTiming(sticker) {
+  const key = getMonitorTimingKey(sticker);
+  return key && STATE.monitorTimingStarts && STATE.monitorTimingStarts[key]
+    ? STATE.monitorTimingStarts[key]
+    : null;
+}
+
+function clearMonitorTiming(sticker) {
+  const key = getMonitorTimingKey(sticker);
+  if (key && STATE.monitorTimingStarts) delete STATE.monitorTimingStarts[key];
+}
+
+function startMonitorManualTiming() {
+  if (!STATE.monitorManualStartedAt) STATE.monitorManualStartedAt = new Date().toISOString();
+  return STATE.monitorManualStartedAt;
+}
+
+function clearMonitorManualTiming() {
+  STATE.monitorManualStartedAt = null;
+}
+
 function recordStickerLabelPrint(laptop) {
   if (!laptop || !laptop.sticker) return false;
   const sticker = String(laptop.sticker || '');
@@ -1509,6 +1585,13 @@ function recordMonitorLabelPrint(monitor, grade) {
   if (!monitor || !monitor.sticker) return false;
   const sticker = String(monitor.sticker || '');
   if (MONITOR_LABEL_PRINTED_STICKERS.has(sticker) || MONITOR_LABEL_PRINTED_STICKERS.has(normalizeStickerCode(sticker))) return false;
+  const printedAt = new Date().toISOString();
+  const timing = getMonitorTiming(sticker);
+  const startedMs = timing ? Date.parse(timing.startedAt) : NaN;
+  const printedMs = Date.parse(printedAt);
+  const durationSec = Number.isFinite(startedMs) && Number.isFinite(printedMs) && printedMs >= startedMs
+    ? Math.max(1, Math.round((printedMs - startedMs) / 1000))
+    : 0;
   const item = normalizeMonitorLabelPrint({
     sticker,
     deviceName: monitor.deviceName,
@@ -1523,12 +1606,18 @@ function recordMonitorLabelPrint(monitor, grade) {
     batchNummer: monitor.batchNummer,
     user_id: STATE.currentUser ? STATE.currentUser.id : '',
     user_naam: STATE.currentUser ? STATE.currentUser.naam : '',
-    printedAt: new Date().toISOString(),
+    startedAt: timing ? timing.startedAt : '',
+    firstPrintedAt: printedAt,
+    printedAt,
+    durationSec,
+    entryMode: timing ? timing.entryMode : (monitor.batchId === 'monitor_manual' ? 'manual' : 'barcode'),
+    timingVersion: timing ? 1 : 0,
   });
   if (!item) return false;
   STATE.monitorLabelPrints.push(item);
   MONITOR_LABEL_PRINTED_STICKERS.add(sticker);
   MONITOR_LABEL_PRINTED_STICKERS.add(normalizeStickerCode(sticker));
+  clearMonitorTiming(sticker);
   logAudit('monitor_label_printed', 'monitor', sticker, { batchNummer: monitor.batchNummer || '', grade: item.grade });
   return true;
 }
@@ -1539,10 +1628,12 @@ function upsertMonitorLabelPrint(monitor, grade) {
   if (!monitor || !monitor.sticker) return false;
   const existing = getLatestMonitorLabelPrintForSticker(monitor.sticker);
   if (!existing) return recordMonitorLabelPrint(monitor, grade);
+  const firstPrintedAt = existing.firstPrintedAt || existing.printedAt;
   existing.grade = normalizeMonitorGrade(grade);
   existing.deviceName = sanitizeExternalText(monitor.deviceName, 180) || existing.deviceName;
   existing.videoInputs = normalizeMonitorVideoInputs(monitor.videoInputs) || existing.videoInputs;
   existing.printedAt = new Date().toISOString();
+  existing.firstPrintedAt = firstPrintedAt || existing.printedAt;
   existing.user_id = STATE.currentUser ? STATE.currentUser.id : existing.user_id;
   existing.user_naam = STATE.currentUser ? STATE.currentUser.naam : existing.user_naam;
   logAudit('monitor_label_regraded', 'monitor', String(monitor.sticker), { grade: existing.grade });
@@ -1902,7 +1993,7 @@ function mergeSharedDemoStateForLoad(primary, secondary) {
     ...primary,
     monitorBatches: mergedMonitorBatches,
     monitorLabelPrints: mergeUniqueList(primary.monitorLabelPrints, secondary.monitorLabelPrints, item => (
-      item && item.sticker ? `${getCanonicalMonitorSticker(item.sticker)}:${item.printedAt || ''}` : ''
+      item && item.sticker ? `${getCanonicalMonitorSticker(item.sticker)}:${item.batchId || item.batchNummer || ''}` : ''
     )),
     deletedBatchIds: removeExistingValues(mergeUniqueList(primary.deletedBatchIds, secondary.deletedBatchIds, value => sanitizeExternalText(value, 100)), restoreDeletedBatchIds),
     deletedLaptopStickers: removeExistingValues(mergeUniqueList(primary.deletedLaptopStickers, secondary.deletedLaptopStickers, value => getCanonicalSticker(value)), restoreDeletedLaptopStickers),

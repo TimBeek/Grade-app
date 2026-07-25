@@ -669,6 +669,9 @@ function createAnalyticsItem(source, overrides) {
     employeeId: '',
     employeeName: '',
     durationSec: 0,
+    startedAt: '',
+    firstPrintedAt: '',
+    entryMode: '',
     score: 0,
     batteryPercent: null,
     videoInputs: '',
@@ -749,7 +752,12 @@ function buildAnalyticsItems(isAdmin) {
       videoInputs: analyticsText(print.videoInputs),
       employeeId: analyticsText(print.user_id),
       employeeName: analyticsText(print.user_naam || print.user_id || 'Onbekend'),
-      date: getAnalyticsDate(print.printedAt),
+      durationSec: Number(print.durationSec || 0),
+      startedAt: analyticsText(print.startedAt),
+      firstPrintedAt: analyticsText(print.firstPrintedAt || print.printedAt),
+      entryMode: print.entryMode === 'manual' ? 'manual' : print.entryMode === 'barcode' ? 'barcode' : '',
+      rawItem: print,
+      date: getAnalyticsDate(print.firstPrintedAt || print.printedAt),
     }));
   });
 
@@ -851,11 +859,6 @@ function renderAnalyticsFilters(filters, allItems) {
         { value: 'week', label: 'Last 7 days' },
         { value: 'month', label: 'Last 30 days' },
       ])}
-      ${renderAnalyticsSelect('productType', 'Product', filters.productType, [
-        { value: 'all', label: 'All' },
-        { value: 'laptop', label: 'Laptops' },
-        { value: 'monitor', label: 'Monitors' },
-      ])}
       ${renderAnalyticsSelect('employee', 'Employee', filters.employee, employeeOptions)}
       ${renderAnalyticsSelect('batch', 'Batch', filters.batch, batchOptions)}
       ${renderAnalyticsSelect('brand', 'Brand', filters.brand, brandOptions)}
@@ -871,6 +874,31 @@ function renderAnalyticsFilters(filters, allItems) {
         label: ANALYTICS_STATUS_LABELS[key],
       })))}
       <button class="btn btn-secondary analytics-reset" data-action="analytics_filters_reset" type="button">Reset</button>
+    </div>
+  `;
+}
+
+function renderAnalyticsProductScope(activeScope) {
+  const scopes = [
+    { value: 'all', label: 'Overall', detail: 'Combined output, separate timing' },
+    { value: 'laptop', label: 'Laptops', detail: 'Scan to first label' },
+    { value: 'monitor', label: 'Monitors', detail: `${MONITOR_TIMING_IDLE_MINUTES} min session rule` },
+  ];
+  return `
+    <div class="analytics-product-scope" role="tablist" aria-label="Product analysis">
+      ${scopes.map(scope => `
+        <button
+          class="analytics-product-scope-button ${scope.value === activeScope ? 'active' : ''}"
+          data-action="analytics_product_scope"
+          data-analytics-product-scope="${scope.value}"
+          type="button"
+          role="tab"
+          aria-selected="${scope.value === activeScope ? 'true' : 'false'}"
+        >
+          <strong>${escapeHtml(scope.label)}</strong>
+          <span>${escapeHtml(scope.detail)}</span>
+        </button>
+      `).join('')}
     </div>
   `;
 }
@@ -892,6 +920,134 @@ function getAverageAnalyticsTime(items) {
   const timed = items.filter(item => item.durationSec > 0);
   if (!timed.length) return 0;
   return Math.round(timed.reduce((sum, item) => sum + item.durationSec, 0) / timed.length);
+}
+
+function getAnalyticsPercentile(values, percentile) {
+  const sorted = (values || [])
+    .map(Number)
+    .filter(value => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const position = (sorted.length - 1) * Math.max(0, Math.min(1, percentile));
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return Math.round(sorted[lower]);
+  return Math.round(sorted[lower] + ((sorted[upper] - sorted[lower]) * (position - lower)));
+}
+
+function buildLaptopTimingStats(items) {
+  const completed = (items || []).filter(item => (
+    item.productType === 'laptop' && (item.status === 'graded' || item.status === 'repair')
+  ));
+  const durations = completed.map(item => Number(item.durationSec)).filter(value => Number.isFinite(value) && value > 0);
+  const totalSec = durations.reduce((sum, value) => sum + value, 0);
+  return {
+    total: completed.length,
+    measured: durations.length,
+    coverage: safePercent(durations.length, completed.length),
+    avgSec: durations.length ? Math.round(totalSec / durations.length) : 0,
+    medianSec: getAnalyticsPercentile(durations, 0.5),
+    p90Sec: getAnalyticsPercentile(durations, 0.9),
+    perActiveHour: totalSec > 0 ? Math.round((durations.length / (totalSec / 3600)) * 10) / 10 : 0,
+  };
+}
+
+function inferMonitorEntryMode(item) {
+  if (item.entryMode === 'manual' || item.entryMode === 'barcode') return item.entryMode;
+  const raw = item.rawItem || {};
+  return raw.batchId === 'monitor_manual' || /^monitor_manual_/i.test(item.sticker || '') ? 'manual' : 'barcode';
+}
+
+function buildMonitorTimingStats(items) {
+  const completed = (items || []).filter(item => (
+    item.productType === 'monitor' && (item.status === 'graded' || item.status === 'repair')
+  ));
+  const idleSec = MONITOR_TIMING_IDLE_MS / 1000;
+  const measured = [];
+  let interrupted = 0;
+  let manual = 0;
+  let barcode = 0;
+
+  completed.forEach(item => {
+    if (inferMonitorEntryMode(item) === 'manual') manual++;
+    else barcode++;
+
+    const startMs = Date.parse(item.startedAt || '');
+    const endMs = Date.parse(item.firstPrintedAt || (item.rawItem && item.rawItem.printedAt) || '');
+    const storedDuration = Number(item.durationSec || 0);
+    const durationSec = storedDuration > 0
+      ? storedDuration
+      : Number.isFinite(startMs) && Number.isFinite(endMs) && endMs >= startMs
+        ? Math.max(1, Math.round((endMs - startMs) / 1000))
+        : 0;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || durationSec <= 0) return;
+    if (durationSec > idleSec) {
+      interrupted++;
+      return;
+    }
+    measured.push({
+      item,
+      startMs,
+      endMs,
+      durationSec,
+      employee: item.employeeId || item.employeeName || 'unknown',
+    });
+  });
+
+  const sessions = [];
+  const eventsByEmployee = new Map();
+  measured.forEach(event => {
+    const events = eventsByEmployee.get(event.employee) || [];
+    events.push(event);
+    eventsByEmployee.set(event.employee, events);
+  });
+  eventsByEmployee.forEach(events => {
+    events.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+    let current = null;
+    events.forEach(event => {
+      const sameDay = current && isSameLocalDay(new Date(current.startMs), new Date(event.startMs));
+      const idleGapMs = current ? Math.max(0, event.startMs - current.endMs) : Infinity;
+      if (!current || !sameDay || idleGapMs > MONITOR_TIMING_IDLE_MS) {
+        current = {
+          employee: event.employee,
+          startMs: event.startMs,
+          endMs: event.endMs,
+          units: 1,
+        };
+        sessions.push(current);
+        return;
+      }
+      current.startMs = Math.min(current.startMs, event.startMs);
+      current.endMs = Math.max(current.endMs, event.endMs);
+      current.units += 1;
+    });
+  });
+
+  const totalActiveSec = sessions.reduce(
+    (sum, session) => sum + Math.max(1, Math.round((session.endMs - session.startMs) / 1000)),
+    0
+  );
+  const durations = measured.map(event => event.durationSec);
+  return {
+    total: completed.length,
+    measured: measured.length,
+    coverage: safePercent(measured.length, completed.length),
+    interrupted,
+    manual,
+    barcode,
+    sessions: sessions.length,
+    avgUnitsPerSession: sessions.length ? Math.round((measured.length / sessions.length) * 10) / 10 : 0,
+    activeSec: totalActiveSec,
+    avgActiveSec: measured.length ? Math.round(totalActiveSec / measured.length) : 0,
+    planningSec: measured.length ? Math.round((totalActiveSec / measured.length) / 0.85) : 0,
+    medianCycleSec: getAnalyticsPercentile(durations, 0.5),
+    p90CycleSec: getAnalyticsPercentile(durations, 0.9),
+    perActiveHour: totalActiveSec > 0 ? Math.round((measured.length / (totalActiveSec / 3600)) * 10) / 10 : 0,
+  };
+}
+
+function renderMeasuredTime(value, measured, minimum = 3) {
+  return measured >= minimum ? formatSeconds(value) : '-';
 }
 
 function getAverageBattery(items) {
@@ -1166,19 +1322,16 @@ function renderTrendChart(buckets) {
 function buildEmployeeRows(items) {
   const users = new Map();
   items.filter(item => item.employeeName && (item.status === 'graded' || item.status === 'repair' || item.status === 'label')).forEach(item => {
-    const row = users.get(item.employeeName) || { name: item.employeeName, count: 0, repair: 0, sec: 0, timed: 0, labels: 0 };
+    const row = users.get(item.employeeName) || { name: item.employeeName, count: 0, repair: 0, labels: 0, items: [] };
     row.count++;
     if (item.status === 'repair') row.repair++;
     if (item.status === 'label') row.labels++;
-    if (item.durationSec > 0) {
-      row.sec += item.durationSec;
-      row.timed++;
-    }
+    row.items.push(item);
     users.set(item.employeeName, row);
   });
   return Array.from(users.values())
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'nl-NL'))
-    .slice(0, 7);
+    .sort((a, b) => a.name.localeCompare(b.name, 'nl-NL'))
+    .slice(0, 20);
 }
 
 // Vaste kleur per medewerker, afgeleid van de naam. Bewust op naam en niet op
@@ -1192,28 +1345,42 @@ function getEmployeeColor(name) {
   return EMPLOYEE_COLORS[hash % EMPLOYEE_COLORS.length];
 }
 
-function renderEmployeeTable(rows) {
+function renderEmployeeTable(rows, productScope = 'all') {
   if (!rows.length) return '<div class="empty-analytics">No employee data available yet.</div>';
+  const timingHeader = productScope === 'laptop'
+    ? '<th>Avg. laptop time</th><th>Measured</th>'
+    : productScope === 'monitor'
+      ? '<th>Active monitor time</th><th>Measured</th>'
+      : '<th>Laptop avg.</th><th>Monitor active</th>';
   return `
     <div class="analytics-table-wrap">
       <table class="analytics-table">
         <thead>
-          <tr><th>Employee</th><th>Output</th><th>Avg. time</th><th>X-rate</th></tr>
+          <tr><th>Employee</th><th>Output</th>${timingHeader}<th>X-rate</th></tr>
         </thead>
         <tbody>
-          ${rows.map(row => `
-            <tr>
-              <td>
-                <span class="employee-cell">
-                  <b class="employee-dot" style="background: ${getEmployeeColor(row.name)};" aria-hidden="true"></b>
-                  <span class="employee-meta"><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} label prints` : 'grading'}</span></span>
-                </span>
-              </td>
-              <td>${formatNumber(row.count)}</td>
-              <td>${formatSeconds(row.timed ? row.sec / row.timed : 0)}</td>
-              <td>${safePercent(row.repair, row.count)}%</td>
-            </tr>
-          `).join('')}
+          ${rows.map(row => {
+            const laptop = buildLaptopTimingStats(row.items);
+            const monitor = buildMonitorTimingStats(row.items);
+            const timingCells = productScope === 'laptop'
+              ? `<td>${renderMeasuredTime(laptop.avgSec, laptop.measured)}</td><td>${laptop.measured}/${laptop.total}</td>`
+              : productScope === 'monitor'
+                ? `<td>${renderMeasuredTime(monitor.avgActiveSec, monitor.measured)}</td><td>${monitor.measured}/${monitor.total}</td>`
+                : `<td>${renderMeasuredTime(laptop.avgSec, laptop.measured)}</td><td>${renderMeasuredTime(monitor.avgActiveSec, monitor.measured)}</td>`;
+            return `
+              <tr>
+                <td>
+                  <span class="employee-cell">
+                    <b class="employee-dot" style="background: ${getEmployeeColor(row.name)};" aria-hidden="true"></b>
+                    <span class="employee-meta"><strong>${escapeHtml(row.name)}</strong><span>${row.labels ? `${row.labels} label prints` : 'grading'}</span></span>
+                  </span>
+                </td>
+                <td>${formatNumber(row.count)}</td>
+                ${timingCells}
+                <td>${safePercent(row.repair, row.count)}%</td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -1391,6 +1558,8 @@ async function refreshAnalyticsServerStats() {
       { label: 'Graded today', value: formatNumber(totals.gradedToday || 0) },
       { label: 'Last 7 days', value: formatNumber(totals.gradedLast7Days || 0) },
       { label: 'Graded total (DB)', value: formatNumber(totals.graded || 0) },
+      { label: 'Laptops graded', value: formatNumber(totals.laptopGraded || 0) },
+      { label: 'Monitors graded', value: formatNumber(totals.monitorGraded || 0) },
       { label: 'Laptops in stock', value: formatNumber(totals.laptopsInVoorraad || 0) },
       { label: 'Monitors in stock', value: formatNumber(totals.monitorsInVoorraad || 0) },
       { label: 'Users', value: formatNumber(totals.users || 0) },
@@ -1730,6 +1899,73 @@ function renderPareto(rows, emptyText) {
   `;
 }
 
+function renderProductTimingKpis(productScope, laptop, monitor) {
+  if (productScope === 'laptop') {
+    return `
+      ${renderKpiCard({ label: 'Laptop output', value: formatNumber(laptop.total), sub: `${laptop.measured}/${laptop.total} timed`, tone: 'primary' })}
+      ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(laptop.avgSec), sub: 'scan to successful first label' })}
+      ${renderKpiCard({ label: 'Median time', value: formatSeconds(laptop.medianSec), sub: 'typical laptop, robust to outliers' })}
+      ${renderKpiCard({ label: 'P90 time', value: formatSeconds(laptop.p90Sec), sub: '90% finished within this time' })}
+      ${renderKpiCard({ label: 'Per active hour', value: laptop.perActiveHour ? String(laptop.perActiveHour).replace('.', ',') : '-', sub: 'based on measured grading time' })}
+      ${renderKpiCard({ label: 'Timing coverage', value: `${laptop.coverage}%`, sub: `${laptop.measured} reliable measurements` })}
+    `;
+  }
+  if (productScope === 'monitor') {
+    return `
+      ${renderKpiCard({ label: 'Monitor output', value: formatNumber(monitor.total), sub: `${monitor.measured}/${monitor.total} reliably timed`, tone: 'primary' })}
+      ${renderKpiCard({ label: 'Avg. active monitor time', value: formatSeconds(monitor.avgActiveSec), sub: `sessions split after ${MONITOR_TIMING_IDLE_MINUTES} min inactivity` })}
+      ${renderKpiCard({ label: 'Median app cycle', value: formatSeconds(monitor.medianCycleSec), sub: 'first scan/manual input to first label' })}
+      ${renderKpiCard({ label: 'P90 app cycle', value: formatSeconds(monitor.p90CycleSec), sub: '90% of reliable cycles below this' })}
+      ${renderKpiCard({ label: 'Per active hour', value: monitor.perActiveHour ? String(monitor.perActiveHour).replace('.', ',') : '-', sub: 'completed monitors per measured hour' })}
+      ${renderKpiCard({ label: 'Active sessions', value: formatNumber(monitor.sessions), sub: `${monitor.avgUnitsPerSession || 0} monitors per session` })}
+      ${renderKpiCard({ label: 'Timing coverage', value: `${monitor.coverage}%`, sub: `${monitor.interrupted} interrupted cycles excluded`, tone: monitor.coverage < 70 && monitor.total ? 'warning' : '' })}
+      ${renderKpiCard({ label: 'Entry method', value: `${monitor.manual} / ${monitor.barcode}`, sub: 'manual / barcode' })}
+    `;
+  }
+  return `
+    ${renderKpiCard({ label: 'Laptop output', value: formatNumber(laptop.total), sub: `${laptop.measured} timed`, tone: 'primary' })}
+    ${renderKpiCard({ label: 'Monitor output', value: formatNumber(monitor.total), sub: `${monitor.measured} reliably timed`, tone: 'primary' })}
+    ${renderKpiCard({ label: 'Laptop avg. time', value: formatSeconds(laptop.avgSec), sub: 'scan to successful first label' })}
+    ${renderKpiCard({ label: 'Monitor active time', value: formatSeconds(monitor.avgActiveSec), sub: `separate metric · ${MONITOR_TIMING_IDLE_MINUTES} min idle rule` })}
+  `;
+}
+
+function renderTimingMethodRows(productScope, laptop, monitor) {
+  const rows = [];
+  if (productScope !== 'monitor') {
+    rows.push({
+      title: 'Laptop measurement',
+      sub: 'First scan/grading start to successful first label print.',
+      value: `${laptop.measured}/${laptop.total}`,
+    });
+  }
+  if (productScope !== 'laptop') {
+    rows.push({
+      title: 'Monitor session measurement',
+      sub: `First scan/manual input to last first print; split after ${MONITOR_TIMING_IDLE_MINUTES} min inactivity.`,
+      value: `${monitor.sessions} sessions`,
+    });
+    rows.push({
+      title: 'Reliable monitor coverage',
+      sub: 'Reprints, regrades, old records and interrupted cycles do not affect time.',
+      value: `${monitor.coverage}%`,
+    });
+    rows.push({
+      title: 'Indicative planning time',
+      sub: 'Active average with 15% room for personal time, fatigue and unavoidable delay.',
+      value: formatSeconds(monitor.planningSec),
+    });
+  }
+  if (productScope === 'all') {
+    rows.push({
+      title: 'Overall',
+      sub: 'Outputs are combined; laptop and monitor seconds are deliberately not averaged together.',
+      value: 'separate',
+    });
+  }
+  return renderAnalyticsRows(rows, 'No timing data available yet.');
+}
+
 function renderAnalytics() {
   const isAdmin = isAdminUser();
   const filters = getAnalyticsFilters();
@@ -1741,14 +1977,15 @@ function renderAnalytics() {
   const counts = getAnalyticsCounts(completedItems);
   const totalCompleted = completedItems.length;
   const openCount = countAnalyticsStatus(filteredItems, 'open');
-  const avgTime = getAverageAnalyticsTime(completedItems);
+  const laptopTiming = buildLaptopTimingStats(filteredItems);
+  const monitorTiming = buildMonitorTimingStats(filteredItems);
   const todayCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
   const weekCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
   const completionRate = safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
   const employeeRows = buildEmployeeRows(filteredItems);
   const batchProgressRows = buildBatchProgressRows(filters.productType);
   const trendBuckets = buildTrendBuckets(filteredItems, 7);
-  const supplierComparisonItems = filteredItems.filter(item => item.rawItem).map(item => item.rawItem);
+  const supplierComparisonItems = filteredItems.filter(item => item.source === 'history' && item.rawItem).map(item => item.rawItem);
   const supplierStats = getSupplierComparisonStats(supplierComparisonItems);
   const supplierSummary = supplierStats.summary;
   const upliftAvg = supplierSummary.total ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100 : 0;
@@ -1769,6 +2006,9 @@ function renderAnalytics() {
     : filters.dateRange === 'week' ? 'last 7 days'
       : filters.dateRange === 'month' ? 'last 30 days'
         : 'all data';
+  const productScopeLabel = filters.productType === 'laptop' ? 'laptops'
+    : filters.productType === 'monitor' ? 'monitors'
+      : 'all products';
 
   const overviewTab = `
     <div class="analytics-server-stats" id="analytics-server-stats" data-state="loading">
@@ -1778,10 +2018,10 @@ function renderAnalytics() {
       <div class="analytics-section-head"><h2>Key figures</h2><span>Output, favourability and quality at a glance · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
         ${renderKpiCard({ label: 'Graded total', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
+        ${renderProductTimingKpis(filters.productType, laptopTiming, monitorTiming)}
         ${renderKpiCard({ label: 'Grade uplift Δ', value: supplierSummary.total ? formatSignedNumber(upliftAvg) : '-', sub: supplierSummary.total ? `${formatSignedNumber(supplierSummary.netDelta)} net · ${supplierSummary.improvedPercent}% above supplier` : 'no supplier grades', tone: 'primary' })}
         ${renderKpiCard({ label: 'A/B premium', value: `${premiumYield}%`, sub: `${formatNumber((counts.A || 0) + (counts.B || 0))} of ${formatNumber(premiumBase)} sellable` })}
         ${renderKpiCard({ label: 'Reject / X-rate', value: `${rejectRate}%`, sub: `${formatNumber(counts.D || 0)} not sellable`, tone: (counts.D || 0) ? 'danger' : '', spark: trendBuckets.map(bucket => bucket.repair), sparkColor: '#E12B35' })}
-        ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
         ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
       </div>
     </section>
@@ -1820,9 +2060,9 @@ function renderAnalytics() {
   const throughputTab = `
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Throughput KPIs</h2><span>How fast and by whom · ${rangeLabel}</span></div>
-      <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
+      <div class="analytics-kpi-grid analytics-kpi-grid--auto">
         ${renderKpiCard({ label: 'Output', value: formatNumber(totalCompleted), sub: `${todayCompleted} today · ${weekCompleted} this week`, tone: 'primary', spark: trendBuckets.map(bucket => bucket.value), sparkColor: '#2563EB' })}
-        ${renderKpiCard({ label: 'Avg. grading time', value: formatSeconds(avgTime), sub: `across ${formatNumber(totalCompleted)} gradings` })}
+        ${renderProductTimingKpis(filters.productType, laptopTiming, monitorTiming)}
         ${renderKpiCard({ label: 'Awaiting grading', value: formatNumber(openCount), sub: `${completionRate}% batch completion`, tone: openCount ? 'warning' : '' })}
       </div>
     </section>
@@ -1830,7 +2070,8 @@ function renderAnalytics() {
       <div class="analytics-section-head"><h2>Production &amp; staff</h2><span>Output per day, per employee, and batch progress</span></div>
       <div class="analytics-grid">
         ${renderAnalyticsPanel('Output per day', 'Graded per day; the red part is repair/X. Last 7 days.', renderTrendChart(trendBuckets))}
-        ${renderAnalyticsPanel('Employee performance', 'Output, average time and X-rate per employee.', renderEmployeeTable(employeeRows))}
+        ${renderAnalyticsPanel('Team measurement', 'Alphabetical, not ranked. Time appears after at least 3 reliable measurements.', renderEmployeeTable(employeeRows, filters.productType))}
+        ${renderAnalyticsPanel('Timing method & coverage', 'Definitions and data quality for this selection.', renderTimingMethodRows(filters.productType, laptopTiming, monitorTiming))}
         ${renderAnalyticsPanel('Batch completion (live)', 'Where stock is still open — respects the Product filter only.', renderBatchProgress(batchProgressRows), 'analytics-wide')}
       </div>
     </section>
@@ -1871,13 +2112,14 @@ function renderAnalytics() {
         <div>
           <div class="ops-kicker" style="color: var(--remarkt-red);">Management dashboard</div>
           <h1>Operations &amp; Value Analytics</h1>
-          <p>Steer on batch favourability, output and repair flow — ${rangeLabel}.</p>
+          <p>Steer on quality, output and fair active-time measurement — ${productScopeLabel}, ${rangeLabel}.</p>
         </div>
         <div class="analytics-hero-actions">
           <button class="btn btn-secondary" data-action="history" type="button">Open Full History</button>
           <button class="btn btn-primary" data-action="export_supplier_comparison" data-export-batch="all" type="button">Export Report</button>
         </div>
       </div>
+      ${renderAnalyticsProductScope(filters.productType)}
       ${renderAnalyticsFilters(filters, allItems)}
       ${renderAnalyticsSubTabs(activeTab)}
       ${tabBody}
