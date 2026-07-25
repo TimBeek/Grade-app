@@ -66,9 +66,15 @@ function installLiveUserSync() {
     if (syncInFlight) return;
     syncInFlight = true;
     try {
+      if (typeof STATE !== 'undefined' && STATE.sharedSyncPending && typeof saveSharedDemoState === 'function') {
+        await saveSharedDemoState();
+      }
       // Lichte meta-check; alleen een volledige herlaad als er iets veranderde.
       const changed = await syncSharedStateIfChanged();
       if (changed && !liveRenderWouldDisruptInput()) render();
+      else if (typeof refreshAnalyticsServerStats === 'function' && document.getElementById('manager-live-stats')) {
+        await refreshAnalyticsServerStats();
+      }
     } finally {
       syncInFlight = false;
     }

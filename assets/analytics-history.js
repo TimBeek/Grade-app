@@ -1549,52 +1549,113 @@ function renderRecentActivity(items) {
   `;
 }
 
-// Fetches the authoritative, database-computed KPIs from /api/stats and fills
-// the strip in the analytics hero. Falls back silently when offline or when
-// running from file:// (no shared backend).
+function formatLiveRelativeTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'no activity yet';
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+  if (seconds < 45) return 'just now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)} hr ago`;
+  return date.toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit' });
+}
+
+// Fetches the authoritative, database-computed live pulse from /api/stats.
 async function refreshAnalyticsServerStats() {
   const container = document.getElementById('manager-live-stats');
   if (!container) return;
   if (typeof canUseSharedDemoState === 'function' && !canUseSharedDemoState()) {
     container.setAttribute('data-state', 'offline');
-    container.innerHTML = '<span class="manager-live-label">Local mode · database figures unavailable</span>';
+    container.innerHTML = `
+      <div class="manager-live-status">
+        <span class="manager-live-signal" aria-hidden="true"><i></i></span>
+        <span>
+          <strong>Manager Live</strong>
+          <small>Local mode · database figures unavailable</small>
+        </span>
+      </div>
+    `;
     return;
   }
   try {
     const response = await fetch('/api/stats', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const stats = await response.json();
-    const totals = (stats && stats.totals) || {};
-    const updated = stats && stats.updatedAt ? new Date(stats.updatedAt) : null;
-    const updatedLabel = updated && !Number.isNaN(updated.getTime())
-      ? updated.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
-      : '-';
-    const cells = [
-      { label: 'Graded today', value: formatNumber(totals.gradedToday || 0) },
-      { label: 'Last 7 days', value: formatNumber(totals.gradedLast7Days || 0) },
-      { label: 'Graded total', value: formatNumber(totals.graded || 0) },
-      { label: 'Laptops graded', value: formatNumber(totals.laptopGraded || 0) },
-      { label: 'Monitors graded', value: formatNumber(totals.monitorGraded || 0) },
-      { label: 'Laptops in stock', value: formatNumber(totals.laptopsInVoorraad || 0) },
-      { label: 'Monitors in stock', value: formatNumber(totals.monitorsInVoorraad || 0) },
-      { label: 'Users', value: formatNumber(totals.users || 0) },
-      { label: 'Last update', value: escapeHtml(updatedLabel) },
-    ];
+    const live = (stats && stats.live) || {};
+    const health = live.dataHealth || {};
+    const last = live.lastActivity || null;
+    const activeNames = Array.isArray(live.activeOperatorNames) ? live.activeOperatorNames : [];
+    const pendingLocal = Boolean(typeof STATE !== 'undefined' && STATE.sharedSyncPending);
+    const alertCount = pendingLocal ? 1 : Number(health.digitalGaps || 0);
+    const attentionLabel = pendingLocal
+      ? 'Local sync waiting'
+      : alertCount
+        ? `${alertCount} digital check${alertCount === 1 ? '' : 's'}`
+        : 'Registrations complete';
+    const attentionDetail = pendingLocal
+      ? 'automatic retry active'
+      : alertCount
+        ? `${Number(health.unresolvedGaps || 0)} unresolved · ${Number(health.verifiedGaps || 0)} physically confirmed`
+        : 'no batch gaps detected';
+    const activeDetail = activeNames.length
+      ? activeNames.slice(0, 3).join(', ') + (activeNames.length > 3 ? ` +${activeNames.length - 3}` : '')
+      : 'no activity in the last 30 min';
+    const lastDevice = last && last.device ? last.device : 'No completed device';
+    const lastMeta = last
+      ? `${last.user || 'Unknown'} · ${formatLiveRelativeTime(last.at)}`
+      : 'waiting for first activity';
     container.setAttribute('data-state', 'ready');
+    container.classList.toggle('has-alert', alertCount > 0);
     container.innerHTML = `
-      <span class="manager-live-label">Live operations</span>
+      <div class="manager-live-status">
+        <span class="manager-live-signal" aria-hidden="true"><i></i></span>
+        <span>
+          <strong>Manager Live</strong>
+          <small>Database connected · refreshed now</small>
+        </span>
+      </div>
       <div class="manager-live-cells">
-        ${cells.map(cell => `
-          <div class="manager-live-metric">
-            <strong>${cell.value}</strong>
-            <span>${cell.label}</span>
-          </div>
-        `).join('')}
+        <div class="manager-live-metric manager-live-today">
+          <span>Today</span>
+          <strong>${formatNumber(live.today || 0)}</strong>
+          <small>${formatNumber(live.laptopToday || 0)} laptops · ${formatNumber(live.monitorToday || 0)} monitors</small>
+        </div>
+        <div class="manager-live-metric">
+          <span>Last 60 min</span>
+          <strong>${formatNumber(live.lastHour || 0)}</strong>
+          <small>completed labels</small>
+        </div>
+        <div class="manager-live-metric">
+          <span>Active team · 30 min</span>
+          <strong>${formatNumber(live.activeOperators30m || 0)}</strong>
+          <small title="${escapeHtml(activeDetail)}">${escapeHtml(activeDetail)}</small>
+        </div>
+        <div class="manager-live-metric manager-live-last">
+          <span>Last completed</span>
+          <strong title="${escapeHtml(lastDevice)}">${escapeHtml(lastDevice)}</strong>
+          <small>${escapeHtml(lastMeta)}</small>
+        </div>
+        <button class="manager-live-metric manager-live-attention ${alertCount ? 'is-alert' : 'is-healthy'}" type="button" data-live-open-support>
+          <span>Process control</span>
+          <strong>${escapeHtml(attentionLabel)}</strong>
+          <small>${escapeHtml(attentionDetail)}</small>
+        </button>
       </div>
     `;
+    const supportButton = container.querySelector('[data-live-open-support]');
+    if (supportButton) {
+      supportButton.onclick = () => handleAction('home_support', supportButton);
+    }
   } catch (error) {
     container.setAttribute('data-state', 'error');
-    container.innerHTML = '<span class="manager-live-label">Database figures could not be loaded</span>';
+    container.innerHTML = `
+      <div class="manager-live-status">
+        <span class="manager-live-signal" aria-hidden="true"><i></i></span>
+        <span>
+          <strong>Manager Live</strong>
+          <small>Database figures could not be loaded</small>
+        </span>
+      </div>
+    `;
     if (typeof reportAppWarning === 'function') reportAppWarning('Dashboard statistics could not be loaded', error);
   }
 }

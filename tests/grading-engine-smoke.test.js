@@ -429,6 +429,101 @@ test('lokale monitorimport blijft staan wanneer gedeelde state nieuwer maar leeg
   assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup)', app), /MON-LOCAL-2/);
 });
 
+test('offline grading wordt samengevoegd wanneer een andere pc nieuwere serverdata heeft', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const remote = {
+      version: 1,
+      batches: [],
+      monitorBatches: [],
+      history: [{ id: 'grading_remote', sticker: 'REMOTE-1', grade: 'A' }],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-07-25T10:05:00.000Z'
+    };
+    const local = {
+      version: 1,
+      _clientSyncPending: true,
+      batches: [],
+      monitorBatches: [],
+      history: [{ id: 'grading_offline', sticker: 'OFFLINE-1', grade: 'B' }],
+      labelPrints: [{ sticker: 'OFFLINE-1', batchNummer: 'B1', user_id: 'tim', printedAt: '2026-07-25T10:00:00.000Z' }],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      updatedAt: '2026-07-25T10:00:00.000Z'
+    };
+    const merged = chooseSharedDemoState(remote, local);
+    applySharedDemoState(merged);
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 2);
+  assert.equal(vm.runInContext("Boolean(getLatestHistoryForSticker('OFFLINE-1'))", app), true);
+  assert.equal(vm.runInContext("Boolean(getLatestLabelPrintForSticker('OFFLINE-1'))", app), true);
+});
+
+test('oude lokale historie zonder pending sync overschrijft geen nieuwere serverstate', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    const remote = {
+      history: [{ id: 'grading_remote_only', sticker: 'REMOTE-ONLY' }],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      batches: [],
+      monitorBatches: [],
+      updatedAt: '2026-07-25T11:00:00.000Z'
+    };
+    const staleLocal = {
+      history: [{ id: 'grading_deleted_before', sticker: 'STALE-DELETED' }],
+      labelPrints: [],
+      monitorLabelPrints: [],
+      auditLogs: [],
+      batches: [],
+      monitorBatches: [],
+      updatedAt: '2026-07-25T10:00:00.000Z'
+    };
+    const merged = chooseSharedDemoState(remote, staleLocal);
+    applySharedDemoState(merged);
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.history.length', app), 1);
+  assert.equal(vm.runInContext("STATE.history[0].sticker", app), 'REMOTE-ONLY');
+});
+
+test('fysieke batchbevestiging sluit workflow maar houdt digitale gaten zichtbaar', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    BATCHES.splice(0, BATCHES.length, {
+      id: 'batch_verify',
+      nummer: 'VERIFY',
+      leverancier: 'Supplier',
+      laptops: [
+        { sticker: 'DONE-1', merk: 'Dell', model: 'Latitude', batchId: 'batch_verify', batchNummer: 'VERIFY' },
+        { sticker: 'GAP-1', merk: 'HP', model: 'EliteBook', batchId: 'batch_verify', batchNummer: 'VERIFY' }
+      ],
+      completionReview: {
+        status: 'physically_complete',
+        verifiedAt: '2026-07-25T12:00:00.000Z',
+        verifiedById: 'tim',
+        verifiedByName: 'Tim',
+        verifiedStickers: ['GAP-1']
+      }
+    });
+    STATE.history = [{ id: 'grading_done', sticker: 'DONE-1', grade: 'A' }];
+    rebuildLaptopIndex();
+    rebuildHistoryIndexes();
+  `, app);
+
+  assert.equal(vm.runInContext('openLaptopCount(BATCHES[0])', app), 0);
+  assert.equal(vm.runInContext('getBatchCompletionAudit(BATCHES[0]).digitalGaps.length', app), 1);
+  assert.equal(vm.runInContext('getBatchCompletionAudit(BATCHES[0]).verifiedGaps.length', app), 1);
+  assert.equal(vm.runInContext('getSharedDemoSnapshot().batches[0].completionReview.verifiedStickers[0]', app), 'GAP-1');
+});
+
 test('verwijderde laptop komt niet terug uit een oude lokale batchbackup', () => {
   const app = loadAppSandbox();
 
@@ -3627,6 +3722,7 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'specs').length", app), 1);
   assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label' && log.details.type === 'problems').length", app), 1);
+  assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label').every(log => log.details.outcome === 'confirmed')", app), true);
   assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
 });
 
@@ -3671,6 +3767,8 @@ test('automatisch akkoord print niet via browserfallback bij DYMO-fout', async (
   assert.equal(vm.runInContext('STATE.history.length', app), 0);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'result');
   assert.equal(vm.runInContext('window.__openedPrintWindows.length', app), 0);
+  assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label').length", app), 0);
+  assert.equal(vm.runInContext("STATE.auditLogs.filter(log => log.action === 'print_label_failed').length", app), 1);
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Automatic DYMO printing failed/);
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /not saved/);
 });
@@ -3971,4 +4069,60 @@ test('serverstatistiek telt laptop en monitor apart en overall samen', async () 
   assert.equal(stats.totals.laptopAvgDurationSec, 120);
   assert.equal(stats.totals.monitorAvgActiveSec, 300);
   assert.equal(stats.totals.monitorTimingCoveragePct, 100);
+});
+
+test('manager live pulse toont actuele flow en batch-datakwaliteit', async () => {
+  const { computeStats } = await import('../api/_lib/state-core.mjs');
+  const now = Date.now();
+  const stats = computeStats({
+    users: [{ id: 'tim' }, { id: 'rik' }],
+    batches: [{
+      id: 'batch_live',
+      nummer: 'LIVE',
+      laptops: [
+        { sticker: 'LAP-LIVE-1' },
+        { sticker: 'LAP-GAP-1' },
+        { sticker: 'LAP-GAP-2' },
+      ],
+      completionReview: {
+        status: 'physically_complete',
+        verifiedStickers: ['LAP-GAP-2'],
+      },
+    }],
+    monitorBatches: [],
+    labelPrints: [],
+    history: [{
+      id: `grading_${now - 5 * 60 * 1000}_LAP-LIVE-1`,
+      sticker: 'LAP-LIVE-1',
+      merk: 'Dell',
+      model: 'Latitude',
+      grade: 'A',
+      user_id: 'tim',
+      user_naam: 'Tim',
+      savedAt: new Date(now - 5 * 60 * 1000).toISOString(),
+    }],
+    monitorLabelPrints: [{
+      sticker: 'MON-LIVE-1',
+      batchId: 'monitor_live',
+      deviceName: 'Dell P2422H',
+      grade: 'B',
+      user_id: 'rik',
+      user_naam: 'Rik',
+      printedAt: new Date(now - 10 * 60 * 1000).toISOString(),
+    }],
+    auditLogs: [{
+      action: 'print_label_failed',
+      entityType: 'laptop',
+      entityId: 'LAP-GAP-1',
+      createdAt: new Date(now - 15 * 60 * 1000).toISOString(),
+    }],
+  });
+
+  assert.equal(stats.live.lastHour, 2);
+  assert.equal(stats.live.activeOperators30m, 2);
+  assert.equal(stats.live.lastActivity.sticker, 'LAP-LIVE-1');
+  assert.equal(stats.live.dataHealth.digitalGaps, 2);
+  assert.equal(stats.live.dataHealth.unresolvedGaps, 1);
+  assert.equal(stats.live.dataHealth.verifiedGaps, 1);
+  assert.equal(stats.live.dataHealth.printAttemptGaps, 1);
 });

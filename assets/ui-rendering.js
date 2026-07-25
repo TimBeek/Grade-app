@@ -982,19 +982,21 @@ function getDashboardData() {
   const monitorMaxGradeCount = Math.max(monitorCounts.A, monitorCounts.B, monitorCounts.C, monitorCounts.D, 1);
   const batchRepairStats = typeof getBatchRepairStats === 'function' ? getBatchRepairStats() : {};
   const batchRows = BATCHES.map(batch => {
+    const completionAudit = getBatchCompletionAudit(batch);
     const open = openLaptopCount(batch);
     const total = batch.laptops.length;
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
     const rp = typeof getBatchRepairStatsFor === 'function' ? getBatchRepairStatsFor(batch, batchRepairStats) : { repair: 0, production: 0, reject: 0 };
     const expanded = STATE.expandedBatchStats === batch.id;
+    const auditExpanded = STATE.expandedBatchAudit === batch.id;
     const complete = typeof isBatchComplete === 'function' && isBatchComplete(batch);
     const fresh = typeof isBatchNew === 'function' && isBatchNew(batch);
     return `
       <div class="batch-card${complete ? ' is-complete' : ''}">
         <div class="batch-card-head">
           <div>
-            <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}${complete ? '<span class="batch-badge done">Completed</span>' : ''}${fresh ? '<span class="batch-badge new">New</span>' : ''}</div>
+            <div class="batch-status-title">Batch ${escapeHtml(batch.nummer)}${complete ? `<span class="batch-badge done">${completionAudit.review ? 'Physically complete' : 'Completed'}</span>` : ''}${fresh ? '<span class="batch-badge new">New</span>' : ''}</div>
             <div class="batch-status-meta">${escapeHtml(batch.leverancier)} · added ${escapeHtml(batch.geimporteerd || 'today')}</div>
           </div>
           <div class="batch-status-count"><strong>${open}</strong> open<span class="card-sub">${done}/${total} done</span></div>
@@ -1002,13 +1004,16 @@ function getDashboardData() {
         <div class="batch-chips">
           <span class="batch-chip repair ${rp.repair ? 'has-repair' : ''}"><b>${rp.repair}</b> repair labels</span>
           ${rp.repair ? `<span class="batch-chip bin-prod"><b>${rp.production}</b> production</span><span class="batch-chip bin-reject"><b>${rp.reject}</b> not sellable</span>` : ''}
+          ${completionAudit.digitalGaps.length ? `<span class="batch-chip data-gap"><b>${completionAudit.digitalGaps.length}</b> digital gaps</span>` : '<span class="batch-chip data-ok">Digital trace complete</span>'}
         </div>
         <div class="batch-progress-track"><div class="batch-progress-fill" style="width: ${progress}%;"></div></div>
         <div class="batch-card-actions">
           <button class="batch-mini-btn" data-batch-stats="${escapeHtml(batch.id)}" type="button" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? 'Hide statistics' : 'Statistics'}</button>
+          <button class="batch-mini-btn ${completionAudit.digitalGaps.length ? 'attention' : ''}" data-action="toggle_batch_audit" data-batch-id="${escapeHtml(batch.id)}" type="button" aria-expanded="${auditExpanded ? 'true' : 'false'}">${auditExpanded ? 'Hide check' : `Registration check${completionAudit.digitalGaps.length ? ` (${completionAudit.digitalGaps.length})` : ''}`}</button>
           ${isAdmin ? `<button class="batch-mini-btn danger" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}" type="button">Delete batch</button>` : ''}
         </div>
         ${expanded && typeof renderBatchStatsPanel === 'function' ? renderBatchStatsPanel(getBatchDashboardStats(batch)) : ''}
+        ${auditExpanded ? renderBatchCompletionAuditPanel(batch, completionAudit, isAdmin) : ''}
       </div>
     `;
   }).join('');
@@ -1098,11 +1103,65 @@ function renderGradeMix(counts) {
   `;
 }
 
+function renderBatchCompletionAuditPanel(batch, audit, isAdmin) {
+  const reviewed = Boolean(audit.review);
+  const verifiedAt = reviewed && audit.review.verifiedAt ? new Date(audit.review.verifiedAt) : null;
+  const verifiedLabel = verifiedAt && !Number.isNaN(verifiedAt.getTime())
+    ? verifiedAt.toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+    : '';
+  return `
+    <div class="batch-audit-panel">
+      <div class="batch-audit-head">
+        <div>
+          <span>Registration check</span>
+          <strong>${audit.digitalDone}/${audit.total} digitally traceable</strong>
+        </div>
+        <span class="batch-audit-state ${reviewed ? 'verified' : audit.digitalGaps.length ? 'warning' : 'healthy'}">
+          ${reviewed ? 'Physical 100% confirmed' : audit.digitalGaps.length ? `${audit.digitalGaps.length} to verify` : 'Complete'}
+        </span>
+      </div>
+      ${audit.digitalGaps.length ? `
+        <p>${reviewed
+          ? `All devices were physically confirmed by ${escapeHtml(audit.review.verifiedByName || audit.review.verifiedById || 'manager')}${verifiedLabel ? ` on ${escapeHtml(verifiedLabel)}` : ''}. The devices below still lack a complete digital grading record.`
+          : 'These devices have no complete grading or label record. Check the physical device before closing the batch.'}</p>
+        <div class="batch-audit-summary">
+          <span><b>${audit.digitalGaps.length}</b> digital gaps</span>
+          <span><b>${audit.printAttemptGaps.length}</b> known print attempts</span>
+          <span><b>${audit.unresolvedGaps.length}</b> physically unresolved</span>
+        </div>
+        <div class="batch-audit-devices">
+          ${audit.digitalGaps.map(laptop => {
+            const attempted = getLaptopPrintAttempts(laptop.sticker).length > 0;
+            const verified = isLaptopCompletionVerified(laptop.sticker);
+            return `
+              <div class="batch-audit-device ${attempted ? 'has-attempt' : ''} ${verified ? 'is-verified' : ''}">
+                <strong>${escapeHtml(laptop.sticker)}</strong>
+                <span>${escapeHtml(`${laptop.merk || ''} ${laptop.model || ''}`.trim() || laptop.serial || 'Unknown device')}</span>
+                <small>${attempted ? 'Print attempted, save missing' : verified ? 'Physically confirmed' : 'No digital activity found'}</small>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${isAdmin ? `
+          <div class="batch-audit-actions">
+            ${reviewed
+              ? `<button class="batch-mini-btn" data-action="reopen_batch_completion" data-batch-id="${escapeHtml(batch.id)}" type="button">Remove physical confirmation</button>`
+              : `<button class="btn btn-primary" data-action="verify_batch_completion" data-batch-id="${escapeHtml(batch.id)}" type="button">Confirm physical completion</button>`}
+          </div>
+        ` : ''}
+      ` : '<p>Every device in this batch has a digital grading or label record.</p>'}
+    </div>
+  `;
+}
+
 function renderManagerLiveStrip() {
   if (!isAdminUser()) return '';
   return `
     <div class="manager-live-strip" id="manager-live-stats" data-state="loading" aria-live="polite">
-      <span class="manager-live-label">Loading live operations…</span>
+      <div class="manager-live-status">
+        <span class="manager-live-signal" aria-hidden="true"><i></i></span>
+        <span><strong>Manager Live</strong><small>Connecting to operations…</small></span>
+      </div>
     </div>
   `;
 }

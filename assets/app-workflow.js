@@ -1247,6 +1247,15 @@ async function handleAction(action, el) {
     case 'export_supplier_comparison':
       await exportSupplierComparison(el.dataset.exportBatch || 'all');
       return;
+    case 'toggle_batch_audit':
+      STATE.expandedBatchAudit = STATE.expandedBatchAudit === el.dataset.batchId ? null : el.dataset.batchId;
+      break;
+    case 'verify_batch_completion':
+      await verifyPhysicalBatchCompletion(el.dataset.batchId);
+      return;
+    case 'reopen_batch_completion':
+      await reopenPhysicalBatchCompletion(el.dataset.batchId);
+      return;
     case 'remove_laptop':
       if (!isAdminUser()) return;
       if (confirm(`Delete device ${el.dataset.removeSticker} from the active list?`)) {
@@ -1428,6 +1437,69 @@ async function handleAction(action, el) {
       break;
   }
   render();
+}
+
+function getLaptopBatchById(batchId) {
+  return BATCHES.find(batch => batch && (batch.id === batchId || batch.nummer === batchId)) || null;
+}
+
+async function verifyPhysicalBatchCompletion(batchId) {
+  if (!isAdminUser()) return false;
+  const batch = getLaptopBatchById(batchId);
+  if (!batch) return false;
+  const audit = getBatchCompletionAudit(batch);
+  if (!audit.digitalGaps.length) {
+    setAppMessage('This batch already has a complete digital registration.', 'success');
+    render();
+    return true;
+  }
+  if (typeof confirm === 'function' && !confirm(
+    `Confirm that all ${audit.total} devices in batch ${batch.nummer} are physically graded and labeled?\n\n`
+    + `${audit.digitalGaps.length} devices have no complete digital grading record. They will count as physically complete, but remain visible as data gaps in the batch check and Insights.`
+  )) return false;
+
+  batch.completionReview = {
+    status: 'physically_complete',
+    verifiedAt: new Date().toISOString(),
+    verifiedById: STATE.currentUser && STATE.currentUser.id || '',
+    verifiedByName: STATE.currentUser && STATE.currentUser.naam || '',
+    note: 'Physical completion confirmed; digital grading evidence is incomplete.',
+    verifiedStickers: audit.digitalGaps.map(laptop => normalizeStickerCode(laptop.sticker)),
+  };
+  logAudit('verify_batch_physical_completion', 'batch', batch.id, {
+    total: audit.total,
+    digitalDone: audit.digitalDone,
+    verifiedGaps: audit.digitalGaps.length,
+    printAttempts: audit.printAttemptGaps.length,
+  });
+  const savedLive = await saveSharedDemoState();
+  setAppMessage(savedLive
+    ? `Batch ${batch.nummer} is physically confirmed complete. ${audit.digitalGaps.length} digital gaps remain visible for audit.`
+    : `Batch ${batch.nummer} is confirmed locally. Live synchronization is pending; keep this browser open.`,
+  savedLive ? 'success' : 'warning');
+  render();
+  return savedLive;
+}
+
+async function reopenPhysicalBatchCompletion(batchId) {
+  if (!isAdminUser()) return false;
+  const batch = getLaptopBatchById(batchId);
+  if (!batch || !batch.completionReview) return false;
+  if (typeof confirm === 'function' && !confirm(
+    `Remove the physical completion confirmation for batch ${batch.nummer}? Digitally missing devices will become open again.`
+  )) return false;
+  const previousCount = Array.isArray(batch.completionReview.verifiedStickers)
+    ? batch.completionReview.verifiedStickers.length
+    : 0;
+  delete batch.completionReview;
+  logAudit('reopen_batch_physical_completion', 'batch', batch.id, { previousCount });
+  const savedLive = await saveSharedDemoState();
+  setAppMessage(savedLive
+    ? `Physical completion confirmation removed for batch ${batch.nummer}.`
+    : `The change is stored locally and will be synchronized automatically.`,
+  savedLive ? 'success' : 'warning');
+  render();
+  return savedLive;
 }
 
 function readFormValue(id) {
@@ -2570,9 +2642,10 @@ function saveGrading() {
   };
   STATE.history.push(historyItem);
   GRADED_STICKERS.add(String(l.sticker || ''));
+  GRADED_STICKERS.add(normalizeStickerCode(l.sticker));
   ensureHistorySearchIndex(historyItem);
   logAudit('save_grading', 'laptop', l.sticker, { grade: g.result.eindgrade, score: g.result.score, rulesVersion: GRADING_RULES_VERSION });
-  saveSharedDemoState();
+  const savePromise = saveSharedDemoState();
   
   STATE.currentLaptop = null;
   STATE.currentGrading = null;
@@ -2581,6 +2654,7 @@ function saveGrading() {
   STATE.currentScreen = 'scan';
   STATE.homeTab = 'workflow';
   STATE.scanSearch = '';
+  return savePromise;
 }
 
 async function confirmSaveWithAutomaticLabels() {
@@ -2601,17 +2675,22 @@ async function confirmSaveWithAutomaticLabels() {
     { allowBrowserFallback: false }
   );
   if (!printResult.ok) {
+    await saveSharedDemoState();
     setAppMessage(`Automatic DYMO printing failed. ${printResult.fallbackReason || 'Check DYMO Connect on this PC.'} The grading was not saved, so you can confirm again after DYMO works.`);
     render();
     return;
   }
 
   g.bevestigd = Date.now();
-  saveGrading();
-  setAppMessage(printTypes.length > 1
-    ? 'Specs and repair labels printed. Grading saved.'
-    : 'Specs label printed. Grading saved.',
+  const savedLive = await saveGrading();
+  if (savedLive) {
+    setAppMessage(printTypes.length > 1
+      ? 'Specs and repair labels printed. Grading saved.'
+      : 'Specs label printed. Grading saved.',
     'success');
+  } else {
+    setAppMessage('The label was printed and the grading is secured locally. Live synchronization is pending and will retry automatically.', 'warning');
+  }
   render();
 }
 

@@ -391,6 +391,8 @@ function computeMonitorTimingStats(records) {
 // Server-side authoritative KPIs computed straight from the stored data.
 export function computeStats(state) {
   const history = Array.isArray(state.history) ? state.history : [];
+  const labelPrints = Array.isArray(state.labelPrints) ? state.labelPrints : [];
+  const auditLogs = Array.isArray(state.auditLogs) ? state.auditLogs : [];
   const monitorPrintMap = new Map();
   for (const item of Array.isArray(state.monitorLabelPrints) ? state.monitorLabelPrints : []) {
     const key = monitorLabelPrintKey(item);
@@ -414,9 +416,13 @@ export function computeStats(state) {
   let durationSamples = 0;
   let gradedToday = 0;
   let gradedLast7Days = 0;
+  let laptopToday = 0;
+  let monitorToday = 0;
+  const activity = [];
 
   const todayKey = new Date().toISOString().slice(0, 10);
-  const weekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const nowMs = Date.now();
+  const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
 
   for (const item of history) {
     const grade = String(item.grade || "?").trim() || "?";
@@ -433,8 +439,22 @@ export function computeStats(state) {
     const day = dayKeyFromMs(ms);
     if (day) {
       perDay.set(day, (perDay.get(day) || 0) + 1);
-      if (day === todayKey) gradedToday += 1;
+      if (day === todayKey) {
+        gradedToday += 1;
+        laptopToday += 1;
+      }
       if (ms >= weekAgoMs) gradedLast7Days += 1;
+    }
+    if (ms !== null) {
+      activity.push({
+        at: new Date(ms).toISOString(),
+        ms,
+        kind: "laptop",
+        sticker: String(item.sticker || ""),
+        device: [item.merk, item.model].filter(Boolean).join(" ").trim() || String(item.sticker || "Laptop"),
+        user,
+        grade,
+      });
     }
 
     const duration = Number(item.duurSec);
@@ -456,13 +476,97 @@ export function computeStats(state) {
     const day = dayKeyFromMs(Number.isFinite(ms) ? ms : null);
     if (day) {
       perDay.set(day, (perDay.get(day) || 0) + 1);
-      if (day === todayKey) gradedToday += 1;
+      if (day === todayKey) {
+        gradedToday += 1;
+        monitorToday += 1;
+      }
       if (ms >= weekAgoMs) gradedLast7Days += 1;
+    }
+    if (Number.isFinite(ms)) {
+      activity.push({
+        at: new Date(ms).toISOString(),
+        ms,
+        kind: "monitor",
+        sticker: String(item.sticker || ""),
+        device: String(item.deviceName || [item.merk, item.model].filter(Boolean).join(" ").trim() || item.sticker || "Monitor"),
+        user,
+        grade,
+      });
     }
   }
 
   const monitorTiming = computeMonitorTimingStats(monitorLabelPrints);
   const totalGraded = history.length + monitorLabelPrints.length;
+  activity.sort((a, b) => b.ms - a.ms);
+  const lastHour = activity.filter(item => item.ms >= nowMs - 60 * 60 * 1000);
+  const activeWindow = activity.filter(item => item.ms >= nowMs - 30 * 60 * 1000);
+  const activeOperatorNames = Array.from(new Set(activeWindow.map(item => item.user).filter(Boolean)));
+  const todayActivity = activity.filter(item => dayKeyFromMs(item.ms) === todayKey);
+  const exceptionsToday = todayActivity.filter(item => /^[dx]$/i.test(item.grade) || /repair|reparat/i.test(item.grade)).length;
+
+  const digitallyComplete = new Set();
+  for (const item of history) {
+    const sticker = normalizeStickerCode(item && item.sticker);
+    if (sticker) digitallyComplete.add(sticker);
+  }
+  for (const item of labelPrints) {
+    const sticker = normalizeStickerCode(item && item.sticker);
+    if (sticker) digitallyComplete.add(sticker);
+  }
+
+  const physicallyVerified = new Set();
+  for (const batch of batches) {
+    const review = batch && batch.completionReview;
+    if (!review || review.status !== "physically_complete") continue;
+    for (const sticker of Array.isArray(review.verifiedStickers) ? review.verifiedStickers : []) {
+      const normalized = normalizeStickerCode(sticker);
+      if (normalized) physicallyVerified.add(normalized);
+    }
+  }
+
+  const printAttemptStickers = new Set();
+  for (const item of auditLogs) {
+    if (!item || item.entityType !== "laptop") continue;
+    if (!["print_label", "print_label_failed", "print_label_attempt", "print_label_fallback_opened"].includes(item.action)) continue;
+    const sticker = normalizeStickerCode(item.entityId);
+    if (sticker) printAttemptStickers.add(sticker);
+  }
+
+  let digitalGaps = 0;
+  let unresolvedGaps = 0;
+  let verifiedGaps = 0;
+  let printAttemptGaps = 0;
+  const batchHealth = [];
+  for (const batch of batches) {
+    const laptops = Array.isArray(batch && batch.laptops) ? batch.laptops : [];
+    let batchDigitalGaps = 0;
+    let batchUnresolved = 0;
+    let batchVerified = 0;
+    let batchPrintAttempts = 0;
+    for (const laptop of laptops) {
+      const sticker = normalizeStickerCode(laptop && laptop.sticker);
+      if (!sticker || digitallyComplete.has(sticker)) continue;
+      batchDigitalGaps += 1;
+      if (physicallyVerified.has(sticker)) batchVerified += 1;
+      else batchUnresolved += 1;
+      if (printAttemptStickers.has(sticker)) batchPrintAttempts += 1;
+    }
+    digitalGaps += batchDigitalGaps;
+    unresolvedGaps += batchUnresolved;
+    verifiedGaps += batchVerified;
+    printAttemptGaps += batchPrintAttempts;
+    batchHealth.push({
+      id: String(batch && (batch.id || batch.nummer) || ""),
+      label: String(batch && batch.nummer || "Batch"),
+      total: laptops.length,
+      digitalDone: Math.max(laptops.length - batchDigitalGaps, 0),
+      digitalGaps: batchDigitalGaps,
+      unresolvedGaps: batchUnresolved,
+      verifiedGaps: batchVerified,
+      printAttemptGaps: batchPrintAttempts,
+      physicallyComplete: laptops.length > 0 && batchUnresolved === 0,
+    });
+  }
 
   return {
     generatedAt: new Date().toISOString(),
@@ -488,6 +592,24 @@ export function computeStats(state) {
       monitorTimingCoveragePct: monitorTiming.coveragePct,
       monitorTimingSamples: monitorTiming.measured,
       monitorSessions: monitorTiming.sessions,
+    },
+    live: {
+      today: gradedToday,
+      laptopToday,
+      monitorToday,
+      lastHour: lastHour.length,
+      activeOperators30m: activeOperatorNames.length,
+      activeOperatorNames,
+      exceptionsToday,
+      lastActivity: activity[0] || null,
+      dataHealth: {
+        digitalGaps,
+        unresolvedGaps,
+        verifiedGaps,
+        printAttemptGaps,
+        healthy: digitalGaps === 0,
+      },
+      batchHealth,
     },
     gradeDistribution,
     perUser: topCounts(perUser, 20),

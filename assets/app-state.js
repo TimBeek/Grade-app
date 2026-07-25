@@ -39,6 +39,8 @@ const STATE = {
   contrast: 'normal',
   homeInfoCard: null,
   expandedBatchStats: null,
+  expandedBatchAudit: null,
+  sharedSyncPending: false,
   appMessage: null,
   manualMode: false,
   importResult: null,
@@ -316,6 +318,52 @@ function isLaptopLabelPrinted(sticker) {
     || (laptop && LABEL_PRINTED_STICKERS.has(String(laptop.sticker || '')));
 }
 
+function getBatchCompletionReview(batch) {
+  const review = batch && batch.completionReview;
+  if (!review || review.status !== 'physically_complete') return null;
+  return review;
+}
+
+function isLaptopCompletionVerified(sticker) {
+  const canonical = normalizeStickerCode(getCanonicalSticker(sticker));
+  if (!canonical) return false;
+  return BATCHES.some(batch => {
+    const review = getBatchCompletionReview(batch);
+    return review && (review.verifiedStickers || []).some(value => normalizeStickerCode(value) === canonical);
+  });
+}
+
+function isLaptopWorkflowComplete(sticker) {
+  return isLaptopGraded(sticker) || isLaptopLabelPrinted(sticker) || isLaptopCompletionVerified(sticker);
+}
+
+function getLaptopPrintAttempts(sticker) {
+  const canonical = normalizeStickerCode(getCanonicalSticker(sticker));
+  if (!canonical) return [];
+  return (STATE.auditLogs || []).filter(item => (
+    item && item.entityType === 'laptop'
+    && normalizeStickerCode(item.entityId) === canonical
+    && ['print_label', 'print_label_failed', 'print_label_attempt', 'print_label_fallback_opened'].includes(item.action)
+  ));
+}
+
+function getBatchCompletionAudit(batch) {
+  const laptops = Array.isArray(batch && batch.laptops) ? batch.laptops : [];
+  const digitalGaps = laptops.filter(laptop => !isLaptopGraded(laptop.sticker) && !isLaptopLabelPrinted(laptop.sticker));
+  const verifiedGaps = digitalGaps.filter(laptop => isLaptopCompletionVerified(laptop.sticker));
+  const unresolvedGaps = digitalGaps.filter(laptop => !isLaptopCompletionVerified(laptop.sticker));
+  const printAttemptGaps = digitalGaps.filter(laptop => getLaptopPrintAttempts(laptop.sticker).length > 0);
+  return {
+    total: laptops.length,
+    digitalDone: Math.max(laptops.length - digitalGaps.length, 0),
+    digitalGaps,
+    verifiedGaps,
+    unresolvedGaps,
+    printAttemptGaps,
+    review: getBatchCompletionReview(batch),
+  };
+}
+
 function isKnownSticker(sticker) {
   const value = getCanonicalSticker(sticker);
   if (!value) return false;
@@ -329,11 +377,11 @@ function isKnownMonitorSticker(sticker) {
 }
 
 function openLaptopCount(batch) {
-  return batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker)).length;
+  return batch.laptops.filter(l => !isLaptopWorkflowComplete(l.sticker)).length;
 }
 
 function stickerOpenLaptopCount(batch) {
-  return batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker)).length;
+  return batch.laptops.filter(l => !isLaptopWorkflowComplete(l.sticker)).length;
 }
 
 // Een batch is voltooid zodra élk apparaat gescand en gegradeerd/gelabeld is.
@@ -418,15 +466,15 @@ function canUseSupportUser(user = STATE.currentUser) {
 }
 
 function getOpenLaptops() {
-  return getAllLaptops().filter(laptop => !isLaptopGraded(laptop.sticker) && !isLaptopLabelPrinted(laptop.sticker));
+  return getAllLaptops().filter(laptop => !isLaptopWorkflowComplete(laptop.sticker));
 }
 
 function getStickerOpenLaptops() {
-  return getAllLaptops().filter(laptop => !isLaptopGraded(laptop.sticker) && !isLaptopLabelPrinted(laptop.sticker));
+  return getAllLaptops().filter(laptop => !isLaptopWorkflowComplete(laptop.sticker));
 }
 
 function getCompletedLaptops() {
-  return getAllLaptops().filter(laptop => isLaptopGraded(laptop.sticker) || isLaptopLabelPrinted(laptop.sticker));
+  return getAllLaptops().filter(laptop => isLaptopWorkflowComplete(laptop.sticker));
 }
 
 function getLatestHistoryForSticker(sticker) {
@@ -1763,6 +1811,23 @@ function normalizeSharedLaptop(laptop) {
   };
 }
 
+function normalizeBatchCompletionReview(review, laptopStickers = []) {
+  if (!review || review.status !== 'physically_complete') return null;
+  const validStickers = new Set((laptopStickers || []).map(normalizeStickerCode).filter(Boolean));
+  const verifiedStickers = Array.from(new Set((Array.isArray(review.verifiedStickers) ? review.verifiedStickers : [])
+    .map(normalizeStickerCode)
+    .filter(sticker => sticker && validStickers.has(sticker))));
+  if (!verifiedStickers.length) return null;
+  return {
+    status: 'physically_complete',
+    verifiedAt: sanitizeExternalText(review.verifiedAt, 80),
+    verifiedById: sanitizeExternalText(review.verifiedById, 80),
+    verifiedByName: sanitizeExternalText(review.verifiedByName, 120),
+    note: sanitizeExternalText(review.note || 'Physical completion confirmed; digital grading evidence is incomplete.', 240),
+    verifiedStickers,
+  };
+}
+
 function normalizeSharedBatch(batch) {
   if (!batch || !Array.isArray(batch.laptops)) return null;
   const id = sanitizeExternalText(batch.id || `batch_${batch.nummer || Date.now()}`, 100);
@@ -1771,6 +1836,7 @@ function normalizeSharedBatch(batch) {
     .map(laptop => normalizeSharedLaptop({ ...laptop, batchId: id, batchNummer: nummer }))
     .filter(laptop => laptop && laptop.sticker);
   if (!laptops.length) return null;
+  const completionReview = normalizeBatchCompletionReview(batch.completionReview, laptops.map(laptop => laptop.sticker));
   return {
     id,
     nummer,
@@ -1778,6 +1844,7 @@ function normalizeSharedBatch(batch) {
     geimporteerd: sanitizeExternalText(batch.geimporteerd || new Date().toLocaleDateString('nl-NL'), 40),
     importedAt: sanitizeExternalText(batch.importedAt || '', 40),
     laptops,
+    ...(completionReview ? { completionReview } : {}),
   };
 }
 
@@ -1935,6 +2002,54 @@ function mergeUniqueList(first, second, keyFn) {
   return merged;
 }
 
+function sharedHistoryKey(item) {
+  if (!item || typeof item !== 'object') return '';
+  if (item.id) return String(item.id);
+  return [item.sticker, item.serial, item.batchNummer, item.grade, item.user_id, item.tijd]
+    .map(value => String(value || '')).join('|');
+}
+
+function sharedLabelPrintKey(item) {
+  if (!item || typeof item !== 'object') return '';
+  return [normalizeStickerCode(item.sticker), item.batchNummer, item.user_id, item.printedAt]
+    .map(value => String(value || '')).join('|');
+}
+
+function sharedMonitorLabelPrintKey(item) {
+  if (!item || typeof item !== 'object') return '';
+  return [normalizeStickerCode(item.sticker), item.batchId || item.batchNummer]
+    .map(value => String(value || '')).join('|');
+}
+
+function sharedAuditKey(item) {
+  if (!item || typeof item !== 'object') return '';
+  return [item.action, item.entityType, item.entityId, item.userId, item.createdAt]
+    .map(value => String(value || '')).join('|');
+}
+
+function mergeLaptopBatchesForLoad(primary, secondary) {
+  const batchMap = new Map();
+  (Array.isArray(primary) ? primary : []).forEach(batch => {
+    const id = sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
+    if (!id) return;
+    batchMap.set(id, { ...batch, laptops: Array.isArray(batch.laptops) ? batch.laptops.slice() : [] });
+  });
+  (Array.isArray(secondary) ? secondary : []).forEach(batch => {
+    const id = sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
+    if (!id) return;
+    const current = batchMap.get(id);
+    if (!current) {
+      batchMap.set(id, { ...batch, laptops: Array.isArray(batch.laptops) ? batch.laptops.slice() : [] });
+      return;
+    }
+    current.laptops = mergeUniqueList(current.laptops, batch.laptops, laptop => (
+      laptop && laptop.sticker ? normalizeStickerCode(laptop.sticker) : ''
+    ));
+    if (!current.completionReview && batch.completionReview) current.completionReview = batch.completionReview;
+  });
+  return Array.from(batchMap.values());
+}
+
 function getBatchIdsFromStateBatches(batches) {
   return (Array.isArray(batches) ? batches : [])
     .map(batch => sanitizeExternalText(batch && (batch.id || batch.nummer), 100))
@@ -1980,10 +2095,11 @@ function mergeMonitorBatchesForLoad(primary, secondary) {
   return Array.from(batchMap.values());
 }
 
-function mergeSharedDemoStateForLoad(primary, secondary) {
+function mergeSharedDemoStateForLoad(primary, secondary, options = {}) {
   if (!primary || typeof primary !== 'object') return secondary;
   if (!secondary || typeof secondary !== 'object') return primary;
-  const mergedBatches = primary.batches || [];
+  const mergeOperationalRecords = options.mergeOperationalRecords !== false;
+  const mergedBatches = mergeLaptopBatchesForLoad(primary.batches, secondary.batches);
   const mergedMonitorBatches = mergeMonitorBatchesForLoad(primary.monitorBatches, secondary.monitorBatches);
   const restoreDeletedBatchIds = mergeUniqueList(primary.restoreDeletedBatchIds, secondary.restoreDeletedBatchIds, value => sanitizeExternalText(value, 100));
   const restoreDeletedLaptopStickers = mergeUniqueList(primary.restoreDeletedLaptopStickers, secondary.restoreDeletedLaptopStickers, value => getCanonicalSticker(value));
@@ -1991,10 +2107,18 @@ function mergeSharedDemoStateForLoad(primary, secondary) {
   const restoreDeletedMonitorStickers = mergeUniqueList(primary.restoreDeletedMonitorStickers, secondary.restoreDeletedMonitorStickers, value => getCanonicalMonitorSticker(value));
   return {
     ...primary,
+    batches: mergedBatches,
     monitorBatches: mergedMonitorBatches,
-    monitorLabelPrints: mergeUniqueList(primary.monitorLabelPrints, secondary.monitorLabelPrints, item => (
-      item && item.sticker ? `${getCanonicalMonitorSticker(item.sticker)}:${item.batchId || item.batchNummer || ''}` : ''
-    )),
+    history: mergeOperationalRecords ? mergeUniqueList(primary.history, secondary.history, sharedHistoryKey) : (primary.history || []),
+    labelPrints: mergeOperationalRecords ? mergeUniqueList(primary.labelPrints, secondary.labelPrints, sharedLabelPrintKey) : (primary.labelPrints || []),
+    monitorLabelPrints: mergeOperationalRecords
+      ? mergeUniqueList(primary.monitorLabelPrints, secondary.monitorLabelPrints, sharedMonitorLabelPrintKey)
+      : (primary.monitorLabelPrints || []),
+    auditLogs: (mergeOperationalRecords
+      ? mergeUniqueList(primary.auditLogs, secondary.auditLogs, sharedAuditKey)
+      : (primary.auditLogs || []))
+      .sort((a, b) => Date.parse(a.createdAt || '') - Date.parse(b.createdAt || ''))
+      .slice(-500),
     deletedBatchIds: removeExistingValues(mergeUniqueList(primary.deletedBatchIds, secondary.deletedBatchIds, value => sanitizeExternalText(value, 100)), restoreDeletedBatchIds),
     deletedLaptopStickers: removeExistingValues(mergeUniqueList(primary.deletedLaptopStickers, secondary.deletedLaptopStickers, value => getCanonicalSticker(value)), restoreDeletedLaptopStickers),
     deletedMonitorBatchIds: removeExistingValues(mergeUniqueList(primary.deletedMonitorBatchIds, secondary.deletedMonitorBatchIds, value => sanitizeExternalText(value, 100)), restoreDeletedMonitorBatchIds),
@@ -2024,11 +2148,42 @@ function chooseSharedDemoState(remoteState, localState) {
     secondary = localState;
   }
 
-  const merged = mergeSharedDemoStateForLoad(primary, secondary);
+  const localHasPendingWrites = localState._clientSyncPending === true || STATE.sharedSyncPending === true;
+  const merged = mergeSharedDemoStateForLoad(primary, secondary, {
+    mergeOperationalRecords: localHasPendingWrites || primary === localState,
+  });
   if (Array.isArray(remoteState.users) && remoteState.users.length) {
     merged.users = remoteState.users;
   }
   return merged;
+}
+
+function sharedListHasMissingRecords(remoteList, localList, keyFn) {
+  const remoteKeys = new Set((Array.isArray(remoteList) ? remoteList : []).map(keyFn).filter(Boolean));
+  return (Array.isArray(localList) ? localList : []).some(item => {
+    const key = keyFn(item);
+    return key && !remoteKeys.has(key);
+  });
+}
+
+function sharedStateNeedsRepublish(remoteState, localState) {
+  if (!remoteState || !localState) return false;
+  if (sharedListHasMissingRecords(remoteState.history, localState.history, sharedHistoryKey)) return true;
+  if (sharedListHasMissingRecords(remoteState.labelPrints, localState.labelPrints, sharedLabelPrintKey)) return true;
+  if (sharedListHasMissingRecords(remoteState.monitorLabelPrints, localState.monitorLabelPrints, sharedMonitorLabelPrintKey)) return true;
+
+  const remoteBatches = new Map((remoteState.batches || []).map(batch => [
+    sanitizeExternalText(batch && (batch.id || batch.nummer), 100),
+    batch,
+  ]));
+  return (localState.batches || []).some(batch => {
+    const id = sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
+    const remoteBatch = remoteBatches.get(id);
+    if (!remoteBatch) return Boolean(id);
+    const localReview = JSON.stringify(batch.completionReview || null);
+    const remoteReview = JSON.stringify(remoteBatch.completionReview || null);
+    return localReview !== remoteReview && Boolean(batch.completionReview);
+  });
 }
 
 function getUserStateSignature(users) {
@@ -2153,13 +2308,18 @@ async function syncSharedStateIfChanged() {
 async function loadSharedDemoState() {
   if (!canUseSharedDemoState()) return loadLocalDemoStateBackup();
   const localState = readLocalDemoStateBackup();
+  STATE.sharedSyncPending = Boolean(localState && localState._clientSyncPending === true);
   try {
     const response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
     if (!response.ok) return loadLocalDemoStateBackup();
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
     const state = chooseSharedDemoState(remoteState, localState);
+    const shouldRepublish = STATE.sharedSyncPending && sharedStateNeedsRepublish(remoteState, localState);
     const applied = applySharedDemoState(state);
-    if (applied) saveLocalDemoStateBackup(state);
+    if (applied) {
+      saveLocalDemoStateBackup(state);
+      if (shouldRepublish) await saveSharedDemoState();
+    }
     return applied;
   } catch (error) {
     reportAppWarning('Gedeelde demo-opslag kon niet worden geladen', error);
@@ -2169,7 +2329,8 @@ async function loadSharedDemoState() {
 
 async function saveSharedDemoState(options = {}) {
   const snapshot = getSharedDemoSnapshot(options);
-  saveLocalDemoStateBackup(snapshot);
+  STATE.sharedSyncPending = true;
+  saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
   if (!canUseSharedDemoState()) return false;
   try {
     const response = await fetch(SHARED_DEMO_STATE_URL, {
@@ -2178,6 +2339,8 @@ async function saveSharedDemoState(options = {}) {
       body: await encodeSharedDemoStateBody(snapshot),
     });
     if (response.ok) {
+      STATE.sharedSyncPending = false;
+      saveLocalDemoStateBackup(snapshot);
       // Track our own write so the next live-sync doesn't reload needlessly.
       try {
         const result = await response.json();
