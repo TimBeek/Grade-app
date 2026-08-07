@@ -755,12 +755,25 @@ function getAllLaptops() {
 
 function rebuildLaptopIndex() {
   LAPTOP_INDEX = new Map();
-  getAllLaptops().forEach(laptop => {
+  const laptops = getAllLaptops();
+  // 1) Stickers hebben voorrang (de echte barcode/tag van het apparaat).
+  laptops.forEach(laptop => {
     if (!laptop || !laptop.sticker) return;
     const sticker = String(laptop.sticker);
     const normalized = normalizeStickerCode(sticker);
     LAPTOP_INDEX.set(sticker, laptop);
     if (normalized && !LAPTOP_INDEX.has(normalized)) LAPTOP_INDEX.set(normalized, laptop);
+  });
+  // 2) Serienummer als extra ingang, zodat een gescand SN het apparaat óók vindt
+  //    als de sticker een gegenereerde tag is (lijsten zonder eigen barcode).
+  //    Vult alleen nog vrije sleutels, dus echte stickers blijven leidend.
+  laptops.forEach(laptop => {
+    if (!laptop || !laptop.serial) return;
+    const serial = String(laptop.serial).trim();
+    if (!serial) return;
+    if (!LAPTOP_INDEX.has(serial)) LAPTOP_INDEX.set(serial, laptop);
+    const nserial = normalizeStickerCode(serial);
+    if (nserial && !LAPTOP_INDEX.has(nserial)) LAPTOP_INDEX.set(nserial, laptop);
   });
 }
 

@@ -1598,7 +1598,7 @@ function renderStickerScan() {
         <p class="card-sub" style="margin-bottom: 14px;">Scan the barcode. The specs label prints instantly with a blank grade line.</p>
         <input type="text" class="scan-input" id="scanInput" placeholder="Scan or type barcode..." autofocus inputmode="numeric">
         <div class="scan-tools">
-          <input type="search" class="scan-search" id="scanSearch" placeholder="Search devices by barcode, brand, model or batch..." value="${escapeHtml(query)}">
+          <input type="search" class="scan-search" id="scanSearch" placeholder="Search devices by barcode, serial, brand, model or batch..." value="${escapeHtml(query)}">
         </div>
       </div>
 
@@ -1735,7 +1735,7 @@ function renderScan() {
         <p class="card-sub" style="margin-bottom: 14px;">${labelOnly ? 'Scan a device to print a specs label with a blank grade line. The device is marked complete.' : 'Scan or type the barcode. Graded or labeled devices are removed from this list.'}</p>
         <input type="text" class="scan-input" id="scanInput" placeholder="e.g. 7771198" autofocus inputmode="numeric">
         <div class="scan-tools">
-          <input type="search" class="scan-search" id="scanSearch" placeholder="Search open devices by barcode, brand, model or batch..." value="${escapeHtml(query)}">
+          <input type="search" class="scan-search" id="scanSearch" placeholder="Search open devices by barcode, serial, brand, model or batch..." value="${escapeHtml(query)}">
         </div>
       </div>
       

@@ -1675,7 +1675,7 @@ async function selectLaptop(sticker) {
   const cleanSticker = String(sticker || '').trim();
   const l = getLaptopBySticker(sticker);
   if (!l) {
-    setAppMessage(`Barcode ${cleanSticker || '-'} not found. Search again or use Manual Entry for returns.`);
+    setAppMessage(`Barcode ${cleanSticker || '-'} not found. Search again, or use Manual Entry.`);
     render();
     return;
   }
