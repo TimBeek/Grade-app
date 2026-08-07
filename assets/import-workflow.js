@@ -359,9 +359,9 @@ function importedRowToLaptop(row, sourceName, forcedSticker = '') {
     ram: formatMemory(value(['Memory', 'RAM', 'Geheugen'], 40)),
     ssd: formatStorage(
       value(['Hard Disk Size Overall', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80),
-      // Storage1Size bevat de maat mét eenheid ("512 GB"); die valt in het
-      // drive-argument, want formatStorage haalt daar het formaat uit.
-      value(['Hard Drive Count', 'Hard Disk', 'Drive', 'Storage1Size'], 80)
+      // Storage1Size/StorageSize bevatten de maat mét eenheid ("512 GB"); die valt
+      // in het drive-argument, want formatStorage haalt daar het formaat uit.
+      value(['Hard Drive Count', 'Hard Disk', 'Drive', 'Storage1Size', 'StorageSize'], 80)
     ),
     display: formatDisplay(value(['Display', 'DisplaySize', 'Display Size', 'Screen', 'Scherm'], 80)),
     serial: value(['Serial Number', 'SerialNumber', 'Serial', 'Serienummer', 'Service Tag'], 80),
