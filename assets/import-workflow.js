@@ -137,6 +137,15 @@ function looksLikeDisplaySize(value) {
   return /^\s*\d{1,2}([.,]\d+)?\s*("|''|inch|”)/i.test(normalizeText(value));
 }
 
+// Accu-conditie uit de lijst ("82 %") netjes maken tot "82%". Bare getallen of
+// andere notaties blijven ongemoeid; het label-formatter dekt decimalen af.
+function formatImportedBattery(value) {
+  const clean = normalizeText(value);
+  if (!clean) return '';
+  const pct = clean.match(/^(\d{1,3})(?:[.,]\d+)?\s*%$/);
+  return pct ? `${pct[1]}%` : clean;
+}
+
 // Sommige per-apparaat leverancierslijsten voegen in een deel van de rijen een
 // extra grade-kolom in ná Model, waardoor Manufacturer, SerialNumber en alles
 // erna precies één kolom opschuiven (het serienummer belandt dan in DisplaySize,
@@ -362,7 +371,7 @@ function importedArontoRowToLaptop(row, sourceName) {
     serial: value(['Serial Number', 'Serial', 'Serienummer', 'Service Tag'], 80),
     leverancier_class: value(['Grade', 'Quality class', 'Quality Class', 'Class', 'Klasse'], 40),
     meldingen: value(['Meldingen', 'Remarks', 'Remark', 'Defects', 'Problems', 'Device Errors'], 1000),
-    battery: value(['Battery Capacity', 'Battery', 'Batterij', 'Batterijcapaciteit'], 60),
+    battery: formatImportedBattery(value(['Battery Capacity', 'BatterySize', 'Battery Size', 'Battery Health', 'Battery Wear', 'Battery', 'Batterij', 'Batterijcapaciteit', 'Accu', 'Accuconditie'], 60)),
     gpu,
     labelGpu: getNoteworthyGpu(gpu),
     pallet: value(['Pallet Id', 'Pallet', 'Pallet ID'], 80),
@@ -422,7 +431,7 @@ function importedRowToLaptop(row, sourceName, forcedSticker = '') {
     serial: value(['Serial Number', 'SerialNumber', 'Serial', 'Serienummer', 'Service Tag'], 80),
     leverancier_class: value(['OpticalGrade', 'Quality class', 'Quality Class', 'Class', 'Grade', 'Leverancier Class'], 40),
     meldingen: value(['Device Errors', 'Errors', 'Meldingen', 'Remarks', 'Remark', 'Defects', 'Problems'], 1000),
-    battery: value(['Battery Capacity', 'Battery', 'Batterij', 'Batterijcapaciteit'], 60),
+    battery: formatImportedBattery(value(['Battery Capacity', 'BatterySize', 'Battery Size', 'Battery Health', 'Battery Wear', 'Battery', 'Batterij', 'Batterijcapaciteit', 'Accu', 'Accuconditie'], 60)),
     gpu,
     labelGpu: getNoteworthyGpu(gpu),
     pallet: value(['Pallet Id', 'Pallet', 'Pallet ID'], 80),

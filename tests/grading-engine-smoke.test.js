@@ -1571,24 +1571,27 @@ test('CSV met kale CR-regeleinden (\\r) wordt in aparte rijen gesplitst', () => 
 test('verschoven leveranciersrij (grade ingevoegd na Model) wordt hersteld', () => {
   const app = loadAppSandbox();
   const parsed = app.parseSupplierRows([
-    ['UnitID', 'LotID', 'ProductType', 'Model', 'Manufacturer', 'SerialNumber', 'DisplaySize', 'Resolution', 'OpticalGrade'],
-    ['13843024', '2039', 'LAPTOP', 'PROBOOK 450 G5', 'HP', '5CD8376V56', '15.3"', '1920x1080', 'C'],
-    ['13844417', '2047', 'LAPTOP', 'THINKBOOK 14 G2 ITL', 'C', 'LENOVO', 'MP2526X1', '13.9"', '1920x1080', 'C'],
+    ['UnitID', 'LotID', 'ProductType', 'Model', 'Manufacturer', 'SerialNumber', 'DisplaySize', 'Resolution', 'OpticalGrade', 'BatterySize'],
+    ['13843024', '2039', 'LAPTOP', 'PROBOOK 450 G5', 'HP', '5CD8376V56', '15.3"', '1920x1080', 'C', '82 %'],
+    ['13844417', '2047', 'LAPTOP', 'THINKBOOK 14 G2 ITL', 'C', 'LENOVO', 'MP2526X1', '13.9"', '1920x1080', 'C', '99 %'],
   ], '365_laptos_Ju.csv');
 
   assert.equal(parsed.laptops.length, 2);
-  // Uitgelijnde rij blijft ongemoeid.
+  // Uitgelijnde rij blijft ongemoeid; accu-conditie ("82 %") wordt "82%".
   const aligned = parsed.laptops[0];
   assert.equal(aligned.merk, 'HP');
   assert.equal(aligned.serial, '5CD8376V56');
   assert.equal(aligned.model, 'PROBOOK 450 G5');
-  // Verschoven rij: de ingevoegde grade-cel is verwijderd, alles lijnt weer uit.
+  assert.equal(aligned.battery, '82%');
+  // Verschoven rij: de ingevoegde grade-cel is verwijderd, alles lijnt weer uit —
+  // inclusief de accu-conditie die één kolom te ver stond.
   const shifted = parsed.laptops[1];
   assert.equal(shifted.merk, 'LENOVO', 'merk mag niet de grade-letter zijn');
   assert.equal(shifted.serial, 'MP2526X1', 'serienummer mag niet de merknaam zijn');
   assert.equal(shifted.model, 'THINKBOOK 14 G2 ITL');
   assert.equal(shifted.leverancier_class, 'C');
   assert.equal(shifted.sticker, '13844417');
+  assert.equal(shifted.battery, '99%', 'accu-conditie moet na herstel kloppen');
 });
 
 test('monitor database vult video-in aan op modelmatch zonder batchimport', () => {
