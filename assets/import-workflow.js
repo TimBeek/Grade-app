@@ -105,11 +105,32 @@ function parseDelimitedLine(line, delimiter) {
   return cells;
 }
 
+// Splitst tekst in records en respecteert quotes: \r\n, \r en \n zijn alleen een
+// recordscheiding BUITEN aanhalingstekens. Zo herkennen we een kale \r als
+// regeleinde (Excel voor Mac gebruikt dat) zonder een \r BINNEN een quoted veld
+// (bv. een in-cel regeleinde uit een Mac/CRM-export) kapot te knippen.
+function splitDelimitedRecords(text) {
+  const records = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"' && text[i + 1] === '"') { current += '""'; i++; continue; }
+    if (char === '"') { quoted = !quoted; current += char; continue; }
+    if (!quoted && (char === '\r' || char === '\n')) {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      records.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current) records.push(current);
+  return records;
+}
+
 function readDelimitedRows(text) {
-  // Split ook op een kale CR (\r). Sommige exports (o.a. Excel voor Mac) gebruiken
-  // alleen \r als regeleinde; met alleen \r?\n zou het hele bestand als één regel
-  // worden gelezen en klopt geen enkele kolom meer.
-  const lines = text.split(/\r\n|\r|\n/).filter(line => line.trim());
+  const lines = splitDelimitedRecords(text).filter(line => line.trim());
   if (!lines.length) return [];
   const first = lines[0];
   // Kies het scheidingsteken met de meeste voorkomens in de kopregel, zodat ook
@@ -137,6 +158,14 @@ function looksLikeDisplaySize(value) {
   return /^\s*\d{1,2}([.,]\d+)?\s*("|''|inch|”)/i.test(normalizeText(value));
 }
 
+// Merk-vormig token: begint met een letter en bevat alleen letters/spatie/.&'-,
+// dus géén cijfers (serienummers hebben vrijwel altijd cijfers) en niet zelf een
+// grade-letter. Zo herkennen we ook merken buiten de vaste lijst (bv. Dynabook).
+function looksLikeBrandToken(value) {
+  const clean = normalizeText(value);
+  return /^[A-Za-z][A-Za-z.&' -]{1,24}$/.test(clean) && !/^[A-D]$/i.test(clean);
+}
+
 // Accu-conditie uit de lijst ("82 %") netjes maken tot "82%". Bare getallen of
 // andere notaties blijven ongemoeid; het label-formatter dekt decimalen af.
 function formatImportedBattery(value) {
@@ -156,15 +185,19 @@ function formatImportedBattery(value) {
 // herstellen vanzelf weer op de juiste plek valt.
 function realignShiftedSupplierRow(headers, row) {
   const norm = headers.map(header => normalizeText(header).toLowerCase());
-  const mfgIdx = norm.findIndex(header => /^(manufacturer|fabrikant|merk|brand)$/.test(header));
+  // Mirror de merk-aliassen die importedRowToLaptop gebruikt (BIOS Make, Make,
+  // Brand, Merk, Manufacturer), zodat lijsten met een anders benoemde merk-kolom
+  // ook worden hersteld en niet stiekem lekken.
+  const mfgIdx = norm.findIndex(header => /^(manufacturer|fabrikant|merk|brand|make|bios make)$/.test(header));
   if (mfgIdx < 0 || mfgIdx + 1 >= row.length) return row;
   // Poort: alleen als op de Manufacturer-plek een losse grade-letter staat. Een
   // correct uitgelijnde rij heeft daar een merknaam, dus die raken we nooit aan.
   if (!/^[A-D]$/i.test(normalizeText(row[mfgIdx]))) return row;
-  // Bevestig de +1-verschuiving via twee onafhankelijke signalen: het merk staat
-  // één plek verder, óf de DisplaySize-kolom is één plek opgeschoven (dat laatste
-  // werkt merk-onafhankelijk, ook voor merken buiten de lijst).
-  const brandNext = isKnownLaptopBrand(row[mfgIdx + 1]);
+  // Bevestig de +1-verschuiving: het merk staat één plek verder — herkend via de
+  // merklijst óf als merk-vormig token (zo werkt het ook voor merken buiten de
+  // lijst en bij een unit-loze/lege DisplaySize) — óf de DisplaySize-kolom is één
+  // plek opgeschoven.
+  const brandNext = isKnownLaptopBrand(row[mfgIdx + 1]) || looksLikeBrandToken(row[mfgIdx + 1]);
   const dispIdx = norm.findIndex(header => /^(displaysize|display size|display|schermgrootte|screen size|scherm)$/.test(header));
   const displayShift = dispIdx > mfgIdx && dispIdx + 1 < row.length
     && looksLikeDisplaySize(row[dispIdx + 1]) && !looksLikeDisplaySize(row[dispIdx]);

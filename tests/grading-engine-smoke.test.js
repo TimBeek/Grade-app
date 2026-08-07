@@ -1594,6 +1594,31 @@ test('verschoven leveranciersrij (grade ingevoegd na Model) wordt hersteld', () 
   assert.equal(shifted.battery, '99%', 'accu-conditie moet na herstel kloppen');
 });
 
+test('kale CR binnen een quoted veld splijt de rij niet (CRLF-bestand)', () => {
+  const app = loadAppSandbox();
+  // Een \r als in-cel regeleinde binnen aanhalingstekens mag het record niet
+  // opbreken; alleen \r/\n BUITEN quotes is een recordscheiding.
+  const rows = app.readDelimitedRows('Barcode,Model,Device Errors,SerialNumber\r\nBC001,Latitude 5490,"line1\rline2",SN12345\r\n');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1][2], 'line1 line2');
+  assert.equal(rows[1][3], 'SN12345');
+});
+
+test('verschoven rij met merk buiten de lijst wordt hersteld via merk-vorm', () => {
+  const app = loadAppSandbox();
+  // Onbekend merk (Dynabook) én een lege DisplaySize: alleen het merk-vormige
+  // token bevestigt de verschuiving, en dat moet volstaan.
+  const parsed = app.parseSupplierRows([
+    ['UnitID', 'LotID', 'ProductType', 'Model', 'Manufacturer', 'SerialNumber', 'DisplaySize', 'Resolution', 'OpticalGrade'],
+    ['U1', '2047', 'LAPTOP', 'SATELLITE PRO', 'B', 'DYNABOOK', 'X9Y8Z7', '', '1920x1080', 'B'],
+  ], 'lijst.csv');
+  const l = parsed.laptops[0];
+  assert.equal(l.merk, 'DYNABOOK');
+  assert.equal(l.serial, 'X9Y8Z7', 'serienummer mag niet de merknaam zijn');
+  assert.equal(l.model, 'SATELLITE PRO');
+  assert.equal(l.leverancier_class, 'B');
+});
+
 test('monitor database vult video-in aan op modelmatch zonder batchimport', () => {
   const app = loadAppSandbox();
 
