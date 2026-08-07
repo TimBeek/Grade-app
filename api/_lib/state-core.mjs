@@ -607,7 +607,7 @@ export function computeStats(state) {
         unresolvedGaps,
         verifiedGaps,
         printAttemptGaps,
-        healthy: digitalGaps === 0,
+        healthy: unresolvedGaps === 0,
       },
       batchHealth,
     },

@@ -1585,7 +1585,9 @@ async function refreshAnalyticsServerStats() {
     const last = live.lastActivity || null;
     const activeNames = Array.isArray(live.activeOperatorNames) ? live.activeOperatorNames : [];
     const pendingLocal = Boolean(typeof STATE !== 'undefined' && STATE.sharedSyncPending);
-    const alertCount = pendingLocal ? 1 : Number(health.digitalGaps || 0);
+    // Alleen NIET-bevestigde gaten tellen als aandacht; fysiek bevestigde gaten
+    // zijn afgehandeld en horen de melding niet rood te houden.
+    const alertCount = pendingLocal ? 1 : Number(health.unresolvedGaps || 0);
     const attentionLabel = pendingLocal
       ? 'Local sync waiting'
       : alertCount

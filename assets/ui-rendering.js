@@ -1004,12 +1004,16 @@ function getDashboardData() {
         <div class="batch-chips">
           <span class="batch-chip repair ${rp.repair ? 'has-repair' : ''}"><b>${rp.repair}</b> repair labels</span>
           ${rp.repair ? `<span class="batch-chip bin-prod"><b>${rp.production}</b> production</span><span class="batch-chip bin-reject"><b>${rp.reject}</b> not sellable</span>` : ''}
-          ${completionAudit.digitalGaps.length ? `<span class="batch-chip data-gap"><b>${completionAudit.digitalGaps.length}</b> digital gaps</span>` : '<span class="batch-chip data-ok">Digital trace complete</span>'}
+          ${completionAudit.unresolvedGaps.length
+            ? `<span class="batch-chip data-gap"><b>${completionAudit.unresolvedGaps.length}</b> to verify</span>`
+            : completionAudit.digitalGaps.length
+              ? `<span class="batch-chip data-ok"><b>${completionAudit.digitalGaps.length}</b> gaps · confirmed</span>`
+              : '<span class="batch-chip data-ok">Digital trace complete</span>'}
         </div>
         <div class="batch-progress-track"><div class="batch-progress-fill" style="width: ${progress}%;"></div></div>
         <div class="batch-card-actions">
           <button class="batch-mini-btn" data-batch-stats="${escapeHtml(batch.id)}" type="button" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? 'Hide statistics' : 'Statistics'}</button>
-          <button class="batch-mini-btn ${completionAudit.digitalGaps.length ? 'attention' : ''}" data-action="toggle_batch_audit" data-batch-id="${escapeHtml(batch.id)}" type="button" aria-expanded="${auditExpanded ? 'true' : 'false'}">${auditExpanded ? 'Hide check' : `Registration check${completionAudit.digitalGaps.length ? ` (${completionAudit.digitalGaps.length})` : ''}`}</button>
+          <button class="batch-mini-btn ${completionAudit.unresolvedGaps.length ? 'attention' : ''}" data-action="toggle_batch_audit" data-batch-id="${escapeHtml(batch.id)}" type="button" aria-expanded="${auditExpanded ? 'true' : 'false'}">${auditExpanded ? 'Hide check' : `Registration check${completionAudit.unresolvedGaps.length ? ` (${completionAudit.unresolvedGaps.length})` : ''}`}</button>
           ${isAdmin ? `<button class="batch-mini-btn danger" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}" type="button">Delete batch</button>` : ''}
         </div>
         ${expanded && typeof renderBatchStatsPanel === 'function' ? renderBatchStatsPanel(getBatchDashboardStats(batch)) : ''}

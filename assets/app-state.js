@@ -307,15 +307,22 @@ function isTouchscreenLaptop(laptop = STATE.currentLaptop) {
 function isLaptopGraded(sticker) {
   if (!GRADED_STICKERS.size && STATE.history.length) rebuildHistoryIndexes();
   const laptop = getLaptopBySticker(sticker);
+  // Ook op de genormaliseerde sticker matchen: anders ziet de browser een
+  // vals-positief gat als de batch-sticker voorloopnullen heeft (0012345) maar
+  // het grade-record de gestripte vorm (12345) opsloeg. De server doet dit al.
   return GRADED_STICKERS.has(getCanonicalSticker(sticker))
-    || (laptop && GRADED_STICKERS.has(String(laptop.sticker || '')));
+    || GRADED_STICKERS.has(normalizeStickerCode(getCanonicalSticker(sticker)))
+    || (laptop && GRADED_STICKERS.has(String(laptop.sticker || '')))
+    || (laptop && GRADED_STICKERS.has(normalizeStickerCode(laptop.sticker)));
 }
 
 function isLaptopLabelPrinted(sticker) {
   if (!LABEL_PRINTED_STICKERS.size && STATE.labelPrints.length) rebuildLabelPrintIndexes();
   const laptop = getLaptopBySticker(sticker);
   return LABEL_PRINTED_STICKERS.has(getCanonicalSticker(sticker))
-    || (laptop && LABEL_PRINTED_STICKERS.has(String(laptop.sticker || '')));
+    || LABEL_PRINTED_STICKERS.has(normalizeStickerCode(getCanonicalSticker(sticker)))
+    || (laptop && LABEL_PRINTED_STICKERS.has(String(laptop.sticker || '')))
+    || (laptop && LABEL_PRINTED_STICKERS.has(normalizeStickerCode(laptop.sticker)));
 }
 
 function getBatchCompletionReview(batch) {
