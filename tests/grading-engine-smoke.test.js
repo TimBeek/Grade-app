@@ -1526,6 +1526,37 @@ test('gemengde leveranciersrijen scheiden laptops en monitoren', () => {
   assert.equal(monitor.videoInputs, 'HDMI / DisplayPort / VGA');
 });
 
+test('geaggregeerde voorraadlijst zonder barcode klapt uit per Count met unieke tags', () => {
+  const app = loadAppSandbox();
+
+  const parsed = app.parseSupplierRows([
+    ['Count', 'Model', 'OpticalGrade', 'Manufacturer', 'SerialNumber', 'Keyb', 'DisplaySize', 'Resolution', 'Processor', 'ProcGen', 'RAM', 'Videocard', 'Storage1Size', 'Storage1Type'],
+    ['3', 'LATITUDE 5411', 'B', 'DELL', 'HXD6YD3', 'QWERTY', '13.9"', '1920x1080', 'CORE I7-10850H 2.70 GHZ', 'i7 10th GEN', '16 GB', 'INTEL UHD', '512 GB', 'NVME SSD'],
+    ['1', 'THINKPAD T14', 'A', 'LENOVO', 'PF3B7SQT', 'QWERTY', '14"', '1920x1080', 'CORE I7-1165G7 2.80 GHZ', 'i7 11th GEN', '16 GB', 'IRIS XE', '1 TB', 'NVME SSD'],
+  ], '365_laptos_Ju.csv');
+
+  // Count uitgeklapt: 3 + 1 = 4 fysieke units.
+  assert.equal(parsed.laptops.length, 4);
+  const stickers = parsed.laptops.map(l => l.sticker);
+  assert.equal(new Set(stickers).size, 4, 'stickers moeten uniek zijn');
+  // Meerdere identieke stuks: serienummer + volgnummer. Enkel stuk: puur serienummer.
+  assert.equal(stickers[0], 'HXD6YD3-01');
+  assert.equal(stickers[1], 'HXD6YD3-02');
+  assert.equal(stickers[2], 'HXD6YD3-03');
+  assert.equal(stickers[3], 'PF3B7SQT');
+
+  const first = parsed.laptops[0];
+  assert.equal(first.merk, 'DELL');
+  assert.equal(first.model, 'LATITUDE 5411');
+  assert.equal(first.leverancier_class, 'B');
+  assert.equal(first.ssd, '512GB');
+  assert.equal(first.display, '13.9"');
+  assert.equal(first.keyboard, 'QWERTY');
+  assert.equal(first.serial, 'HXD6YD3');
+  assert.match(first.processor, /10850H/);
+  assert.match(first.processor, /10th/);
+});
+
 test('monitor database vult video-in aan op modelmatch zonder batchimport', () => {
   const app = loadAppSandbox();
 

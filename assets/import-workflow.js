@@ -316,37 +316,51 @@ function importedArontoRowToLaptop(row, sourceName) {
   };
 }
 
-function importedRowToLaptop(row, sourceName) {
-  const arontoLaptop = importedArontoRowToLaptop(row, sourceName);
-  if (arontoLaptop) return arontoLaptop;
+function importedRowToLaptop(row, sourceName, forcedSticker = '') {
+  // forcedSticker wordt gebruikt door de geaggregeerde-lijst-import (Count/Model
+  // zonder barcode), waar we per stuk zelf een unieke tag toekennen.
+  if (!forcedSticker) {
+    const arontoLaptop = importedArontoRowToLaptop(row, sourceName);
+    if (arontoLaptop) return arontoLaptop;
 
-  const productType = classifyImportedProduct(row);
-  if (productType && productType !== 'laptop') return null;
+    const productType = classifyImportedProduct(row);
+    if (productType && productType !== 'laptop') return null;
+  }
 
   const value = (names, maxLength = 160) => sanitizeExternalText(getRowValue(row, names), maxLength);
-  const sticker = value(['Sticker Number', 'Sticker', 'Barcode', 'Asset Tag', 'AssetTag', 'UnitID', 'Unit ID', 'Item Number', 'Item No'], 64).replace(/[^\w.-]/g, '');
+  const sticker = forcedSticker
+    ? sanitizeExternalText(forcedSticker, 64).replace(/[^\w.-]/g, '')
+    : value(['Sticker Number', 'Sticker', 'Barcode', 'Asset Tag', 'AssetTag', 'UnitID', 'Unit ID', 'Item Number', 'Item No'], 64).replace(/[^\w.-]/g, '');
   if (!sticker) return null;
 
   const deviceName = value(['Device Name', 'DeviceName', 'Product Name', 'Omschrijving', 'Description', 'Name'], 180);
   const merk = value(['BIOS Make', 'Make', 'Brand', 'Merk', 'Manufacturer'], 80) || deviceName.split(' ')[0] || '';
   const model = value(['BIOS Model', 'Model', 'BIOS Product Name'], 160) || deviceName.replace(merk, '').trim();
-  const gpu = cleanGpu(value(['[GPU]', 'GPU', 'Graphics', 'Videokaart', 'Video Card'], 180));
+  const gpu = cleanGpu(value(['[GPU]', 'GPU', 'Graphics', 'Videokaart', 'Videocard', 'Video Card'], 180));
   return {
     sticker,
     merk,
     model,
-    processor: value(['Processor Name', 'Processor', 'CPU', 'Processor Type'], 120),
+    processor: formatProcessorWithGeneration(
+      value(['Processor Name', 'Processor', 'CPU', 'Processor Type'], 120),
+      value(['ProcGen', 'Processor Generation', 'Processor Generatie'], 80)
+    ),
     ram: formatMemory(value(['Memory', 'RAM', 'Geheugen'], 40)),
-    ssd: formatStorage(value(['Hard Disk Size Overall', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80), value(['Hard Drive Count', 'Hard Disk', 'Drive'], 80)),
-    display: formatDisplay(value(['Display', 'Screen', 'Scherm'], 80)),
-    serial: value(['Serial Number', 'Serial', 'Serienummer', 'Service Tag'], 80),
-    leverancier_class: value(['Quality class', 'Quality Class', 'Class', 'Grade', 'Leverancier Class'], 40),
+    ssd: formatStorage(
+      value(['Hard Disk Size Overall', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80),
+      // Storage1Size bevat de maat mét eenheid ("512 GB"); die valt in het
+      // drive-argument, want formatStorage haalt daar het formaat uit.
+      value(['Hard Drive Count', 'Hard Disk', 'Drive', 'Storage1Size'], 80)
+    ),
+    display: formatDisplay(value(['Display', 'DisplaySize', 'Display Size', 'Screen', 'Scherm'], 80)),
+    serial: value(['Serial Number', 'SerialNumber', 'Serial', 'Serienummer', 'Service Tag'], 80),
+    leverancier_class: value(['OpticalGrade', 'Quality class', 'Quality Class', 'Class', 'Grade', 'Leverancier Class'], 40),
     meldingen: value(['Device Errors', 'Errors', 'Meldingen', 'Remarks', 'Remark', 'Defects', 'Problems'], 1000),
     battery: value(['Battery Capacity', 'Battery', 'Batterij', 'Batterijcapaciteit'], 60),
     gpu,
     labelGpu: getNoteworthyGpu(gpu),
     pallet: value(['Pallet Id', 'Pallet', 'Pallet ID'], 80),
-    keyboard: value(['Keyboard layout', 'Keyboard', 'Toetsenbord'], 80),
+    keyboard: value(['Keyboard layout', 'Keyboard', 'Keyb', 'Toetsenbord'], 80),
     herkomst: sanitizeExternalText(sourceName, 180),
   };
 }
@@ -396,18 +410,73 @@ function importedRowToMonitor(row, sourceName) {
   return enrichMonitorWithPortDatabase(monitor);
 }
 
+// Geaggregeerde voorraadlijst: rijen als "Count;Model;OpticalGrade;Manufacturer;
+// SerialNumber;..." zonder eigen barcode. Elke rij staat voor `Count` fysieke
+// laptops. We kennen per stuk een unieke tag toe (het serienummer waar mogelijk,
+// met een volgnummer bij meerdere identieke stuks) zodat ze uit de lijst te
+// graden en te labelen zijn.
+const AGGREGATE_BARCODE_HEADERS = ['sticker number', 'sticker', 'barcode', 'asset tag', 'assettag', 'unitid', 'unit id', 'id', 'item number', 'item no'];
+
+function isAggregateSupplierRow(row) {
+  // Alleen als er GEEN barcode-kolom bestaat (niet slechts een lege waarde),
+  // zodat bestaande barcode-lijsten precies hetzelfde blijven werken.
+  const hasBarcodeColumn = Object.keys(row).some(key => AGGREGATE_BARCODE_HEADERS.includes(key.toLowerCase().trim()));
+  if (hasBarcodeColumn) return false;
+  const model = getRowValue(row, ['Model', 'BIOS Model', 'Product Name']);
+  if (!model) return false;
+  const grade = getRowValue(row, ['OpticalGrade', 'Grade', 'Quality class', 'Quality Class', 'Class', 'Klasse']);
+  const processor = getRowValue(row, ['Processor', 'Processor Name', 'CPU']);
+  return Boolean(grade || processor);
+}
+
+function sourceStickerPrefix(sourceName) {
+  const base = String(sourceName || '').replace(/\.[a-z0-9]+$/i, '').replace(/[^A-Za-z0-9]+/g, '').toUpperCase();
+  return (base.slice(0, 6) || 'IMP');
+}
+
+function expandAggregateRowToLaptops(row, sourceName, seqRef) {
+  if (!isAggregateSupplierRow(row)) return null;
+  const countRaw = getRowValue(row, ['Count', 'Aantal', 'Qty', 'Quantity', 'Amount']);
+  const count = Math.min(Math.max(parseInt(countRaw, 10) || 1, 1), 2000);
+  const serialBase = sanitizeExternalText(getRowValue(row, ['SerialNumber', 'Serial Number', 'Serial', 'Serienummer', 'Service Tag']), 60).replace(/[^\w.-]/g, '');
+  const laptops = [];
+  for (let i = 0; i < count; i++) {
+    seqRef.n += 1;
+    let sticker;
+    if (serialBase && count === 1) sticker = serialBase;
+    else if (serialBase) sticker = `${serialBase}-${String(i + 1).padStart(2, '0')}`;
+    else sticker = `${sourceStickerPrefix(sourceName)}-${String(seqRef.n).padStart(5, '0')}`;
+    const laptop = importedRowToLaptop(row, sourceName, sticker);
+    if (laptop) laptops.push(laptop);
+  }
+  return laptops.length ? laptops : null;
+}
+
+// Verwerkt datarijen naar laptops: eerst de normale (barcode-)mapping, en als
+// die niets oplevert de geaggregeerde-lijst-uitklap. Gedeeld door alle
+// parse-paden zodat elk formaat overal hetzelfde werkt.
+function mapDataRowsToLaptops(dataRows, sourceName, toObject) {
+  const seqRef = { n: 0 };
+  const laptops = [];
+  dataRows.forEach(row => {
+    const obj = toObject ? toObject(row) : row;
+    const laptop = importedRowToLaptop(obj, sourceName);
+    if (laptop) { laptops.push(laptop); return; }
+    const expanded = expandAggregateRowToLaptops(obj, sourceName, seqRef);
+    if (expanded) laptops.push(...expanded);
+  });
+  return laptops;
+}
+
 function parseSupplierExcel(xmlText, sourceName) {
   if (shouldSkipSupplierSheet(sourceName)) return { laptops: [], monitors: [], totalRows: 0 };
   const rows = xmlText.trim().startsWith('<') ? readSpreadsheetRows(xmlText) : readDelimitedRows(xmlText);
   if (rows.length < 2) return { laptops: [], totalRows: 0 };
   const headers = rows[0];
   const dataRows = rows.slice(1);
-  const laptops = dataRows
-    .map(row => importedRowToLaptop(rowToObject(headers, row), sourceName))
-    .filter(Boolean);
-  const monitors = dataRows
-    .map(row => importedRowToMonitor(rowToObject(headers, row), sourceName))
-    .filter(Boolean);
+  const objs = dataRows.map(row => rowToObject(headers, row));
+  const laptops = mapDataRowsToLaptops(objs, sourceName, null);
+  const monitors = objs.map(obj => importedRowToMonitor(obj, sourceName)).filter(Boolean);
   return { laptops, monitors, totalRows: dataRows.length };
 }
 
@@ -425,15 +494,9 @@ function parseSupplierRows(rows, sourceName) {
   const headerIndex = cleanRows.findIndex(row => row.some(cell => /^(sticker number|sticker|barcode|assettag|asset tag|unitid|unit id|producttype|product type|model|id|naam|processor model|schermgrootte|werkgeheugen)$/i.test(cell)));
   const headers = cleanRows[headerIndex >= 0 ? headerIndex : 0];
   const dataRows = cleanRows.slice((headerIndex >= 0 ? headerIndex : 0) + 1);
-  const laptops = [];
-  const monitors = [];
-  dataRows.forEach(row => {
-    const obj = rowToObject(headers, row);
-    const laptop = importedRowToLaptop(obj, sourceName);
-    if (laptop) laptops.push(laptop);
-    const monitor = importedRowToMonitor(obj, sourceName);
-    if (monitor) monitors.push(monitor);
-  });
+  const objs = dataRows.map(row => rowToObject(headers, row));
+  const laptops = mapDataRowsToLaptops(objs, sourceName, null);
+  const monitors = objs.map(obj => importedRowToMonitor(obj, sourceName)).filter(Boolean);
   return { laptops, monitors, totalRows: dataRows.length };
 }
 
@@ -493,6 +556,7 @@ async function parseSupplierRowsChunked(rows, sourceName, onProgress) {
   const dataRows = cleanRows.slice((headerIndex >= 0 ? headerIndex : 0) + 1);
   const laptops = [];
   const monitors = [];
+  const seqRef = { n: 0 };
   const mapChunkSize = 250;
   for (let i = 0; i < dataRows.length; i += mapChunkSize) {
     const slice = dataRows.slice(i, i + mapChunkSize);
@@ -500,6 +564,10 @@ async function parseSupplierRowsChunked(rows, sourceName, onProgress) {
       const obj = rowToObject(headers, row);
       const laptop = importedRowToLaptop(obj, sourceName);
       if (laptop) laptops.push(laptop);
+      else {
+        const expanded = expandAggregateRowToLaptops(obj, sourceName, seqRef);
+        if (expanded) laptops.push(...expanded);
+      }
       const monitor = importedRowToMonitor(obj, sourceName);
       if (monitor) monitors.push(monitor);
     });
