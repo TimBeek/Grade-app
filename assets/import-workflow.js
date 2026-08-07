@@ -109,7 +109,14 @@ function readDelimitedRows(text) {
   const lines = text.split(/\r?\n/).filter(line => line.trim());
   if (!lines.length) return [];
   const first = lines[0];
-  const delimiter = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  // Kies het scheidingsteken met de meeste voorkomens in de kopregel, zodat ook
+  // tab-gescheiden Excel-exports (en ; of ,) correct worden gelezen.
+  const counts = {
+    ';': (first.match(/;/g) || []).length,
+    '\t': (first.match(/\t/g) || []).length,
+    ',': (first.match(/,/g) || []).length,
+  };
+  const delimiter = Object.keys(counts).reduce((best, key) => (counts[key] > counts[best] ? key : best), ',');
   return lines.map(line => parseDelimitedLine(line, delimiter));
 }
 
