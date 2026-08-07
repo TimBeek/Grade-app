@@ -106,7 +106,10 @@ function parseDelimitedLine(line, delimiter) {
 }
 
 function readDelimitedRows(text) {
-  const lines = text.split(/\r?\n/).filter(line => line.trim());
+  // Split ook op een kale CR (\r). Sommige exports (o.a. Excel voor Mac) gebruiken
+  // alleen \r als regeleinde; met alleen \r?\n zou het hele bestand als één regel
+  // worden gelezen en klopt geen enkele kolom meer.
+  const lines = text.split(/\r\n|\r|\n/).filter(line => line.trim());
   if (!lines.length) return [];
   const first = lines[0];
   // Kies het scheidingsteken met de meeste voorkomens in de kopregel, zodat ook
@@ -120,10 +123,55 @@ function readDelimitedRows(text) {
   return lines.map(line => parseDelimitedLine(line, delimiter));
 }
 
+const KNOWN_LAPTOP_BRANDS = new Set([
+  'hp', 'lenovo', 'dell', 'microsoft', 'acer', 'asus', 'apple', 'toshiba',
+  'samsung', 'fujitsu', 'lg', 'msi', 'sony', 'panasonic', 'medion', 'razer',
+  'huawei', 'gigabyte', 'gateway', 'packard bell'
+]);
+
+function isKnownLaptopBrand(value) {
+  return KNOWN_LAPTOP_BRANDS.has(normalizeText(value).toLowerCase());
+}
+
+function looksLikeDisplaySize(value) {
+  return /^\s*\d{1,2}([.,]\d+)?\s*("|''|inch|”)/i.test(normalizeText(value));
+}
+
+// Sommige per-apparaat leverancierslijsten voegen in een deel van de rijen een
+// extra grade-kolom in ná Model, waardoor Manufacturer, SerialNumber en alles
+// erna precies één kolom opschuiven (het serienummer belandt dan in DisplaySize,
+// enz.). Detecteer dat op de Manufacturer-positie: staat daar een losse
+// grade-letter en op de plek erna een echt merk, dan is de rij verschoven — haal
+// die ene ingevoegde cel weg zodat de hele rij weer met de kop uitlijnt. De
+// grade blijft behouden: die staat ook in de OpticalGrade-kolom, die na het
+// herstellen vanzelf weer op de juiste plek valt.
+function realignShiftedSupplierRow(headers, row) {
+  const norm = headers.map(header => normalizeText(header).toLowerCase());
+  const mfgIdx = norm.findIndex(header => /^(manufacturer|fabrikant|merk|brand)$/.test(header));
+  if (mfgIdx < 0 || mfgIdx + 1 >= row.length) return row;
+  // Poort: alleen als op de Manufacturer-plek een losse grade-letter staat. Een
+  // correct uitgelijnde rij heeft daar een merknaam, dus die raken we nooit aan.
+  if (!/^[A-D]$/i.test(normalizeText(row[mfgIdx]))) return row;
+  // Bevestig de +1-verschuiving via twee onafhankelijke signalen: het merk staat
+  // één plek verder, óf de DisplaySize-kolom is één plek opgeschoven (dat laatste
+  // werkt merk-onafhankelijk, ook voor merken buiten de lijst).
+  const brandNext = isKnownLaptopBrand(row[mfgIdx + 1]);
+  const dispIdx = norm.findIndex(header => /^(displaysize|display size|display|schermgrootte|screen size|scherm)$/.test(header));
+  const displayShift = dispIdx > mfgIdx && dispIdx + 1 < row.length
+    && looksLikeDisplaySize(row[dispIdx + 1]) && !looksLikeDisplaySize(row[dispIdx]);
+  if (brandNext || displayShift) {
+    const aligned = row.slice();
+    aligned.splice(mfgIdx, 1);
+    return aligned;
+  }
+  return row;
+}
+
 function rowToObject(headers, row) {
+  const aligned = realignShiftedSupplierRow(headers, row);
   const obj = {};
   headers.forEach((header, index) => {
-    obj[normalizeText(header)] = row[index] || '';
+    obj[normalizeText(header)] = aligned[index] || '';
   });
   return obj;
 }

@@ -1557,6 +1557,40 @@ test('geaggregeerde voorraadlijst zonder barcode klapt uit per Count met unieke 
   assert.match(first.processor, /10th/);
 });
 
+test('CSV met kale CR-regeleinden (\\r) wordt in aparte rijen gesplitst', () => {
+  const app = loadAppSandbox();
+  // Excel-voor-Mac exports gebruiken soms alleen \r. Met alleen \r?\n zou dit als
+  // één regel worden gelezen en klopt geen enkele kolom meer.
+  const rows = app.readDelimitedRows('Model;Manufacturer;SerialNumber\rPROBOOK;HP;5CD1\rTHINKPAD;LENOVO;MP2');
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0][0], 'Model');
+  assert.equal(rows[1][2], '5CD1');
+  assert.equal(rows[2][1], 'LENOVO');
+});
+
+test('verschoven leveranciersrij (grade ingevoegd na Model) wordt hersteld', () => {
+  const app = loadAppSandbox();
+  const parsed = app.parseSupplierRows([
+    ['UnitID', 'LotID', 'ProductType', 'Model', 'Manufacturer', 'SerialNumber', 'DisplaySize', 'Resolution', 'OpticalGrade'],
+    ['13843024', '2039', 'LAPTOP', 'PROBOOK 450 G5', 'HP', '5CD8376V56', '15.3"', '1920x1080', 'C'],
+    ['13844417', '2047', 'LAPTOP', 'THINKBOOK 14 G2 ITL', 'C', 'LENOVO', 'MP2526X1', '13.9"', '1920x1080', 'C'],
+  ], '365_laptos_Ju.csv');
+
+  assert.equal(parsed.laptops.length, 2);
+  // Uitgelijnde rij blijft ongemoeid.
+  const aligned = parsed.laptops[0];
+  assert.equal(aligned.merk, 'HP');
+  assert.equal(aligned.serial, '5CD8376V56');
+  assert.equal(aligned.model, 'PROBOOK 450 G5');
+  // Verschoven rij: de ingevoegde grade-cel is verwijderd, alles lijnt weer uit.
+  const shifted = parsed.laptops[1];
+  assert.equal(shifted.merk, 'LENOVO', 'merk mag niet de grade-letter zijn');
+  assert.equal(shifted.serial, 'MP2526X1', 'serienummer mag niet de merknaam zijn');
+  assert.equal(shifted.model, 'THINKBOOK 14 G2 ITL');
+  assert.equal(shifted.leverancier_class, 'C');
+  assert.equal(shifted.sticker, '13844417');
+});
+
 test('monitor database vult video-in aan op modelmatch zonder batchimport', () => {
   const app = loadAppSandbox();
 
