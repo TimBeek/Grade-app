@@ -328,9 +328,20 @@ function importedRowToLaptop(row, sourceName, forcedSticker = '') {
   }
 
   const value = (names, maxLength = 160) => sanitizeExternalText(getRowValue(row, names), maxLength);
-  const sticker = forcedSticker
+  let sticker = forcedSticker
     ? sanitizeExternalText(forcedSticker, 64).replace(/[^\w.-]/g, '')
     : value(['Sticker Number', 'Sticker', 'Barcode', 'Asset Tag', 'AssetTag', 'UnitID', 'Unit ID', 'Item Number', 'Item No'], 64).replace(/[^\w.-]/g, '');
+  // Sommige leveranciers hebben wél een barcode-kolom maar vullen die niet: zij
+  // identificeren/scannen op het serienummer. Als er een barcode-KOLOM bestaat
+  // maar geen waarde is, val dan terug op het serienummer als sticker. (Bestaat
+  // er helemaal geen barcode-kolom, dan blijft dit leeg zodat de
+  // geaggregeerde-lijst-uitklap met Count het overneemt.)
+  if (!sticker && !forcedSticker) {
+    const hasBarcodeColumn = Object.keys(row).some(key => AGGREGATE_BARCODE_HEADERS.includes(key.toLowerCase().trim()));
+    if (hasBarcodeColumn) {
+      sticker = value(['SerialNumber', 'Serial Number', 'Serial', 'Serienummer', 'Service Tag', 'SN', 'S/N'], 64).replace(/[^\w.-]/g, '');
+    }
+  }
   if (!sticker) return null;
 
   const deviceName = value(['Device Name', 'DeviceName', 'Product Name', 'Omschrijving', 'Description', 'Name'], 180);
