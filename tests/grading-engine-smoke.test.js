@@ -1022,6 +1022,82 @@ test('nieuwe gebruiker krijgt startwachtwoord en moet dit bij eerste login wijzi
   assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /mustChangePassword/);
 });
 
+test('gebruikersbeheer: medewerker kan alleen monitoren graden zonder laptoptoegang', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentScreen = 'accounts';
+    const newUserElements = {
+      newUserName: { value: 'Monitor Mens' },
+      newUserId: { value: 'monitormens' },
+    };
+    const groups = [
+      { dataset: { accountScope: 'new', accountGroup: 'manager', value: 'no' } },
+      { dataset: { accountScope: 'new', accountGroup: 'laptopAccess', value: 'none' } },
+      { dataset: { accountScope: 'new', accountGroup: 'monitorAccess', value: 'grade' } },
+      { dataset: { accountScope: 'new', accountGroup: 'voorkeur', value: 'beginner' } },
+    ];
+    document.getElementById = function(id) {
+      if (id === 'app') return __appElement;
+      return newUserElements[id] || null;
+    };
+    document.querySelectorAll = selector => {
+      const match = String(selector).match(/data-account-group="([^"]+)"/);
+      return match ? groups.filter(group => group.dataset.accountGroup === match[1]) : [];
+    };
+  `, app);
+
+  await app.createUserFromForm();
+  const created = vm.runInContext(`USERS.find(user => user.id === 'monitormens')`, app);
+  assert.equal(created.laptopAccess, 'none');
+  assert.equal(created.monitorAccess, 'grade');
+  assert.equal(vm.runInContext(`canGradeUser(USERS.find(user => user.id === 'monitormens'))`, app), false);
+  assert.equal(vm.runInContext(`serializeUser(USERS.find(user => user.id === 'monitormens')).laptopAccess`, app), 'none');
+
+  vm.runInContext(`STATE.currentScreen = 'accounts'; render();`, app);
+  const accountsHtml = app.__appElement.innerHTML;
+  assert.match(accountsHtml, /data-account-scope="monitormens" data-account-group="laptopAccess" data-value="none"/);
+  assert.match(accountsHtml, /Laptops: No access · Monitors: Grade|Laptops: Geen toegang · Monitoren: Grade/);
+
+  // Ingelogd: laptopscherm is niet bereikbaar en de laptop-tab is verborgen.
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'monitormens');
+    STATE.currentScreen = 'scan';
+    render();
+  `, app);
+  assert.equal(vm.runInContext('STATE.currentScreen', app), 'home');
+  assert.equal(vm.runInContext('STATE.homeTab', app), 'monitor');
+  assert.doesNotMatch(app.__appElement.innerHTML, /data-action="home_workflow"/);
+  assert.match(app.__appElement.innerHTML, /data-action="home_monitor_workflow"/);
+
+  // Beide op geen toegang mag niet.
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    groups[1].dataset.value = 'none';
+    groups[2].dataset.value = 'none';
+    newUserElements.newUserId.value = 'niemand';
+  `, app);
+  await app.createUserFromForm();
+  assert.equal(vm.runInContext(`USERS.some(user => user.id === 'niemand')`, app), false);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /laptops or monitors/);
+});
+
+test('bestaande labeler houdt laptop-labels en monitor-grading; server bewaart rechten', async () => {
+  const app = loadAppSandbox();
+  const labeler = vm.runInContext(`normalizeStoredUser({ id: 'lab', naam: 'Lab', rol: 'Stickeraar', passwordHash: 'x' })`, app);
+  assert.equal(labeler.laptopAccess, 'label');
+  assert.equal(labeler.monitorAccess, 'grade');
+  const graderNoMonitor = vm.runInContext(`normalizeStoredUser({ id: 'gr', naam: 'Gr', rol: 'Grader', monitorAccess: 'none', passwordHash: 'x' })`, app);
+  assert.equal(graderNoMonitor.laptopAccess, 'grade');
+  assert.equal(graderNoMonitor.monitorAccess, 'none');
+
+  const { normalizeDemoState } = await import('../api/_lib/state-core.mjs');
+  const state = normalizeDemoState({ users: [{ id: 'mon', naam: 'Mon', rol: 'Stickeraar', laptopAccess: 'none', monitorAccess: 'grade', passwordHash: 'x' }] });
+  assert.equal(state.users[0].laptopAccess, 'none');
+  assert.equal(state.users[0].monitorAccess, 'grade');
+});
+
 test('eerste login verplicht eigen wachtwoord en bewaart dit in gebruikersbeheer', async () => {
   const app = loadAppSandbox();
   const startPassword = vm.runInContext('FIRST_LOGIN_PASSWORD', app);

@@ -2679,3 +2679,29 @@ html[data-theme="dark"] .analytics-filter-bar { background: transparent; }
 
 .completed-batches-toggle { justify-self: start; margin-top: 12px; }
 .completed-batches-list { margin-top: 10px; opacity: 0.92; }
+
+/* Gebruikersbeheer: rechten per apparaat als knoppengroepen. */
+.account-fields { display: grid; gap: 10px; margin: 4px 0 12px; }
+.account-device-fields { display: grid; gap: 10px; }
+.account-field { display: grid; grid-template-columns: minmax(130px, max-content) 1fr; align-items: center; gap: 10px; }
+.account-field-label { font-size: 12px; font-weight: 600; color: var(--remarkt-muted); }
+.seg-group { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border: 1px solid var(--remarkt-line); border-radius: 9px; background: var(--remarkt-soft, #f6f6f4); justify-self: start; }
+.seg-btn { border: 0; background: transparent; color: var(--remarkt-ink); font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 7px; cursor: pointer; min-height: 34px; }
+.seg-btn:hover { background: rgba(0,0,0,0.05); }
+.seg-btn.active { background: var(--remarkt-ink); color: #fff; font-weight: 600; }
+.seg-btn.is-none.active { background: #6B6B66; }
+.seg-btn.is-manager.active { background: var(--remarkt-red); }
+.seg-btn:focus-visible { outline: 2px solid var(--remarkt-red); outline-offset: 1px; }
+.account-manager-note { display: none; margin: 0; font-size: 12px; color: var(--remarkt-muted); }
+.account-fields[data-manager="yes"] .account-device-fields { display: none; }
+.account-fields[data-manager="yes"] .account-manager-note { display: block; }
+.account-fields[data-laptop="label"] .account-mode-field,
+.account-fields[data-laptop="none"] .account-mode-field { display: none; }
+@media (max-width: 560px) {
+  .account-field { grid-template-columns: 1fr; gap: 4px; }
+}
+html[data-theme="dark"] .seg-group { background: #202024; border-color: var(--dark-line); }
+html[data-theme="dark"] .seg-btn { color: #eee; }
+html[data-theme="dark"] .seg-btn:hover { background: rgba(255,255,255,0.08); }
+html[data-theme="dark"] .seg-btn.active { background: #f2f2f2; color: #111; }
+html[data-theme="dark"] .seg-btn.is-manager.active { background: var(--remarkt-red); color: #fff; }

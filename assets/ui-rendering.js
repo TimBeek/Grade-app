@@ -86,6 +86,7 @@ function render() {
   if (STATE.currentScreen === 'login') {
     html = renderLogin();
   } else {
+    if (typeof enforceDeviceAccess === 'function') enforceDeviceAccess();
     html = renderTopbar();
     html += renderAppMessage();
     if (STATE.pendingDecision) html += renderDecisionModal(STATE.pendingDecision);
@@ -1181,8 +1182,8 @@ function renderDashboardTabs(active) {
   if (isStickerUser()) {
     return `
       <div class="dashboard-tabs" role="tablist" aria-label="Dashboard navigation">
-        <button class="dashboard-tab sticker-tab ${active === 'workflow' ? 'active' : ''}" data-action="home_workflow" type="button">${uiIcon('labelPrint')} Laptop Labels</button>
-        <button class="dashboard-tab monitor-tab ${active === 'monitor' ? 'active' : ''}" data-action="home_monitor_workflow" type="button">${uiIcon('monitor')} Monitor Labels</button>
+        ${canAccessLaptops() ? `<button class="dashboard-tab sticker-tab ${active === 'workflow' ? 'active' : ''}" data-action="home_workflow" type="button">${uiIcon('labelPrint')} Laptop Labels</button>` : ''}
+        ${canAccessMonitors() ? `<button class="dashboard-tab monitor-tab ${active === 'monitor' ? 'active' : ''}" data-action="home_monitor_workflow" type="button">${uiIcon('monitor')} Monitor Labels</button>` : ''}
       </div>
     `;
   }
@@ -1190,7 +1191,7 @@ function renderDashboardTabs(active) {
     ${renderManagerLiveStrip()}
     <div class="dashboard-tabs" role="tablist" aria-label="Dashboard navigation">
       <button class="dashboard-tab workflow-tab ${active === 'workflow' ? 'active' : ''}" data-action="home_workflow" type="button">${uiIcon('workflow')} Laptop Workflow</button>
-      <button class="dashboard-tab monitor-tab ${active === 'monitor' ? 'active' : ''}" data-action="home_monitor_workflow" type="button">${uiIcon('monitor')} Monitor Workflow</button>
+      ${canAccessMonitors() ? `<button class="dashboard-tab monitor-tab ${active === 'monitor' ? 'active' : ''}" data-action="home_monitor_workflow" type="button">${uiIcon('monitor')} Monitor Workflow</button>` : ''}
       <button class="dashboard-tab support-tab ${active === 'support' ? 'active' : ''}" data-action="home_support" type="button">${uiIcon('settings')} Operations</button>
       <button class="dashboard-tab analytics-tab ${active === 'analytics' ? 'active' : ''}" data-action="analytics" type="button">${uiIcon('analytics')} Insights</button>
     </div>
@@ -2087,12 +2088,51 @@ function renderAccounts() {
     `;
   }
 
-  const modeOptionsForRole = (role, selected = '') => {
-    const normalizedSelected = normalizeUserPreference(selected, role);
-    return getAllowedUserPreferences(role)
-      .map(option => `<option value="${escapeHtml(option.value)}" ${normalizedSelected === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`)
-      .join('');
+  // Knoppengroep (segmented control). Klikken wisselt alleen de knop; de
+  // waarde wordt pas bij Opslaan / Gebruiker aanmaken gelezen.
+  const optionGroup = (scope, field, label, options, selected) => `
+    <div class="account-field">
+      <span class="account-field-label">${escapeHtml(label)}</span>
+      <div class="seg-group" role="group" aria-label="${escapeHtml(label)}" data-account-scope="${escapeHtml(scope)}" data-account-group="${field}" data-value="${escapeHtml(selected)}">
+        ${options.map(option => `<button type="button" class="seg-btn ${option.tone || ''} ${option.value === selected ? 'active' : ''}" data-action="set_account_option" data-value="${escapeHtml(option.value)}" aria-pressed="${option.value === selected ? 'true' : 'false'}">${escapeHtml(option.label)}</button>`).join('')}
+      </div>
+    </div>
+  `;
+  const accessFields = (scope, user) => {
+    const isManager = normalizeUserRole(user.rol) === 'Manager';
+    const laptopAccess = getUserLaptopAccess(user);
+    const monitorAccess = getUserMonitorAccess(user);
+    const mode = user.voorkeur === 'expert' ? 'expert' : 'beginner';
+    return `
+      <div class="account-fields" data-account-scope-root="${escapeHtml(scope)}" data-manager="${isManager ? 'yes' : 'no'}" data-laptop="${laptopAccess}">
+        ${optionGroup(scope, 'manager', 'Access level', [
+          { value: 'no', label: 'Employee' },
+          { value: 'yes', label: 'Manager', tone: 'is-manager' },
+        ], isManager ? 'yes' : 'no')}
+        <div class="account-device-fields">
+          ${optionGroup(scope, 'laptopAccess', 'Laptops', [
+            { value: 'grade', label: 'Grade' },
+            { value: 'label', label: 'Labels only' },
+            { value: 'none', label: 'No access', tone: 'is-none' },
+          ], laptopAccess)}
+          ${optionGroup(scope, 'monitorAccess', 'Monitors', [
+            { value: 'grade', label: 'Grade' },
+            { value: 'none', label: 'No access', tone: 'is-none' },
+          ], monitorAccess)}
+          <div class="account-mode-field">
+            ${optionGroup(scope, 'voorkeur', 'Laptop grading mode', [
+              { value: 'beginner', label: 'Guided' },
+              { value: 'expert', label: 'Expert' },
+            ], mode)}
+          </div>
+        </div>
+        <p class="account-manager-note">Managers can grade laptops and monitors and manage users.</p>
+      </div>
+    `;
   };
+  const accessSummary = user => normalizeUserRole(user.rol) === 'Manager'
+    ? 'Manager · all access'
+    : `Laptops: ${displayLaptopAccess(getUserLaptopAccess(user))} · Monitors: ${displayMonitorAccess(getUserMonitorAccess(user))}${getUserLaptopAccess(user) === 'grade' ? ` · ${displayUserPreference(user.voorkeur)}` : ''}`;
   return `
     <div class="screen" style="max-width: 1100px;">
       <div class="card">
@@ -2114,22 +2154,7 @@ function renderAccounts() {
               <input class="form-input" id="newUserId" placeholder="e.g. first name">
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Role</label>
-              <select class="form-input" id="newUserRole">
-                <option value="Grader">Grader</option>
-                <option value="Stickeraar">Labeler</option>
-                <option value="Manager">Manager</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Default mode</label>
-              <select class="form-input" id="newUserMode">
-                ${modeOptionsForRole('Grader', 'beginner')}
-              </select>
-            </div>
-          </div>
+          ${accessFields('new', { rol: 'Grader', laptopAccess: 'grade', monitorAccess: 'grade', voorkeur: 'beginner' })}
           <button class="btn btn-primary" data-action="create_user">Create User</button>
         </div>
 
@@ -2140,18 +2165,9 @@ function renderAccounts() {
               <div class="account-row">
                 <div>
                   <strong>${escapeHtml(u.naam)}</strong>
-                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(displayUserRole(u.rol))} · ${escapeHtml(displayUserPreference(u.voorkeur))} · ${u.mustChangePassword ? 'must set password' : 'own password active'}</div>
+                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(accessSummary(u))} · ${u.mustChangePassword ? 'must set password' : 'own password active'}</div>
                 </div>
-                <div class="form-row">
-                  <select class="small-select" data-account-role="${escapeHtml(u.id)}">
-                    <option value="Grader" ${normalizeUserRole(u.rol) === 'Grader' ? 'selected' : ''}>Grader</option>
-                    <option value="Stickeraar" ${normalizeUserRole(u.rol) === 'Stickeraar' ? 'selected' : ''}>Labeler</option>
-                    <option value="Manager" ${u.rol === 'Manager' ? 'selected' : ''}>Manager</option>
-                  </select>
-                  <select class="small-select" data-account-mode="${escapeHtml(u.id)}">
-                    ${modeOptionsForRole(u.rol, u.voorkeur)}
-                  </select>
-                </div>
+                ${accessFields(u.id, u)}
                 <div class="account-actions">
                   <button class="btn btn-secondary" data-action="update_user" data-user-id="${escapeHtml(u.id)}">Save</button>
                   <button class="btn btn-secondary" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}">Reset password</button>

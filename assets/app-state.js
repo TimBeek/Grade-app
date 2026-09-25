@@ -456,17 +456,97 @@ function normalizeUserPreference(value, role) {
   return allowed.includes(value) ? value : allowed[0];
 }
 
+// Rechten per apparaatsoort. Laptops: graden, alleen labels of geen toegang.
+// Monitoren: graden of geen toegang. Managers hebben altijd alles. Oudere
+// accounts zonder deze velden volgen hun rol (Labeler = laptop alleen labels).
+const LAPTOP_ACCESS_VALUES = ['grade', 'label', 'none'];
+const MONITOR_ACCESS_VALUES = ['grade', 'none'];
+
+function normalizeLaptopAccess(value, role) {
+  if (normalizeUserRole(role) === 'Manager') return 'grade';
+  if (LAPTOP_ACCESS_VALUES.includes(value)) return value;
+  return normalizeUserRole(role) === 'Stickeraar' ? 'label' : 'grade';
+}
+
+function normalizeMonitorAccess(value, role) {
+  if (normalizeUserRole(role) === 'Manager') return 'grade';
+  return MONITOR_ACCESS_VALUES.includes(value) ? value : 'grade';
+}
+
+function getUserLaptopAccess(user = STATE.currentUser) {
+  if (!user) return 'none';
+  return normalizeLaptopAccess(user.laptopAccess, user.rol);
+}
+
+function getUserMonitorAccess(user = STATE.currentUser) {
+  if (!user) return 'none';
+  return normalizeMonitorAccess(user.monitorAccess, user.rol);
+}
+
+function canAccessLaptops(user = STATE.currentUser) {
+  return getUserLaptopAccess(user) !== 'none';
+}
+
+function canAccessMonitors(user = STATE.currentUser) {
+  return getUserMonitorAccess(user) !== 'none';
+}
+
+// Rol volgt uit de laptoprechten, zodat de bestaande labeler-flows blijven werken.
+function roleForAccess(isManager, laptopAccess) {
+  if (isManager) return 'Manager';
+  return laptopAccess === 'grade' ? 'Grader' : 'Stickeraar';
+}
+
+function displayLaptopAccess(value) {
+  if (value === 'label') return 'Labels only';
+  if (value === 'none') return 'No access';
+  return 'Grade';
+}
+
+function displayMonitorAccess(value) {
+  return value === 'none' ? 'No access' : 'Grade';
+}
+
 function isStickerUser(user = STATE.currentUser) {
-  return normalizeUserRole(user && user.rol) === 'Stickeraar';
+  if (!user || normalizeUserRole(user.rol) === 'Manager') return false;
+  return getUserLaptopAccess(user) !== 'grade';
 }
 
 function canGradeUser(user = STATE.currentUser) {
-  return ['Manager', 'Grader'].includes(normalizeUserRole(user && user.rol));
+  return getUserLaptopAccess(user) === 'grade';
 }
 
 function canUseExpertMode(user = STATE.currentUser) {
   const role = normalizeUserRole(user && user.rol);
-  return role === 'Manager' || (role === 'Grader' && user && user.voorkeur === 'expert');
+  return role === 'Manager' || (canGradeUser(user) && user && user.voorkeur === 'expert');
+}
+
+// Houdt de gebruiker weg van schermen waar hij geen rechten voor heeft
+// (bv. monitor-grader zonder laptoptoegang komt direct in de monitorflow).
+const LAPTOP_SCREENS = ['scan', 'sticker_scan', 'manual', 'test_start', 'laptop_info', 'grading_beginner', 'grading_expert', 'result'];
+const MONITOR_SCREENS = ['monitor_label_scan', 'monitor_manual'];
+
+function enforceDeviceAccess() {
+  const user = STATE.currentUser;
+  if (!user) return;
+  if (!canAccessLaptops(user)) {
+    if (LAPTOP_SCREENS.includes(STATE.currentScreen)) {
+      STATE.currentScreen = 'home';
+      STATE.currentLaptop = null;
+      STATE.currentGrading = null;
+      STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
+    }
+    if (STATE.currentScreen === 'home' && STATE.homeTab !== 'monitor' && STATE.homeTab !== 'support') STATE.homeTab = 'monitor';
+  }
+  if (!canAccessMonitors(user)) {
+    if (MONITOR_SCREENS.includes(STATE.currentScreen)) {
+      STATE.currentScreen = 'home';
+      STATE.currentMonitor = null;
+      STATE.monitorReprintPrompt = null;
+    }
+    if (STATE.currentScreen === 'home' && STATE.homeTab === 'monitor') STATE.homeTab = 'workflow';
+  }
 }
 
 function canUseSupportUser(user = STATE.currentUser) {
@@ -651,12 +731,17 @@ function applyContrastPreference() {
 
 function normalizeStoredUser(user) {
   if (!user || !user.id || !user.naam || !user.passwordHash) return null;
+  const laptopAccess = normalizeLaptopAccess(user.laptopAccess, user.rol);
+  const monitorAccess = normalizeMonitorAccess(user.monitorAccess, user.rol);
+  const rol = roleForAccess(normalizeUserRole(user.rol) === 'Manager', laptopAccess);
   return {
     id: normalizeText(user.id).toLowerCase().replace(/[^a-z0-9_-]/g, ''),
     naam: sanitizeExternalText(user.naam, 80),
-    rol: normalizeUserRole(user.rol),
+    rol,
+    laptopAccess,
+    monitorAccess,
     initialen: sanitizeExternalText(user.initialen || initialsFromName(user.naam), 4),
-    voorkeur: normalizeUserPreference(user.voorkeur, user.rol),
+    voorkeur: normalizeUserPreference(user.voorkeur, rol),
     passwordHash: String(user.passwordHash),
     mustChangePassword: user.mustChangePassword === true,
     passwordUpdatedAt: sanitizeExternalText(user.passwordUpdatedAt, 40),
@@ -668,6 +753,8 @@ function serializeUser(user) {
     id: user.id,
     naam: user.naam,
     rol: user.rol,
+    laptopAccess: getUserLaptopAccess(user),
+    monitorAccess: getUserMonitorAccess(user),
     initialen: user.initialen,
     voorkeur: user.voorkeur,
     passwordHash: user.passwordHash,

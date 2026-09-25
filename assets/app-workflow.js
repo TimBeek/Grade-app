@@ -1187,6 +1187,9 @@ async function handleAction(action, el) {
     case 'change_own_password':
       await changeOwnPassword();
       return;
+    case 'set_account_option':
+      selectAccountOption(el);
+      return;
     case 'create_user':
       await createUserFromForm();
       return;
@@ -2236,12 +2239,56 @@ async function changeOwnPassword() {
   render();
 }
 
+// Knoppengroep in gebruikersbeheer: alleen de actieve knop wisselen (geen
+// render, zodat getypte namen in het formulier blijven staan).
+function selectAccountOption(button) {
+  const group = button && button.closest('[data-account-group]');
+  if (!group) return;
+  group.dataset.value = button.dataset.value;
+  group.querySelectorAll('[data-action="set_account_option"]').forEach(option => {
+    const active = option === button;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  const root = group.closest('[data-account-scope-root]');
+  if (root && group.dataset.accountGroup === 'manager') root.dataset.manager = button.dataset.value;
+  if (root && group.dataset.accountGroup === 'laptopAccess') root.dataset.laptop = button.dataset.value;
+}
+
+function readAccountOption(scope, field, fallback) {
+  const groups = Array.from(document.querySelectorAll(`[data-account-group="${field}"]`));
+  const group = groups.find(item => item.dataset.accountScope === scope);
+  return group && group.dataset.value ? group.dataset.value : fallback;
+}
+
+// Leest rechten uit de knoppen en geeft een consistente set terug.
+function readAccountAccess(scope, user = {}) {
+  const isManager = readAccountOption(scope, 'manager', normalizeUserRole(user.rol) === 'Manager' ? 'yes' : 'no') === 'yes';
+  const laptopAccess = normalizeLaptopAccess(readAccountOption(scope, 'laptopAccess', getUserLaptopAccess(user)), isManager ? 'Manager' : 'Grader');
+  const monitorAccess = normalizeMonitorAccess(readAccountOption(scope, 'monitorAccess', getUserMonitorAccess(user)), isManager ? 'Manager' : 'Grader');
+  const rol = roleForAccess(isManager, laptopAccess);
+  const voorkeur = normalizeUserPreference(readAccountOption(scope, 'voorkeur', user.voorkeur || 'beginner'), rol);
+  return { rol, laptopAccess, monitorAccess, voorkeur };
+}
+
+function accountAccessError(access) {
+  if (access.rol !== 'Manager' && access.laptopAccess === 'none' && access.monitorAccess === 'none') {
+    return 'Give access to laptops or monitors (or both).';
+  }
+  return '';
+}
+
 async function createUserFromForm() {
   if (!isAdminUser()) return;
   const naam = normalizeText(document.getElementById('newUserName').value);
   const id = normalizeText(document.getElementById('newUserId').value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  const rol = normalizeUserRole(document.getElementById('newUserRole').value);
-  const voorkeur = normalizeUserPreference(document.getElementById('newUserMode').value, rol);
+  const access = readAccountAccess('new', { rol: 'Grader', voorkeur: 'beginner' });
+  const { rol, laptopAccess, monitorAccess, voorkeur } = access;
+  if (accountAccessError(access)) {
+    setAppMessage(accountAccessError(access));
+    render();
+    return;
+  }
   if (!naam || !id) {
     setAppMessage('Name and login ID are required.');
     render();
@@ -2257,6 +2304,8 @@ async function createUserFromForm() {
     id,
     naam: sanitizeExternalText(naam, 80),
     rol,
+    laptopAccess,
+    monitorAccess,
     initialen: initialsFromName(naam),
     voorkeur,
     passwordHash,
@@ -2264,7 +2313,7 @@ async function createUserFromForm() {
     passwordUpdatedAt: '',
   });
   saveUsers();
-  logAudit('create_user', 'user', id, { rol, voorkeur });
+  logAudit('create_user', 'user', id, { rol, laptopAccess, monitorAccess, voorkeur });
   await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'create', id } });
   setAppMessage(`User ${naam} created. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
   render();
@@ -2274,16 +2323,25 @@ async function updateUserFromRow(id) {
   if (!isAdminUser()) return;
   const user = USERS.find(u => u.id === id);
   if (!user) return;
-  const roleInput = document.querySelector(`[data-account-role="${id}"]`);
-  const modeInput = document.querySelector(`[data-account-mode="${id}"]`);
-  user.rol = normalizeUserRole(roleInput ? roleInput.value : user.rol);
-  user.voorkeur = normalizeUserPreference(modeInput ? modeInput.value : user.voorkeur, user.rol);
+  const access = readAccountAccess(id, user);
+  if (accountAccessError(access)) {
+    setAppMessage(accountAccessError(access));
+    render();
+    return;
+  }
+  // Een manager kan zichzelf niet per ongeluk de managerrechten afnemen.
+  if (STATE.currentUser && STATE.currentUser.id === id && access.rol !== 'Manager') {
+    setAppMessage('You cannot remove your own manager access.');
+    render();
+    return;
+  }
+  Object.assign(user, access);
   if (STATE.currentUser && STATE.currentUser.id === id) {
     STATE.currentUser = user;
     saveSessionUser(user);
   }
   saveUsers();
-  logAudit('update_user', 'user', id, { rol: user.rol, voorkeur: user.voorkeur });
+  logAudit('update_user', 'user', id, access);
   await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
   setAppMessage(`User ${user.naam} updated.`, 'success');
   render();

@@ -96,6 +96,8 @@ function normalizeUserRows(users) {
       id: String(user.id || "").trim().toLowerCase(),
       naam: String(user.naam || user.id || "").trim(),
       rol: String(user.rol || "Grader").trim(),
+      ...(["grade", "label", "none"].includes(user.laptopAccess) ? { laptopAccess: user.laptopAccess } : {}),
+      ...(["grade", "none"].includes(user.monitorAccess) ? { monitorAccess: user.monitorAccess } : {}),
       initialen: String(user.initialen || "").trim(),
       voorkeur: String(user.voorkeur || "").trim(),
       passwordHash: String(user.passwordHash || ""),
