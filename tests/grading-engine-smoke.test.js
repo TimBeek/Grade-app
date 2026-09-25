@@ -3130,6 +3130,10 @@ test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
   assert.equal(vm.runInContext('STATE.currentGrading.result.forceProblemLabel', app), true);
   assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /LCD pixel line/);
 
+  // Directe reparatie: specslabel zonder grade, zodat hij niet als verkoopklaar de voorraad in gaat.
+  const lcdSpecsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(lcdSpecsRows[2], /^Grade \.{6} \//);
+
   const rows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
   assert.equal(rows[0], 'REPARATIE');
   assert.match(rows.join('|'), /LCD pixel line/);
@@ -3379,6 +3383,31 @@ test('gebroken zijkant telt na reparatie als C in plaats van A+', () => {
   const edgeRow = vm.runInContext('STATE.currentGrading.result.detailRows.find(row => row.naam === "Edges & Corners")', app);
   assert.equal(edgeRow.impact, 'C');
   assert.equal(edgeRow.punten, 30);
+
+  const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(specsRows[2], /^Grade \.{6} \//);
+});
+
+test('productie-reparatie (toets mist) houdt grade op specslabel', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.keyboard = 'D';
+    STATE.currentGrading.impactOverrides.keyboard = 'x';
+    STATE.currentGrading.repairIssues.keyboard = 'Missing key';
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'production');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(specsRows[2], /^Grade A \//);
 });
 
 test('herstelbare zijkant geeft B-impact en reparatielabel', async () => {

@@ -2459,7 +2459,9 @@ function renderResult() {
         Label: ${getLabelRows(l, r).filter(Boolean).map(escapeHtml).join(' · ')}
       </div>`}
       ${r.gradeAfterRepair ? `<div class="label-note">
-        Specs label shows the grade after repair. Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
+        ${isGradeWithheldForRepair(r)
+          ? `Specs label has no grade until repaired. Write grade ${escapeHtml(r.eindgrade === 'D' ? 'X' : r.eindgrade)} on the label after repair.`
+          : 'Specs label shows the grade after repair.'} Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
       </div>` : ''}
       
       <div class="nav-buttons">

@@ -2545,7 +2545,9 @@ function finishGrading() {
       };
       STATE.currentGrading.result.redenen.unshift({
         type: repairPolicy.labelType === 'production' ? 'warn' : 'bad',
-        text: `${repairPolicy.reason}: specs label shows grade after repair.`,
+        text: repairPolicy.labelType === 'direct'
+          ? `${repairPolicy.reason}: specs label has no grade until repaired (expected grade after repair).`
+          : `${repairPolicy.reason}: specs label shows grade after repair.`,
       });
     } else {
       STATE.currentGrading.result.eindgrade = 'D';

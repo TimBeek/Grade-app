@@ -167,8 +167,18 @@ function getProblemLabelRows(laptop, result) {
   ];
 }
 
+// Bij een directe reparatie komt er geen grade op het specslabel, zodat het
+// apparaat niet vóór de reparatie met een verkoopklare grade in de voorraad komt.
+// Productie-reparaties (bv. toets mist) gaan wel direct de voorraad in en houden hun grade.
+function isGradeWithheldForRepair(result) {
+  if (!result || !result.gradeAfterRepair) return false;
+  const labelType = result.repairLabelType || (result.repairPolicy && result.repairPolicy.labelType) || '';
+  return labelType === 'direct';
+}
+
 function getSpecsLabelRows(laptop, result, options = {}) {
   const grade = result && result.eindgrade === 'D' ? 'X' : result && result.eindgrade;
+  if (isGradeWithheldForRepair(result)) options = { ...options, hideGrade: true };
   const touch = isTouchscreenLaptop(laptop) ? 'Ja' : 'Nee';
   const battery = formatBatteryForLabel(laptop.battery);
   const gpu = compactGpuForLabel(laptop.labelGpu || getNoteworthyGpu(laptop.gpu));
