@@ -472,7 +472,11 @@ function uiIcon(name) {
     uploadSheet: '<path d="M6 4h8l4 4v10H6z"/><path d="M14 4v4h4"/><path d="M12 16v-5"/><path d="M9.5 13.5L12 11l2.5 2.5"/>',
     sun: '<circle cx="11" cy="11" r="4"/><path d="M11 2v2"/><path d="M11 18v2"/><path d="M2 11h2"/><path d="M18 11h2"/><path d="M4.6 4.6 6 6"/><path d="M16 16l1.4 1.4"/><path d="M17.4 4.6 16 6"/><path d="M6 16l-1.4 1.4"/>',
     moon: '<path d="M17 14.5A7 7 0 0 1 8.5 6a6 6 0 1 0 8.5 8.5z"/>',
-    monitor: '<rect x="4" y="5" width="14" height="10" rx="1.5"/><path d="M9 19h4"/><path d="M11 15v4"/>'
+    monitor: '<rect x="4" y="5" width="14" height="10" rx="1.5"/><path d="M9 19h4"/><path d="M11 15v4"/>',
+    laptop: '<rect x="5" y="5" width="12" height="9" rx="1.2"/><path d="M3 17h16"/>',
+    search: '<circle cx="10" cy="10" r="5"/><path d="M14 14l4 4"/>',
+    plus: '<path d="M11 5v12"/><path d="M5 11h12"/>',
+    chevron: '<path d="M8 9l3 3 3-3"/>'
   };
   return `<svg viewBox="0 0 22 22" aria-hidden="true">${icons[name] || icons.scan}</svg>`;
 }
@@ -2088,95 +2092,160 @@ function renderAccounts() {
     `;
   }
 
+  const isManagerUser = user => normalizeUserRole(user.rol) === 'Manager';
   // Knoppengroep (segmented control). Klikken wisselt alleen de knop; de
   // waarde wordt pas bij Opslaan / Gebruiker aanmaken gelezen.
-  const optionGroup = (scope, field, label, options, selected) => `
-    <div class="account-field">
-      <span class="account-field-label">${escapeHtml(label)}</span>
+  const optionGroup = (scope, field, label, hint, options, selected) => `
+    <div class="acc-field">
+      <div class="acc-field-text">
+        <span class="acc-field-label">${escapeHtml(label)}</span>
+        ${hint ? `<span class="acc-field-hint">${escapeHtml(hint)}</span>` : ''}
+      </div>
       <div class="seg-group" role="group" aria-label="${escapeHtml(label)}" data-account-scope="${escapeHtml(scope)}" data-account-group="${field}" data-value="${escapeHtml(selected)}">
         ${options.map(option => `<button type="button" class="seg-btn ${option.tone || ''} ${option.value === selected ? 'active' : ''}" data-action="set_account_option" data-value="${escapeHtml(option.value)}" aria-pressed="${option.value === selected ? 'true' : 'false'}">${escapeHtml(option.label)}</button>`).join('')}
       </div>
     </div>
   `;
   const accessFields = (scope, user) => {
-    const isManager = normalizeUserRole(user.rol) === 'Manager';
+    const isManager = isManagerUser(user);
     const laptopAccess = getUserLaptopAccess(user);
     const monitorAccess = getUserMonitorAccess(user);
     const mode = user.voorkeur === 'expert' ? 'expert' : 'beginner';
     return `
-      <div class="account-fields" data-account-scope-root="${escapeHtml(scope)}" data-manager="${isManager ? 'yes' : 'no'}" data-laptop="${laptopAccess}">
-        ${optionGroup(scope, 'manager', 'Access level', [
+      <div class="acc-fields" data-account-scope-root="${escapeHtml(scope)}" data-manager="${isManager ? 'yes' : 'no'}" data-laptop="${laptopAccess}">
+        ${optionGroup(scope, 'manager', 'Access level', 'Managers have full access', [
           { value: 'no', label: 'Employee' },
           { value: 'yes', label: 'Manager', tone: 'is-manager' },
         ], isManager ? 'yes' : 'no')}
-        <div class="account-device-fields">
-          ${optionGroup(scope, 'laptopAccess', 'Laptops', [
+        <div class="acc-device-fields">
+          ${optionGroup(scope, 'laptopAccess', 'Laptops', 'Grading or labeling', [
             { value: 'grade', label: 'Grade' },
             { value: 'label', label: 'Labels only' },
             { value: 'none', label: 'No access', tone: 'is-none' },
           ], laptopAccess)}
-          ${optionGroup(scope, 'monitorAccess', 'Monitors', [
+          ${optionGroup(scope, 'monitorAccess', 'Monitors', 'Grading and labels', [
             { value: 'grade', label: 'Grade' },
             { value: 'none', label: 'No access', tone: 'is-none' },
           ], monitorAccess)}
-          <div class="account-mode-field">
-            ${optionGroup(scope, 'voorkeur', 'Laptop grading mode', [
+          <div class="acc-mode-field">
+            ${optionGroup(scope, 'voorkeur', 'Laptop grading mode', 'Start screen for grading', [
               { value: 'beginner', label: 'Guided' },
               { value: 'expert', label: 'Expert' },
             ], mode)}
           </div>
         </div>
-        <p class="account-manager-note">Managers can grade laptops and monitors and manage users.</p>
+        <p class="acc-manager-note">Managers can grade laptops and monitors and manage users.</p>
       </div>
     `;
   };
-  const accessSummary = user => normalizeUserRole(user.rol) === 'Manager'
-    ? 'Manager · all access'
-    : `Laptops: ${displayLaptopAccess(getUserLaptopAccess(user))} · Monitors: ${displayMonitorAccess(getUserMonitorAccess(user))}${getUserLaptopAccess(user) === 'grade' ? ` · ${displayUserPreference(user.voorkeur)}` : ''}`;
+  const accessBadges = user => {
+    if (isManagerUser(user)) return '<span class="acc-badge is-manager">Manager · all access</span>';
+    const laptop = getUserLaptopAccess(user);
+    const monitor = getUserMonitorAccess(user);
+    return `
+      <span class="acc-badge access-${laptop}" title="Laptops">${uiIcon('laptop')}<span>${escapeHtml(displayLaptopAccess(laptop))}</span></span>
+      <span class="acc-badge access-${monitor}" title="Monitors">${uiIcon('monitor')}<span>${escapeHtml(displayMonitorAccess(monitor))}</span></span>
+      ${laptop === 'grade' ? `<span class="acc-badge is-mode">${escapeHtml(displayUserPreference(user.voorkeur))}</span>` : ''}
+    `;
+  };
+  const search = normalizeText(STATE.accountSearch || '').toLowerCase();
+  const sortedUsers = USERS.slice().sort((a, b) => (
+    (Number(isManagerUser(b)) - Number(isManagerUser(a))) || String(a.naam).localeCompare(String(b.naam), 'nl')
+  ));
+  const managerCount = USERS.filter(isManagerUser).length;
+  const pendingCount = USERS.filter(user => user.mustChangePassword).length;
+  const monitorOnlyCount = USERS.filter(user => !isManagerUser(user) && getUserLaptopAccess(user) === 'none').length;
+  const createOpen = Boolean(STATE.accountCreateOpen);
+  const anyMatch = !search || sortedUsers.some(u => `${u.naam} ${u.id}`.toLowerCase().includes(search));
+
   return `
-    <div class="screen" style="max-width: 1100px;">
-      <div class="card">
-        <h3>User Management</h3>
-        <p class="card-sub">New users receive the start password and must choose their own password immediately at first login.</p>
-        <div class="instruction-strip">Start password: <strong>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></div>
+    <div class="screen acc-screen">
+      <div class="acc-header">
+        <div class="acc-header-text">
+          <div class="acc-kicker">${uiIcon('users')}<span>Team</span></div>
+          <h2>User Management</h2>
+          <p>Choose per employee what they may do with laptops and monitors.</p>
+        </div>
+        <div class="acc-password-chip" title="New users and password resets get this start password">
+          ${uiIcon('accountKey')}
+          <span><small>Start password</small><strong data-i18n-skip>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></span>
+        </div>
       </div>
 
-      <div class="account-grid">
-        <div class="card">
-          <h3>New User</h3>
-          <div class="form-row">
+      <div class="acc-stats">
+        <div class="acc-stat"><strong>${USERS.length}</strong><span>users</span></div>
+        <div class="acc-stat"><strong>${managerCount}</strong><span>managers</span></div>
+        <div class="acc-stat"><strong>${monitorOnlyCount}</strong><span>monitors only</span></div>
+        <div class="acc-stat ${pendingCount ? 'is-warning' : ''}"><strong>${pendingCount}</strong><span>must set password</span></div>
+      </div>
+
+      <div class="acc-toolbar">
+        <label class="acc-search">
+          ${uiIcon('search')}
+          <input type="search" id="accountSearch" value="${escapeHtml(STATE.accountSearch || '')}" placeholder="Search name or login ID" autocomplete="off" aria-label="Search users">
+        </label>
+        ${createOpen ? '' : `<button class="btn btn-primary acc-new-btn" data-action="toggle_account_create" type="button">${uiIcon('plus')}<span>New user</span></button>`}
+      </div>
+
+      ${createOpen ? `
+        <div class="acc-panel acc-create">
+          <div class="acc-panel-head">
+            <h3>New user</h3>
+            <p>The user logs in with the start password and chooses a personal password right away.</p>
+          </div>
+          <div class="acc-create-inputs">
             <div class="form-group">
-              <label class="form-label">Name</label>
-              <input class="form-input" id="newUserName" placeholder="Employee name">
+              <label class="form-label" for="newUserName">Name</label>
+              <input class="form-input" id="newUserName" placeholder="Employee name" autocomplete="off">
             </div>
             <div class="form-group">
-              <label class="form-label">Login ID</label>
-              <input class="form-input" id="newUserId" placeholder="e.g. first name">
+              <label class="form-label" for="newUserId">Login ID</label>
+              <input class="form-input" id="newUserId" placeholder="e.g. first name" autocomplete="off">
             </div>
           </div>
           ${accessFields('new', { rol: 'Grader', laptopAccess: 'grade', monitorAccess: 'grade', voorkeur: 'beginner' })}
-          <button class="btn btn-primary" data-action="create_user">Create User</button>
-        </div>
-
-        <div class="card">
-          <h3>Existing Users</h3>
-          <div class="account-list">
-            ${USERS.map(u => `
-              <div class="account-row">
-                <div>
-                  <strong>${escapeHtml(u.naam)}</strong>
-                  <div class="card-sub">${escapeHtml(u.id)} · ${escapeHtml(accessSummary(u))} · ${u.mustChangePassword ? 'must set password' : 'own password active'}</div>
-                </div>
-                ${accessFields(u.id, u)}
-                <div class="account-actions">
-                  <button class="btn btn-secondary" data-action="update_user" data-user-id="${escapeHtml(u.id)}">Save</button>
-                  <button class="btn btn-secondary" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}">Reset password</button>
-                  <button class="batch-remove" data-action="delete_user" data-user-id="${escapeHtml(u.id)}" ${u.id === STATE.currentUser.id ? 'disabled' : ''}>Delete</button>
-                </div>
-              </div>
-            `).join('')}
+          <div class="acc-panel-actions">
+            <button class="btn btn-secondary" data-action="toggle_account_create" type="button">Cancel</button>
+            <button class="btn btn-primary" data-action="create_user" type="button">Create user</button>
           </div>
         </div>
+      ` : ''}
+
+      <div class="acc-list" id="accountList">
+        ${sortedUsers.map(u => {
+          const editing = STATE.accountEditId === u.id;
+          const haystack = `${u.naam} ${u.id}`.toLowerCase();
+          const hidden = search && !haystack.includes(search);
+          const isSelf = STATE.currentUser && u.id === STATE.currentUser.id;
+          return `
+            <div class="acc-row ${editing ? 'is-editing' : ''}" data-account-row data-search="${escapeHtml(haystack)}" ${hidden ? 'hidden' : ''}>
+              <div class="acc-row-main">
+                <div class="acc-avatar ${isManagerUser(u) ? 'is-manager' : ''}" aria-hidden="true">${escapeHtml(u.initialen || initialsFromName(u.naam))}</div>
+                <div class="acc-identity">
+                  <strong><span data-i18n-skip>${escapeHtml(u.naam)}</span>${isSelf ? '<span class="acc-you">You</span>' : ''}</strong>
+                  <span data-i18n-skip>${escapeHtml(u.id)}</span>
+                </div>
+                <div class="acc-badges">${accessBadges(u)}</div>
+                <span class="acc-status ${u.mustChangePassword ? 'is-pending' : 'is-active'}">${u.mustChangePassword ? 'Must set password' : 'Active'}</span>
+                <button class="acc-edit-btn" data-action="toggle_account_edit" data-user-id="${escapeHtml(u.id)}" type="button" aria-expanded="${editing ? 'true' : 'false'}"><span>${editing ? 'Close' : 'Edit'}</span>${uiIcon('chevron')}</button>
+              </div>
+              ${editing ? `
+                <div class="acc-row-editor">
+                  ${accessFields(u.id, u)}
+                  <div class="acc-panel-actions">
+                    <div class="acc-secondary-actions">
+                      <button class="acc-link-btn" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}" type="button">Reset password</button>
+                      <button class="acc-link-btn is-danger" data-action="delete_user" data-user-id="${escapeHtml(u.id)}" type="button" ${isSelf ? 'disabled' : ''}>Delete user</button>
+                    </div>
+                    <button class="btn btn-secondary" data-action="toggle_account_edit" data-user-id="${escapeHtml(u.id)}" type="button">Cancel</button>
+                    <button class="btn btn-primary" data-action="update_user" data-user-id="${escapeHtml(u.id)}" type="button">Save changes</button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
+        <p class="acc-empty" id="accountEmpty" ${anyMatch ? 'hidden' : ''}>No users match your search.</p>
       </div>
     </div>
   `;

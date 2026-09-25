@@ -419,6 +419,10 @@ function handleDelegatedInput(e) {
     scheduleHistorySearch(e.target.value);
     return;
   }
+  if (e.target.id === 'accountSearch') {
+    filterAccountRows(e.target.value);
+    return;
+  }
   if (e.target.id === 'scanSearch') {
     scheduleScanSearch(e.target.value);
     return;
@@ -1190,6 +1194,12 @@ async function handleAction(action, el) {
     case 'set_account_option':
       selectAccountOption(el);
       return;
+    case 'toggle_account_edit':
+      STATE.accountEditId = STATE.accountEditId === el.dataset.userId ? null : el.dataset.userId;
+      break;
+    case 'toggle_account_create':
+      STATE.accountCreateOpen = !STATE.accountCreateOpen;
+      break;
     case 'create_user':
       await createUserFromForm();
       return;
@@ -2239,6 +2249,21 @@ async function changeOwnPassword() {
   render();
 }
 
+// Zoeken in gebruikersbeheer filtert direct in de lijst, zonder opnieuw te
+// renderen, zodat de cursor in het zoekveld blijft staan.
+function filterAccountRows(value) {
+  STATE.accountSearch = String(value || '');
+  const query = normalizeText(STATE.accountSearch).toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('[data-account-row]').forEach(row => {
+    const match = !query || String(row.dataset.search || '').includes(query);
+    row.hidden = !match;
+    if (match) visible++;
+  });
+  const empty = document.getElementById('accountEmpty');
+  if (empty) empty.hidden = visible > 0;
+}
+
 // Knoppengroep in gebruikersbeheer: alleen de actieve knop wisselen (geen
 // render, zodat getypte namen in het formulier blijven staan).
 function selectAccountOption(button) {
@@ -2315,6 +2340,7 @@ async function createUserFromForm() {
   saveUsers();
   logAudit('create_user', 'user', id, { rol, laptopAccess, monitorAccess, voorkeur });
   await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'create', id } });
+  STATE.accountCreateOpen = false;
   setAppMessage(`User ${naam} created. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
   render();
 }
@@ -2343,6 +2369,7 @@ async function updateUserFromRow(id) {
   saveUsers();
   logAudit('update_user', 'user', id, access);
   await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
+  STATE.accountEditId = null;
   setAppMessage(`User ${user.naam} updated.`, 'success');
   render();
 }

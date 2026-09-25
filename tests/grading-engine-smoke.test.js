@@ -1055,10 +1055,15 @@ test('gebruikersbeheer: medewerker kan alleen monitoren graden zonder laptoptoeg
   assert.equal(vm.runInContext(`canGradeUser(USERS.find(user => user.id === 'monitormens'))`, app), false);
   assert.equal(vm.runInContext(`serializeUser(USERS.find(user => user.id === 'monitormens')).laptopAccess`, app), 'none');
 
-  vm.runInContext(`STATE.currentScreen = 'accounts'; render();`, app);
-  const accountsHtml = app.__appElement.innerHTML;
+  // Teamlijst toont de rechten als labels; bewerken klapt het paneel open.
+  vm.runInContext(`STATE.currentScreen = 'accounts'; STATE.accountEditId = null; render();`, app);
+  let accountsHtml = app.__appElement.innerHTML;
+  assert.match(accountsHtml, /acc-badge access-none/);
+  assert.doesNotMatch(accountsHtml, /data-account-scope="monitormens"/);
+  await app.handleAction('toggle_account_edit', { dataset: { userId: 'monitormens' } });
+  accountsHtml = app.__appElement.innerHTML;
   assert.match(accountsHtml, /data-account-scope="monitormens" data-account-group="laptopAccess" data-value="none"/);
-  assert.match(accountsHtml, /Laptops: No access · Monitors: Grade|Laptops: Geen toegang · Monitoren: Grade/);
+  assert.match(accountsHtml, /data-account-scope="monitormens" data-account-group="monitorAccess" data-value="grade"/);
 
   // Ingelogd: laptopscherm is niet bereikbaar en de laptop-tab is verborgen.
   vm.runInContext(`
