@@ -171,7 +171,7 @@ const ONDERDELEN = [
 ];
 
 const STRAFPUNTEN = { A: 0, B: 1, C: 4, D: 999 };
-const GRADING_RULES_VERSION = 'demo-2026-07-03-edge-print-production-repair-v1';
+const GRADING_RULES_VERSION = 'demo-2026-09-25-edge-after-repair-impact-v1';
 
 const GRADING_IMPACTS = {
   bovenkap: { A: 'a-plus', B: 'a', C: 'c', D: 'x' },
@@ -233,9 +233,9 @@ const CHOICE_DECISIONS = {
       title: 'Bovenkap X Reden',
       text: 'Kies waarom de bovenkap als X wordt beoordeeld.',
       options: [
-        { label: 'Bovenkap gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Bovenkap gebroken', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Bovenkap gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Bovenkap gebroken', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
         { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand aanwezig', impact: 'x', repairIssue: 'Bovenkap scherpe rand', repairRoute: 'reject', repairSeverity: 'reject' },
-        { label: 'Sluit niet goed', detail: 'Bovenkap is verbogen of sluit niet normaal', impact: 'x', repairIssue: 'Bovenkap sluit niet goed', repairRoute: 'production', repairSeverity: 'light' },
+        { label: 'Sluit niet goed', detail: 'Bovenkap is verbogen of sluit niet normaal', impact: 'x', repairIssue: 'Bovenkap sluit niet goed', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'c' },
       ],
     },
   },
@@ -244,7 +244,7 @@ const CHOICE_DECISIONS = {
       title: 'Zijkant C Detail',
       text: 'Kies de situatie die het beste past bij de zijkant.',
       options: [
-        { label: 'Open/verbogen herstelbaar', detail: 'Ijzer of rand staat open, maar kan rechtgemaakt worden', impact: 'a', repairIssue: 'Zijkant open/verbogen rechtmaken', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'a-plus', image: 'assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg' },
+        { label: 'Open/verbogen herstelbaar', detail: 'Ijzer of rand staat open, maar kan rechtgemaakt worden', impact: 'b', repairIssue: 'Zijkant open/verbogen rechtmaken', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'b', image: 'assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg' },
         { label: 'Open/te zwaar verbogen', detail: 'Zijkant staat open en is te zwaar verbogen om netjes te herstellen', impact: 'c', image: 'assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg' },
       ],
     },
@@ -252,7 +252,7 @@ const CHOICE_DECISIONS = {
       title: 'Zijkant X Reden',
       text: 'Kies waarom de zijkant of hoek als X wordt beoordeeld.',
       options: [
-        { label: 'Zijkant gebroken', detail: 'Hoek of zijkant is gebroken', impact: 'x', repairIssue: 'Zijkant gebroken', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Zijkant gebroken', detail: 'Hoek of zijkant is gebroken', impact: 'x', repairIssue: 'Zijkant gebroken', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
         { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand aanwezig', impact: 'x', repairIssue: 'Zijkant scherpe rand', repairRoute: 'reject', repairSeverity: 'reject' },
         { label: 'Niet herstelbaar verbogen', detail: 'Zijkant staat open of scheef en is niet netjes te herstellen', impact: 'x', repairIssue: 'Zijkant niet herstelbaar verbogen', repairRoute: 'reject', repairSeverity: 'reject' },
       ],
@@ -279,8 +279,8 @@ const CHOICE_DECISIONS = {
       title: 'Schermrand X Reden',
       text: 'Kies waarom de schermrand als X wordt beoordeeld.',
       options: [
-        { label: 'Schermrand gebroken', detail: 'Bezel is zwaar gebroken of mist stukken', impact: 'x', repairIssue: 'Schermrand gebroken', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Schermrand los', detail: 'Bezel zit los of klikt niet meer vast', impact: 'x', repairIssue: 'Schermrand los', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Schermrand gebroken', detail: 'Bezel is zwaar gebroken of mist stukken', impact: 'x', repairIssue: 'Schermrand gebroken', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
+        { label: 'Schermrand los', detail: 'Bezel zit los of klikt niet meer vast', impact: 'x', repairIssue: 'Schermrand los', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
         { label: 'Scherpe rand', detail: 'Scherpe of gevaarlijke rand rond het scherm', impact: 'x', repairIssue: 'Schermrand scherpe rand', repairRoute: 'reject', repairSeverity: 'reject' },
       ],
     },
@@ -322,11 +322,11 @@ const CHOICE_DECISIONS = {
       title: 'LCD X Reden',
       text: 'Kies waarom het LCD als X wordt beoordeeld.',
       options: [
-        { label: 'Pixel line', detail: 'Horizontale of verticale lijn in het beeld', impact: 'x', repairIssue: 'LCD pixel line', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Cracked screen', detail: 'Scherm of glas is gebarsten', impact: 'x', repairIssue: 'LCD cracked screen', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Dead pixels', detail: 'Dode pixels zichtbaar in het beeld', impact: 'x', repairIssue: 'LCD dead pixels', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Schermflikkering', detail: 'Beeld flikkert of valt weg', impact: 'x', repairIssue: 'LCD schermflikkering', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Geen beeld', detail: 'LCD geeft geen beeld', impact: 'x', repairIssue: 'LCD geen beeld', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Pixel line', detail: 'Horizontale of verticale lijn in het beeld', impact: 'x', repairIssue: 'LCD pixel line', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Cracked screen', detail: 'Scherm of glas is gebarsten', impact: 'x', repairIssue: 'LCD cracked screen', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Dead pixels', detail: 'Dode pixels zichtbaar in het beeld', impact: 'x', repairIssue: 'LCD dead pixels', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Schermflikkering', detail: 'Beeld flikkert of valt weg', impact: 'x', repairIssue: 'LCD schermflikkering', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Geen beeld', detail: 'LCD geeft geen beeld', impact: 'x', repairIssue: 'LCD geen beeld', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
       ],
     },
   },
@@ -343,8 +343,8 @@ const CHOICE_DECISIONS = {
       title: 'Onderkant X Reden',
       text: 'Kies waarom de onderkant als X wordt beoordeeld.',
       options: [
-        { label: 'Onderkant gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Onderkant gebroken', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Onderdeel ontbreekt', detail: 'Rubber, klep of behuizingsdeel ontbreekt ernstig', impact: 'x', repairIssue: 'Onderkant onderdeel ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Onderkant gebroken', detail: 'Barst, breuk of structurele schade', impact: 'x', repairIssue: 'Onderkant gebroken', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Onderdeel ontbreekt', detail: 'Rubber, klep of behuizingsdeel ontbreekt ernstig', impact: 'x', repairIssue: 'Onderkant onderdeel ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
         { label: 'Veiligheidsrisico', detail: 'Scherpe rand of open behuizing', impact: 'x', repairIssue: 'Onderkant veiligheidsrisico', repairRoute: 'reject', repairSeverity: 'reject' },
       ],
     },
@@ -391,8 +391,8 @@ const CHOICE_DECISIONS = {
       title: 'Palmrest X Reden',
       text: 'Kies waarom de palmrest als X wordt beoordeeld.',
       options: [
-        { label: 'Palmrest gebroken', detail: 'Palmrest heeft een breuk of structurele schade', impact: 'x', repairIssue: 'Palmrest gebroken', repairRoute: 'direct', repairSeverity: 'heavy' },
-        { label: 'Hoek ontbreekt', detail: 'Grote hoek of stuk van de palmrest ontbreekt', impact: 'x', repairIssue: 'Palmrest hoek ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy' },
+        { label: 'Palmrest gebroken', detail: 'Palmrest heeft een breuk of structurele schade', impact: 'x', repairIssue: 'Palmrest gebroken', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
+        { label: 'Hoek ontbreekt', detail: 'Grote hoek of stuk van de palmrest ontbreekt', impact: 'x', repairIssue: 'Palmrest hoek ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
         { label: 'Veiligheidsrisico', detail: 'Scherpe rand of open behuizing rond de palmrest', impact: 'x', repairIssue: 'Palmrest veiligheidsrisico', repairRoute: 'reject', repairSeverity: 'reject' },
       ],
     },
@@ -410,9 +410,9 @@ const CHOICE_DECISIONS = {
       title: 'Touchpad X Reden',
       text: 'Kies waarom de touchpad als X wordt beoordeeld.',
       options: [
-        { label: 'Touchpad werkt niet', detail: 'Touchpad reageert niet of niet betrouwbaar', impact: 'x', repairIssue: 'Touchpad werkt niet', repairRoute: 'production', repairSeverity: 'light' },
-        { label: 'Touchpad ontbreekt', detail: 'Touchpad of knop ontbreekt', impact: 'x', repairIssue: 'Touchpad ontbreekt', repairRoute: 'production', repairSeverity: 'light' },
-        { label: 'Touchpad gebarsten', detail: 'Touchpad is gebarsten of gebroken', impact: 'x', repairIssue: 'Touchpad gebarsten', repairRoute: 'production', repairSeverity: 'light' },
+        { label: 'Touchpad werkt niet', detail: 'Touchpad reageert niet of niet betrouwbaar', impact: 'x', repairIssue: 'Touchpad werkt niet', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
+        { label: 'Touchpad ontbreekt', detail: 'Touchpad of knop ontbreekt', impact: 'x', repairIssue: 'Touchpad ontbreekt', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
+        { label: 'Touchpad gebarsten', detail: 'Touchpad is gebarsten of gebroken', impact: 'x', repairIssue: 'Touchpad gebarsten', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
       ],
     },
   },
@@ -431,9 +431,9 @@ const CHOICE_DECISIONS = {
             title: 'Scharnier X Reden',
             text: 'Kies de exacte reden voor het reparatielabel.',
             options: [
-              { label: 'Scharnier werkt niet', detail: 'Scharnier opent of sluit niet normaal', impact: 'x', repairIssue: 'Scharnier werkt niet', repairRoute: 'direct', repairSeverity: 'heavy' },
-              { label: 'Scharnier los', detail: 'Scharnier zit los of is deels losgekomen', impact: 'x', repairIssue: 'Scharnier los', repairRoute: 'direct', repairSeverity: 'heavy' },
-              { label: 'Behuizing verbogen', detail: 'Behuizing is verbogen bij het scharnier', impact: 'x', repairIssue: 'Scharnier behuizing verbogen', repairRoute: 'direct', repairSeverity: 'heavy' },
+              { label: 'Scharnier werkt niet', detail: 'Scharnier opent of sluit niet normaal', impact: 'x', repairIssue: 'Scharnier werkt niet', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+              { label: 'Scharnier los', detail: 'Scharnier zit los of is deels losgekomen', impact: 'x', repairIssue: 'Scharnier los', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+              { label: 'Behuizing verbogen', detail: 'Behuizing is verbogen bij het scharnier', impact: 'x', repairIssue: 'Scharnier behuizing verbogen', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'c' },
               { label: 'Veiligheidsrisico', detail: 'Scharnier of behuizing vormt een veiligheidsrisico', impact: 'x', repairIssue: 'Scharnier veiligheidsrisico', repairRoute: 'reject', repairSeverity: 'reject' },
             ],
           },
@@ -527,8 +527,30 @@ function inferRepairMetadata(issue, componentId = '') {
   return { repairRoute: REPAIR_LABEL_TYPES.direct, repairSeverity: REPAIR_SEVERITIES.heavy };
 }
 
+// Zoekt de keuze-optie terug bij een reparatiereden, zodat ook een reparatie
+// zonder opgeslagen actie de juiste impact na reparatie meekrijgt.
+function findRepairOption(componentId, issue) {
+  const search = options => {
+    for (const option of (options || [])) {
+      if (option.repairIssue === issue) return option;
+      const nested = option.nextDecision && search(option.nextDecision.options);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  for (const decision of Object.values(CHOICE_DECISIONS[componentId] || {})) {
+    const found = search(decision.options);
+    if (found) return found;
+  }
+  return null;
+}
+
 function createRepairAction(componentId, issue, options = {}) {
   if (!issue) return null;
+  const knownOption = findRepairOption(componentId, issue);
+  if (knownOption && !options.afterRepairImpact && knownOption.afterRepairImpact) {
+    options = { ...options, afterRepairImpact: knownOption.afterRepairImpact };
+  }
   const inferred = inferRepairMetadata(issue, componentId);
   const route = normalizeRepairLabelType(options.repairRoute || inferred.repairRoute);
   const severity = normalizeRepairSeverity(options.repairSeverity || inferred.repairSeverity, route);

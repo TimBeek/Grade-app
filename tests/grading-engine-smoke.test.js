@@ -3123,7 +3123,8 @@ test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
     finishGrading();
   `, app);
 
-  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  // LCD pixel line blijft na reparatie X-grade.
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
   assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
   assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'direct');
   assert.equal(vm.runInContext('STATE.currentGrading.result.forceProblemLabel', app), true);
@@ -3156,13 +3157,14 @@ test('twee lichte productie-reparaties houden grade na reparatie en productie-la
     finishGrading();
   `, app);
 
-  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  // Keyboard mag na reparatie A+, touchpad blijft na reparatie X-grade.
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
   assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
   assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'production');
   assert.equal(vm.runInContext('STATE.currentGrading.result.repairPolicy.lightCount', app), 2);
 
   const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
-  assert.match(specsRows[2], /Grade A/);
+  assert.match(specsRows[2], /Grade X/);
 
   const productionRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
   assert.equal(productionRows[0], 'PRODUCTIE');
@@ -3268,7 +3270,8 @@ test('nieuwe detailkeuzes voor schermrand bovenkap en zijkant sturen score scher
 
   const repairableSide = app.getChoiceDecision('randen', 'C').options[0];
   const nonRepairableSide = app.getChoiceDecision('randen', 'C').options[1];
-  assert.equal(repairableSide.impact, 'a');
+  assert.equal(repairableSide.impact, 'b');
+  assert.equal(repairableSide.afterRepairImpact, 'b');
   assert.match(repairableSide.repairIssue, /Zijkant open\/verbogen rechtmaken/);
   assert.match(repairableSide.image, /randen-open-verbogen-herstelbaar-v3-ai\.jpg$/);
   assert.equal(nonRepairableSide.impact, 'c');
@@ -3353,7 +3356,32 @@ test('LCD toetsafdruk workflow opent na B eerst de groottekeuze', () => {
   assert.equal(vm.runInContext('STATE.currentGrading.result.score', app), 2);
 });
 
-test('herstelbare zijkant geeft A-impact en reparatielabel', async () => {
+test('gebroken zijkant telt na reparatie als C in plaats van A+', () => {
+  const app = loadAppSandbox();
+  const brokenSide = app.getChoiceDecision('randen', 'D').options[0];
+  assert.match(brokenSide.label, /Zijkant gebroken/);
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.keuzes.randen = 'D';
+    STATE.currentGrading.impactOverrides.randen = 'x';
+    STATE.currentGrading.repairIssues.randen = 'Zijkant gebroken';
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'C');
+  const edgeRow = vm.runInContext('STATE.currentGrading.result.detailRows.find(row => row.naam === "Edges & Corners")', app);
+  assert.equal(edgeRow.impact, 'C');
+  assert.equal(edgeRow.punten, 30);
+});
+
+test('herstelbare zijkant geeft B-impact en reparatielabel', async () => {
   const app = loadAppSandbox();
 
   vm.runInContext(`
@@ -3370,12 +3398,13 @@ test('herstelbare zijkant geeft A-impact en reparatielabel', async () => {
       STATE.currentGrading.keuzes[component.id] = 'A';
     });
     STATE.currentGrading.keuzes.randen = 'C';
-    STATE.currentGrading.impactOverrides.randen = 'a';
+    STATE.currentGrading.impactOverrides.randen = 'b';
     STATE.currentGrading.repairIssues.randen = 'Zijkant open/verbogen rechtmaken';
     finishGrading();
   `, app);
 
-  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'B');
+  assert.equal(vm.runInContext('STATE.currentGrading.result.score', app), 8);
   assert.match(vm.runInContext('STATE.currentGrading.result.problems.join("|")', app), /Zijkant open\/verbogen rechtmaken/);
 
   await app.confirmSaveWithAutomaticLabels();
