@@ -3386,6 +3386,14 @@ test('gebroken zijkant telt na reparatie als C in plaats van A+', () => {
 
   const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
   assert.match(specsRows[2], /^Grade \.{6} \//);
+
+  // Resultaatscherm voorspelt geen grade bij een directe reparatie.
+  vm.runInContext('render();', app);
+  const html = app.__appElement.innerHTML;
+  assert.match(html, /result-grade-letter">\?</);
+  assert.match(html, /Determine the grade after repair/);
+  assert.doesNotMatch(html, /Write grade/);
+  assert.equal(vm.runInContext('STATE.pendingDecision', app), null);
 });
 
 test('productie-reparatie (toets mist) houdt grade op specslabel', () => {

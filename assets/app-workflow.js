@@ -2546,7 +2546,7 @@ function finishGrading() {
       STATE.currentGrading.result.redenen.unshift({
         type: repairPolicy.labelType === 'production' ? 'warn' : 'bad',
         text: repairPolicy.labelType === 'direct'
-          ? `${repairPolicy.reason}: specs label has no grade until repaired (expected grade after repair).`
+          ? `${repairPolicy.reason}: specs label has no grade. Determine the grade after repair.`
           : `${repairPolicy.reason}: specs label shows grade after repair.`,
       });
     } else {
@@ -2557,7 +2557,8 @@ function finishGrading() {
       });
     }
   }
-  const borderlineReview = !STATE.currentGrading.gradeReviewDone ? getBorderlineAReview(STATE.currentGrading.result) : null;
+  const gradeWithheld = typeof isGradeWithheldForRepair === 'function' && isGradeWithheldForRepair(STATE.currentGrading.result);
+  const borderlineReview = !STATE.currentGrading.gradeReviewDone && !gradeWithheld ? getBorderlineAReview(STATE.currentGrading.result) : null;
   if (borderlineReview) {
     STATE.pendingDecision = borderlineReview;
     return;

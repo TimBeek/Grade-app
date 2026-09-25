@@ -2404,6 +2404,7 @@ function renderResult() {
       ? 'Print Not sellable'
       : 'Print Repair';
   const testOnly = g.testOnly || (l && l.testOnly);
+  const gradeWithheld = isGradeWithheldForRepair(r);
   const labels = {
     A: { naam: 'Premium', desc: `Impact score ${r.score} - near new` },
     B: { naam: 'Good', desc: `Impact score ${r.score} - visible use, fully functional` },
@@ -2418,13 +2419,21 @@ function renderResult() {
         <div style="font-size: 12px; color: #6B6B66;">Graded by ${escapeHtml(STATE.currentUser.naam)} · ${new Date().toLocaleString('nl-NL', {dateStyle: 'short', timeStyle: 'short'})}</div>
       </div>
       
+      ${gradeWithheld ? `
+      <div class="result-grade D">
+        <div class="result-grade-label">Final Grade</div>
+        <div class="result-grade-letter">?</div>
+        <div class="result-grade-desc">Direct repair — determine the grade after repair</div>
+      </div>
+      ` : `
       <div class="result-grade ${grade}">
         <div class="result-grade-label">${grade === 'D' ? 'Final Status' : 'Final Grade'}</div>
         <div class="result-grade-letter">${grade === 'D' ? '×' : grade}</div>
         <div class="result-grade-desc">${labels[grade].naam} — ${labels[grade].desc}</div>
       </div>
-      
-      <h3 style="margin-bottom: 10px; font-weight: 500;">Why ${grade === 'D' ? 'repair' : 'grade ' + grade}?</h3>
+      `}
+
+      <h3 style="margin-bottom: 10px; font-weight: 500;">Why ${gradeWithheld || grade === 'D' ? 'repair' : 'grade ' + grade}?</h3>
       <div class="reasons">
         ${r.redenen.map(reden => `
           <div class="reason">
@@ -2460,7 +2469,7 @@ function renderResult() {
       </div>`}
       ${r.gradeAfterRepair ? `<div class="label-note">
         ${isGradeWithheldForRepair(r)
-          ? `Specs label has no grade until repaired. Write grade ${escapeHtml(r.eindgrade === 'D' ? 'X' : r.eindgrade)} on the label after repair.`
+          ? 'Specs label has no grade. Determine the grade after repair.'
           : 'Specs label shows the grade after repair.'} Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
       </div>` : ''}
       
