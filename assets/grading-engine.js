@@ -410,9 +410,9 @@ const CHOICE_DECISIONS = {
       title: 'Touchpad X Reden',
       text: 'Kies waarom de touchpad als X wordt beoordeeld.',
       options: [
-        { label: 'Touchpad werkt niet', detail: 'Touchpad reageert niet of niet betrouwbaar', impact: 'x', repairIssue: 'Touchpad werkt niet', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
-        { label: 'Touchpad ontbreekt', detail: 'Touchpad of knop ontbreekt', impact: 'x', repairIssue: 'Touchpad ontbreekt', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
-        { label: 'Touchpad gebarsten', detail: 'Touchpad is gebarsten of gebroken', impact: 'x', repairIssue: 'Touchpad gebarsten', repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'x' },
+        { label: 'Touchpad werkt niet', detail: 'Touchpad reageert niet of niet betrouwbaar', impact: 'x', repairIssue: 'Touchpad werkt niet', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Touchpad ontbreekt', detail: 'Touchpad of knop ontbreekt', impact: 'x', repairIssue: 'Touchpad ontbreekt', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
+        { label: 'Touchpad gebarsten', detail: 'Touchpad is gebarsten of gebroken', impact: 'x', repairIssue: 'Touchpad gebarsten', repairRoute: 'direct', repairSeverity: 'heavy', afterRepairImpact: 'x' },
       ],
     },
   },
@@ -511,7 +511,7 @@ function inferRepairMetadata(issue, componentId = '') {
     return { repairRoute: REPAIR_LABEL_TYPES.reject, repairSeverity: REPAIR_SEVERITIES.reject };
   }
 
-  if (/missing key|toets.*ontbreekt|meerdere toetsen|toets werkt niet|keyboard defect|keyboard ontbreekt|keyboard missing|dead battery|missing battery|battery missing|touchpad|usb|accu|battery|batterij|rechtmaken|uitdeuken|open\/verbogen|sluit niet goed/.test(text)) {
+  if (/missing key|toets.*ontbreekt|meerdere toetsen|toets werkt niet|keyboard defect|keyboard ontbreekt|keyboard missing|dead battery|missing battery|battery missing|usb|accu|battery|batterij|rechtmaken|uitdeuken|open\/verbogen|sluit niet goed/.test(text)) {
     return { repairRoute: REPAIR_LABEL_TYPES.production, repairSeverity: REPAIR_SEVERITIES.light };
   }
 
@@ -587,8 +587,8 @@ function buildTriggerRepairActions(triggers = {}) {
       if (triggers[trigger.id] && trigger.impact === 'defect') {
         actions.push(createRepairAction(ond.id, `${ond.naam}: ${trigger.label}`, {
           triggerId: trigger.id,
-          repairRoute: ['keyboard', 'touchpad'].includes(ond.id) ? REPAIR_LABEL_TYPES.production : REPAIR_LABEL_TYPES.direct,
-          repairSeverity: ['keyboard', 'touchpad'].includes(ond.id) ? REPAIR_SEVERITIES.light : REPAIR_SEVERITIES.heavy,
+          repairRoute: ond.id === 'keyboard' ? REPAIR_LABEL_TYPES.production : REPAIR_LABEL_TYPES.direct,
+          repairSeverity: ond.id === 'keyboard' ? REPAIR_SEVERITIES.light : REPAIR_SEVERITIES.heavy,
         }));
       }
     }

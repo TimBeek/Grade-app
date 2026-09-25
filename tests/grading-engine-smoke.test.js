@@ -3154,27 +3154,27 @@ test('twee lichte productie-reparaties houden grade na reparatie en productie-la
     STATE.currentGrading.impactOverrides.keyboard = 'x';
     STATE.currentGrading.repairIssues.keyboard = 'Missing key';
     STATE.currentGrading.repairActions.keyboard = createRepairAction('keyboard', 'Missing key', { repairRoute: 'production', repairSeverity: 'light' });
-    STATE.currentGrading.keuzes.touchpad = 'D';
-    STATE.currentGrading.impactOverrides.touchpad = 'x';
-    STATE.currentGrading.repairIssues.touchpad = 'Touchpad werkt niet';
-    STATE.currentGrading.repairActions.touchpad = createRepairAction('touchpad', 'Touchpad werkt niet', { repairRoute: 'production', repairSeverity: 'light' });
+    STATE.currentGrading.keuzes.randen = 'C';
+    STATE.currentGrading.impactOverrides.randen = 'b';
+    STATE.currentGrading.repairIssues.randen = 'Zijkant open/verbogen rechtmaken';
+    STATE.currentGrading.repairActions.randen = createRepairAction('randen', 'Zijkant open/verbogen rechtmaken', { repairRoute: 'production', repairSeverity: 'light', afterRepairImpact: 'b' });
     finishGrading();
   `, app);
 
-  // Keyboard mag na reparatie A+, touchpad blijft na reparatie X-grade.
-  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'D');
+  // Keyboard mag na reparatie A+, zijkant rechtmaken telt als B.
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'B');
   assert.equal(vm.runInContext('STATE.currentGrading.result.gradeAfterRepair', app), true);
   assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'production');
   assert.equal(vm.runInContext('STATE.currentGrading.result.repairPolicy.lightCount', app), 2);
 
   const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
-  assert.match(specsRows[2], /Grade X/);
+  assert.match(specsRows[2], /Grade B/);
 
   const productionRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
   assert.equal(productionRows[0], 'PRODUCTIE');
   assert.equal(productionRows[1], 'Tijdens productie repareren');
   assert.match(productionRows.join('|'), /Missing key/);
-  assert.match(productionRows.join('|'), /TP werkt niet|Touchpad werkt niet/);
+  assert.match(productionRows.join('|'), /Zijkant open\/verbogen rechtmaken|Zijkant/);
 });
 
 test('keyboard defect, keyboard ontbreekt en dead battery zijn productie-reparaties', () => {
@@ -3394,6 +3394,36 @@ test('gebroken zijkant telt na reparatie als C in plaats van A+', () => {
   assert.match(html, /Determine the grade after repair/);
   assert.doesNotMatch(html, /Write grade/);
   assert.equal(vm.runInContext('STATE.pendingDecision', app), null);
+});
+
+test('touchpad reparatie is directe reparatie zonder grade op specslabel', () => {
+  const app = loadAppSandbox();
+  app.getChoiceDecision('touchpad', 'D').options.forEach(option => {
+    assert.equal(option.repairRoute, 'direct');
+    assert.equal(option.repairSeverity, 'heavy');
+  });
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    STATE.currentLaptop = getLaptopBySticker('8460024');
+    startGrading('beginner');
+    getGradingOnderdelen().forEach(component => {
+      STATE.currentGrading.keuzes[component.id] = 'A';
+    });
+    STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'touchpad');
+    applyComponentChoice('touchpad', 'D', false);
+    resolvePendingDecision(0);
+    finishGrading();
+  `, app);
+
+  assert.equal(vm.runInContext('STATE.currentGrading.result.repairLabelType', app), 'direct');
+  const specsRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'specs')", app);
+  assert.match(specsRows[2], /^Grade \.{6} \//);
+  const repairRows = vm.runInContext("getLabelRows(STATE.currentLaptop, STATE.currentGrading.result, 'problems')", app);
+  assert.equal(repairRows[0], 'REPARATIE');
+
+  const triggerActions = vm.runInContext("buildTriggerRepairActions({ touchpad_kapot: true })", app);
+  assert.equal(triggerActions[0].repairRoute, 'direct');
 });
 
 test('productie-reparatie (toets mist) houdt grade op specslabel', () => {
