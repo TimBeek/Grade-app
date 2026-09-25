@@ -195,6 +195,29 @@ function hasTrustedUserUpdate(state) {
   );
 }
 
+// Een fysieke batchbevestiging (of het intrekken ervan) mag niet verdwijnen
+// doordat een andere pc met een oudere kopie van de batch opslaat. Daarom wint
+// altijd de nieuwste bevestiging/intrekking, ongeacht wie als laatste opsloeg.
+function completionReviewTime(review) {
+  if (!review || typeof review !== "object") return -1;
+  const time = Date.parse(review.status === "reopened" ? review.reopenedAt : review.verifiedAt);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function mergeLaptopBatchRows(existingRows, incomingRows) {
+  const existingByKey = new Map();
+  for (const batch of Array.isArray(existingRows) ? existingRows : []) {
+    const key = batchKey(batch);
+    if (key) existingByKey.set(key, batch);
+  }
+  return keyedMerge(existingRows, incomingRows, batchKey).map(batch => {
+    const previous = existingByKey.get(batchKey(batch));
+    if (!previous || previous === batch) return batch;
+    if (completionReviewTime(previous.completionReview) <= completionReviewTime(batch.completionReview)) return batch;
+    return { ...batch, completionReview: previous.completionReview };
+  });
+}
+
 function batchKey(batch) {
   return batch && (batch.id || batch.nummer) ? String(batch.id || batch.nummer) : "";
 }
@@ -272,7 +295,7 @@ export function mergeDemoState(existingState, incomingState) {
     ...existing.deletedMonitorStickers,
     ...incoming.deletedMonitorStickers,
   ].map(normalizeStickerCode), incoming.restoreDeletedMonitorStickers);
-  const batches = keyedMerge(existing.batches, incoming.batches, batchKey);
+  const batches = mergeLaptopBatchRows(existing.batches, incoming.batches);
   const monitorBatches = keyedMerge(existing.monitorBatches, incoming.monitorBatches, batchKey);
 
   return {

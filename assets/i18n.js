@@ -140,6 +140,7 @@ const NL_COPY = {
   'New password': 'Nieuw wachtwoord',
   'Next': 'Volgende',
   'No active batches.': 'Geen actieve batches.',
+  'Hide completed batches': 'Voltooide batches verbergen',
   'No batch stats available yet.': 'Nog geen batchstatistieken beschikbaar.',
   'No comparable supplier grades yet. Import a supplier batch and save gradings to populate this view.': 'Nog geen vergelijkbare leveranciersgrades. Importeer een leveranciersbatch en sla gradings op om deze weergave te vullen.',
   'No comparison': 'Geen vergelijking',
@@ -733,6 +734,8 @@ const NL_COPY = {
 };
 
 const NL_DYNAMIC_PATTERNS = [
+  [/^(\d+) active · (\d+) completed · (\d+) devices total$/i, '$1 actief · $2 voltooid · $3 apparaten totaal'],
+  [/^Show completed batches \((\d+)\)$/i, 'Voltooide batches tonen ($1)'],
   [/^1 result · page (\d+) of (\d+) · max (\d+)$/i, '1 resultaat · pagina $1 van $2 · max. $3'],
   [/^(\d+) results · page (\d+) of (\d+) · max (\d+)$/i, '$1 resultaten · pagina $2 van $3 · max. $4'],
   [/^(\d+) shown of (\d+) available · (\d+) already graded$/i, '$1 getoond van $2 beschikbaar · $3 al gegradeerd'],

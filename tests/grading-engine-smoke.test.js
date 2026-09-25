@@ -524,6 +524,61 @@ test('fysieke batchbevestiging sluit workflow maar houdt digitale gaten zichtbaa
   assert.equal(vm.runInContext('getSharedDemoSnapshot().batches[0].completionReview.verifiedStickers[0]', app), 'GAP-1');
 });
 
+test('fysieke batchbevestiging blijft staan als een andere pc met oude batchkopie opslaat', async () => {
+  const { mergeDemoState } = await import('../api/_lib/state-core.mjs');
+  const staleBatch = { id: 'batch_keep', nummer: 'KEEP', laptops: [{ sticker: 'GAP-1' }] };
+  const confirmed = {
+    ...staleBatch,
+    completionReview: { status: 'physically_complete', verifiedAt: '2026-09-24T16:00:00.000Z', verifiedStickers: ['GAP-1'] },
+  };
+
+  // Pc B had de batch geladen vóór de bevestiging en slaat daarna een grading op.
+  const afterStaleSave = mergeDemoState({ batches: [confirmed] }, { batches: [staleBatch] });
+  assert.equal(afterStaleSave.batches[0].completionReview.status, 'physically_complete');
+
+  // Intrekken door de manager wint wel, want die is nieuwer.
+  const reopened = { ...staleBatch, completionReview: { status: 'reopened', reopenedAt: '2026-09-25T09:00:00.000Z' } };
+  const afterReopen = mergeDemoState(afterStaleSave, { batches: [reopened] });
+  assert.equal(afterReopen.batches[0].completionReview.status, 'reopened');
+
+  // En een oude bevestiging van een andere pc zet hem niet terug.
+  const afterOldConfirm = mergeDemoState(afterReopen, { batches: [confirmed] });
+  assert.equal(afterOldConfirm.batches[0].completionReview.status, 'reopened');
+});
+
+test('voltooide batches staan niet meer tussen actieve batches', () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES.splice(0, BATCHES.length,
+      { id: 'batch_open', nummer: 'OPEN-1', leverancier: 'Supplier', laptops: [
+        { sticker: 'OPEN-A', merk: 'Dell', model: 'Latitude', batchId: 'batch_open', batchNummer: 'OPEN-1' }
+      ] },
+      { id: 'batch_done', nummer: 'DONE-1', leverancier: 'Supplier', laptops: [
+        { sticker: 'DONE-A', merk: 'Dell', model: 'Latitude', batchId: 'batch_done', batchNummer: 'DONE-1' },
+        { sticker: 'DONE-GAP', merk: 'HP', model: 'EliteBook', batchId: 'batch_done', batchNummer: 'DONE-1' }
+      ], completionReview: { status: 'physically_complete', verifiedAt: '2026-09-25T10:00:00.000Z', verifiedStickers: ['DONE-GAP'] } }
+    );
+    STATE.history = [{ id: 'grading_done_a', sticker: 'DONE-A', grade: 'A' }];
+    rebuildLaptopIndex();
+    rebuildHistoryIndexes();
+  `, app);
+
+  const data = vm.runInContext('getDashboardData()', app);
+  assert.match(data.batchRows, /Batch OPEN-1/);
+  assert.doesNotMatch(data.batchRows, /Batch DONE-1/);
+  assert.match(data.completedBatchRows, /Batch DONE-1/);
+  assert.equal(data.activeBatchCount, 1);
+  assert.equal(data.completedBatchCount, 1);
+
+  // Ingetrokken bevestiging: batch is weer actief.
+  vm.runInContext(`BATCHES[1].completionReview = { status: 'reopened', reopenedAt: '2026-09-25T11:00:00.000Z' };`, app);
+  const reopenedData = vm.runInContext('getDashboardData()', app);
+  assert.match(reopenedData.batchRows, /Batch DONE-1/);
+  assert.equal(vm.runInContext("getSharedDemoSnapshot().batches[1].completionReview.status", app), 'reopened');
+});
+
 test('verwijderde laptop komt niet terug uit een oude lokale batchbackup', () => {
   const app = loadAppSandbox();
 

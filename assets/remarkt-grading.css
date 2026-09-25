@@ -2676,3 +2676,6 @@ html[data-theme="dark"] .analytics-filter-bar { background: transparent; }
   .analytics-filter-disclosure summary { width: 100%; }
   .analytics-filter-advanced { position: static; width: 100%; margin-top: 7px; grid-template-columns: 1fr; box-shadow: none; }
 }
+
+.completed-batches-toggle { justify-self: start; margin-top: 12px; }
+.completed-batches-list { margin-top: 10px; opacity: 0.92; }

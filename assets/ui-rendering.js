@@ -981,7 +981,12 @@ function getDashboardData() {
   const maxGradeCount = Math.max(counts.A, counts.B, counts.C, counts.D, 1);
   const monitorMaxGradeCount = Math.max(monitorCounts.A, monitorCounts.B, monitorCounts.C, monitorCounts.D, 1);
   const batchRepairStats = typeof getBatchRepairStats === 'function' ? getBatchRepairStats() : {};
-  const batchRows = BATCHES.map(batch => {
+  // Voltooide batches staan niet meer tussen de actieve batches, maar in een
+  // inklapbare lijst eronder (voor controle, intrekken of verwijderen).
+  const isLaptopBatchDone = batch => typeof isBatchComplete === 'function' && isBatchComplete(batch);
+  const activeBatches = BATCHES.filter(batch => !isLaptopBatchDone(batch));
+  const completedBatches = BATCHES.filter(isLaptopBatchDone);
+  const renderLaptopBatchCard = batch => {
     const completionAudit = getBatchCompletionAudit(batch);
     const open = openLaptopCount(batch);
     const total = batch.laptops.length;
@@ -1020,8 +1025,10 @@ function getDashboardData() {
         ${auditExpanded ? renderBatchCompletionAuditPanel(batch, completionAudit, isAdmin) : ''}
       </div>
     `;
-  }).join('');
-  const stickerBatchRows = BATCHES.map(batch => {
+  };
+  const batchRows = activeBatches.map(renderLaptopBatchCard).join('');
+  const completedBatchRows = completedBatches.map(renderLaptopBatchCard).join('');
+  const stickerBatchRows = activeBatches.map(batch => {
     const open = stickerOpenLaptopCount(batch);
     const total = batch.laptops.length;
     const done = Math.max(total - open, 0);
@@ -1055,7 +1062,7 @@ function getDashboardData() {
       </div>
     `;
   }).join('');
-  return { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, stickerBatchRows, monitorBatchRows };
+  return { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, completedBatchRows, activeBatchCount: activeBatches.length, completedBatchCount: completedBatches.length, stickerBatchRows, monitorBatchRows };
 }
 
 // Compacte actiekaart: groot icoon + titel + korte omschrijving. Extra detail
@@ -1219,7 +1226,7 @@ function renderHome() {
 }
 
 function renderWorkflowDashboard(data) {
-  const { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, latest, maxGradeCount, batchRows, stickerBatchRows, monitorBatchRows } = data;
+  const { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, latest, maxGradeCount, batchRows, completedBatchRows, activeBatchCount, completedBatchCount, stickerBatchRows, monitorBatchRows } = data;
   if (isStickerUser()) {
     return `
       <div class="ops-status-grid">
@@ -1296,11 +1303,15 @@ function renderWorkflowDashboard(data) {
     <div class="ops-batch-board">
       <div class="ops-section-head">
         <div class="ops-section-title">Active Batches</div>
-        <div class="ops-section-sub">${BATCHES.length} batch${BATCHES.length === 1 ? '' : 'es'} · ${allLaptops.length} devices total</div>
+        <div class="ops-section-sub">${activeBatchCount} active · ${completedBatchCount} completed · ${allLaptops.length} devices total</div>
       </div>
       <div class="batch-status-list">
         ${batchRows || '<p class="card-sub">No active batches.</p>'}
       </div>
+      ${completedBatchCount ? `
+        <button class="batch-mini-btn completed-batches-toggle" data-action="toggle_completed_batches" type="button" aria-expanded="${STATE.showCompletedBatches ? 'true' : 'false'}">${STATE.showCompletedBatches ? 'Hide completed batches' : `Show completed batches (${completedBatchCount})`}</button>
+        ${STATE.showCompletedBatches ? `<div class="batch-status-list completed-batches-list">${completedBatchRows}</div>` : ''}
+      ` : ''}
     </div>
   `;
 }

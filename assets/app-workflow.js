@@ -1247,6 +1247,9 @@ async function handleAction(action, el) {
     case 'export_supplier_comparison':
       await exportSupplierComparison(el.dataset.exportBatch || 'all');
       return;
+    case 'toggle_completed_batches':
+      STATE.showCompletedBatches = !STATE.showCompletedBatches;
+      break;
     case 'toggle_batch_audit':
       STATE.expandedBatchAudit = STATE.expandedBatchAudit === el.dataset.batchId ? null : el.dataset.batchId;
       break;
@@ -1484,14 +1487,22 @@ async function verifyPhysicalBatchCompletion(batchId) {
 async function reopenPhysicalBatchCompletion(batchId) {
   if (!isAdminUser()) return false;
   const batch = getLaptopBatchById(batchId);
-  if (!batch || !batch.completionReview) return false;
+  const currentReview = batch && getBatchCompletionReview(batch);
+  if (!currentReview) return false;
   if (typeof confirm === 'function' && !confirm(
     `Remove the physical completion confirmation for batch ${batch.nummer}? Digitally missing devices will become open again.`
   )) return false;
-  const previousCount = Array.isArray(batch.completionReview.verifiedStickers)
-    ? batch.completionReview.verifiedStickers.length
+  const previousCount = Array.isArray(currentReview.verifiedStickers)
+    ? currentReview.verifiedStickers.length
     : 0;
-  delete batch.completionReview;
+  // Intrekking als eigen record met tijdstip i.p.v. verwijderen, zodat een
+  // oudere bevestiging van een andere pc hem niet terugzet.
+  batch.completionReview = {
+    status: 'reopened',
+    reopenedAt: new Date().toISOString(),
+    reopenedById: STATE.currentUser && STATE.currentUser.id || '',
+    reopenedByName: STATE.currentUser && STATE.currentUser.naam || '',
+  };
   logAudit('reopen_batch_physical_completion', 'batch', batch.id, { previousCount });
   const savedLive = await saveSharedDemoState();
   setAppMessage(savedLive

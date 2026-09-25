@@ -40,6 +40,7 @@ const STATE = {
   homeInfoCard: null,
   expandedBatchStats: null,
   expandedBatchAudit: null,
+  showCompletedBatches: false,
   sharedSyncPending: false,
   appMessage: null,
   manualMode: false,
@@ -1831,7 +1832,23 @@ function normalizeSharedLaptop(laptop) {
   };
 }
 
+// Nieuwste bevestiging of intrekking wint (zie ook state-core.mjs), zodat een
+// pc met een oude kopie van de batch de registratiecontrole niet terugdraait.
+function completionReviewTime(review) {
+  if (!review || typeof review !== 'object') return -1;
+  const time = Date.parse(review.status === 'reopened' ? review.reopenedAt : review.verifiedAt);
+  return Number.isFinite(time) ? time : 0;
+}
+
 function normalizeBatchCompletionReview(review, laptopStickers = []) {
+  if (review && review.status === 'reopened') {
+    return {
+      status: 'reopened',
+      reopenedAt: sanitizeExternalText(review.reopenedAt, 80),
+      reopenedById: sanitizeExternalText(review.reopenedById, 80),
+      reopenedByName: sanitizeExternalText(review.reopenedByName, 120),
+    };
+  }
   if (!review || review.status !== 'physically_complete') return null;
   const validStickers = new Set((laptopStickers || []).map(normalizeStickerCode).filter(Boolean));
   const verifiedStickers = Array.from(new Set((Array.isArray(review.verifiedStickers) ? review.verifiedStickers : [])
@@ -2065,7 +2082,9 @@ function mergeLaptopBatchesForLoad(primary, secondary) {
     current.laptops = mergeUniqueList(current.laptops, batch.laptops, laptop => (
       laptop && laptop.sticker ? normalizeStickerCode(laptop.sticker) : ''
     ));
-    if (!current.completionReview && batch.completionReview) current.completionReview = batch.completionReview;
+    if (completionReviewTime(batch.completionReview) > completionReviewTime(current.completionReview)) {
+      current.completionReview = batch.completionReview;
+    }
   });
   return Array.from(batchMap.values());
 }
@@ -2200,9 +2219,7 @@ function sharedStateNeedsRepublish(remoteState, localState) {
     const id = sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
     const remoteBatch = remoteBatches.get(id);
     if (!remoteBatch) return Boolean(id);
-    const localReview = JSON.stringify(batch.completionReview || null);
-    const remoteReview = JSON.stringify(remoteBatch.completionReview || null);
-    return localReview !== remoteReview && Boolean(batch.completionReview);
+    return completionReviewTime(batch.completionReview) > completionReviewTime(remoteBatch.completionReview);
   });
 }
 
