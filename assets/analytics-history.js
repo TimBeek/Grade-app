@@ -2363,7 +2363,7 @@ function renderHistoryDetail(h) {
         <div><strong>Supplier vs ReMarkt:</strong> ${escapeHtml(supplierGrade)} -> ${escapeHtml(remarktGrade)}</div>
         <div><strong>Duration:</strong> ${h.duurSec}s</div>
         <div><strong>CPU/RAM/SSD:</strong> ${escapeHtml(h.processor || '-')} / ${escapeHtml(h.ram || '-')} / ${escapeHtml(h.ssd || '-')}</div>
-        <div><strong>Touch/Battery:</strong> ${h.display && h.display.toLowerCase().includes('touch') ? 'Yes' : 'No'} / ${escapeHtml(h.battery || '-')}</div>
+        <div><strong>Touch/Battery:</strong> ${isTouchscreenLaptop(h) ? 'Yes' : 'No'} / ${escapeHtml(h.battery || '-')}</div>
       </div>
       ${supplierNotes ? `<div class="history-note"><strong>Supplier notes:</strong> ${escapeHtml(supplierNotes)}</div>` : ''}
       ${reasons.length ? `

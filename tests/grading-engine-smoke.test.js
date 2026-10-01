@@ -2950,6 +2950,78 @@ test('touchcorrectie wordt bewaard in gedeelde state en historie', async () => {
   assert.equal(vm.runInContext("STATE.history.find(item => item.sticker === 'TOUCH-OVERRIDE-1').touchOverride", app), 'no');
 });
 
+test('Surface Laptops en Books zijn standaard touch, ook zonder touch in de lijst', () => {
+  const app = loadAppSandbox();
+  const touchLabel = laptop => app.getLabelRows({
+    processor: 'i5', ram: '16GB', ssd: '256GB', ...laptop,
+  }, { eindgrade: 'B' })[2];
+
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Laptop 5', display: '15"' }), 'Grade B / Touch Ja');
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Book 2', display: '13"' }), 'Grade B / Touch Ja');
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Laptop Go 2', display: '' }), 'Grade B / Touch Ja');
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Pro 9', display: '13"' }), 'Grade B / Touch Ja');
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Laptop SE', display: '11"' }), 'Grade B / Touch Nee');
+  assert.equal(touchLabel({ merk: 'Dell', model: 'Latitude 7420', display: '14"' }), 'Grade B / Touch Nee');
+  assert.equal(touchLabel({ merk: 'Microsoft', model: 'Surface Laptop 5', display: '15"', touchOverride: 'no' }), 'Grade B / Touch Nee');
+});
+
+test('touchcorrectie op Surface valt terug op Surface-standaard', async () => {
+  const app = loadAppSandbox();
+
+  vm.runInContext(`
+    STATE.currentUser = USERS.find(user => user.id === 'tim');
+    BATCHES[0].laptops.push({
+      sticker: 'SURFACE-TOUCH-1',
+      merk: 'Microsoft',
+      model: 'Surface Laptop 5',
+      processor: 'i7-1265U',
+      ram: '16GB',
+      ssd: '260GB',
+      display: '15"',
+      battery: '88%',
+      gpu: '',
+      leverancier_class: 'Class B',
+      meldingen: '',
+      batchId: BATCHES[0].id,
+      batchNummer: BATCHES[0].nummer
+    });
+    rebuildLaptopIndex();
+    STATE.currentLaptop = getLaptopBySticker('SURFACE-TOUCH-1');
+  `, app);
+
+  assert.match(vm.runInContext('renderTouchOverrideControls(STATE.currentLaptop)', app), /Touch: yes · Surface standard/);
+
+  await app.handleAction('set_touch_override', { dataset: { touchOverride: 'no' } });
+  assert.equal(vm.runInContext("getLaptopBySticker('SURFACE-TOUCH-1').touchOverride", app), 'no');
+  assert.equal(vm.runInContext("isTouchscreenLaptop(getLaptopBySticker('SURFACE-TOUCH-1'))", app), false);
+
+  // Live-sync bouwt de batch opnieuw op; de open laptop is daarna een los object.
+  vm.runInContext('applySharedDemoState(getSharedDemoSnapshot());', app);
+  assert.equal(vm.runInContext("STATE.currentLaptop === getLaptopBySticker('SURFACE-TOUCH-1')", app), false);
+
+  await app.handleAction('set_touch_override', { dataset: { touchOverride: 'yes' } });
+  assert.equal(vm.runInContext("getLaptopBySticker('SURFACE-TOUCH-1').touchOverride", app), undefined);
+  assert.equal(vm.runInContext("isTouchscreenLaptop(getLaptopBySticker('SURFACE-TOUCH-1'))", app), true);
+});
+
+test('non-touch in schermtekst telt niet als touch', () => {
+  const app = loadAppSandbox();
+
+  assert.equal(app.formatDisplay("touch W13''"), 'touch 13"');
+  assert.equal(app.formatDisplay('Non-touch 14"'), '14"');
+  assert.equal(app.formatDisplay('14" no touch'), '14"');
+  assert.equal(vm.runInContext(`isTouchscreenLaptop({ merk: 'HP', model: 'EliteBook 840', display: 'Non-Touch 14"' })`, app), false);
+  assert.equal(vm.runInContext(`isTouchscreenLaptop({ merk: 'HP', model: 'EliteBook 840', display: 'touch 14"' })`, app), true);
+});
+
+test('historiedetail toont gecorrigeerde touchstatus', () => {
+  const app = loadAppSandbox();
+  const detail = item => vm.runInContext(`renderHistoryDetail(${JSON.stringify(item)})`, app);
+
+  assert.match(detail({ merk: 'Dell', model: 'Latitude 7320', display: 'touch 13"', touchOverride: 'no', battery: '90%' }), /Touch\/Battery:<\/strong> No \/ 90%/);
+  assert.match(detail({ merk: 'Microsoft', model: 'Surface Laptop 5', display: '15"', battery: '88%' }), /Touch\/Battery:<\/strong> Yes \/ 88%/);
+});
+
 test('DYMO specs-label gebruikt 25x54mm S0722520 template', () => {
   const app = loadAppSandbox();
   const config = app.getDymoLabelConfig();

@@ -1722,20 +1722,23 @@ async function setCurrentLaptopTouchOverride(value) {
     return false;
   }
   const requested = normalizeTouchOverride(value);
-  const listValue = isTouchscreenFromDisplay(STATE.currentLaptop) ? 'yes' : 'no';
-  const override = setLaptopTouchOverride(STATE.currentLaptop, requested && requested !== listValue ? requested : '');
+  const defaultValue = isTouchscreenByDefault(STATE.currentLaptop) ? 'yes' : 'no';
+  const override = setLaptopTouchOverride(STATE.currentLaptop, requested && requested !== defaultValue ? requested : '');
+  // Na een live-sync is STATE.currentLaptop een los object geworden (de batch is
+  // opnieuw opgebouwd); zet de correctie dan ook op de batchlaptop, anders wordt
+  // ze niet gedeeld en komt bij herprinten de oude touchstatus terug.
+  const batchLaptop = getLaptopBySticker(STATE.currentLaptop.sticker);
+  if (batchLaptop && batchLaptop !== STATE.currentLaptop) setLaptopTouchOverride(batchLaptop, override);
   const effectiveTouch = isTouchscreenLaptop(STATE.currentLaptop) ? 'yes' : 'no';
   logAudit('update_touch_override', 'laptop', STATE.currentLaptop.sticker, {
     touchOverride: override || 'list',
     effectiveTouch,
   });
   await saveSharedDemoState();
-  setAppMessage(
-    override
-      ? `Touch status changed to ${effectiveTouch}. Labels and grading use this choice.`
-      : `Touch status is back on the supplier list (${effectiveTouch}).`,
-    'success'
-  );
+  let message = `Touch status is back on the supplier list (${effectiveTouch}).`;
+  if (override) message = `Touch status changed to ${effectiveTouch}. Labels and grading use this choice.`;
+  else if (isAlwaysTouchModel(STATE.currentLaptop)) message = `Touch status is back on the Surface standard (${effectiveTouch}).`;
+  setAppMessage(message, 'success');
   render();
   return true;
 }

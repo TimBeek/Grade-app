@@ -297,15 +297,34 @@ function setLaptopTouchOverride(laptop, value) {
   return override;
 }
 
+// "touch W13''" telt als touch, maar "non-touch 14''" / "no touch" / "geen touch"
+// niet: een kale includes('touch') zou die ten onrechte als touch lezen.
+function displayTextHasTouch(value) {
+  const text = String(value || '').toLowerCase();
+  return text.includes('touch') && !/\b(non|no|geen|zonder)[\s_-]*touch/.test(text);
+}
+
 function isTouchscreenFromDisplay(laptop = STATE.currentLaptop) {
-  const display = (laptop && laptop.display ? laptop.display : '').toLowerCase();
-  return display.includes('touch');
+  return displayTextHasTouch(laptop && laptop.display);
+}
+
+// Microsoft Surface Laptops, Books, Pro's en Go's hebben altijd een touchscreen,
+// maar leveranciers zetten dat niet altijd in hun lijst (bv. Surface Laptop 5 als
+// "W15''"). Enige uitzondering is de Surface Laptop SE (onderwijsmodel, geen touch).
+function isAlwaysTouchModel(laptop = STATE.currentLaptop) {
+  const text = `${(laptop && laptop.merk) || ''} ${(laptop && laptop.model) || ''}`.toLowerCase();
+  return /\bsurface[\s_-]*(laptop|book|pro|go)\b/.test(text) && !/\blaptop[\s_-]*se\b/.test(text);
+}
+
+// Touchstatus zonder handmatige correctie: lijst óf vast touchmodel.
+function isTouchscreenByDefault(laptop = STATE.currentLaptop) {
+  return isTouchscreenFromDisplay(laptop) || isAlwaysTouchModel(laptop);
 }
 
 function isTouchscreenLaptop(laptop = STATE.currentLaptop) {
   const override = normalizeTouchOverride(laptop && laptop.touchOverride);
   if (override) return override === 'yes';
-  return isTouchscreenFromDisplay(laptop);
+  return isTouchscreenByDefault(laptop);
 }
 
 function isLaptopGraded(sticker) {

@@ -32,7 +32,7 @@ function formatDisplay(value) {
   const match = text.match(/(?:W|touch\s*)?(\d+(?:[.,]\d+)?)\s*"?/i);
   if (!match) return text;
   const size = match[1].replace(',', '.');
-  return `${text.toLowerCase().includes('touch') ? 'touch ' : ''}${size}"`;
+  return `${displayTextHasTouch(text) ? 'touch ' : ''}${size}"`;
 }
 
 function cleanGpu(value) {

@@ -54,11 +54,14 @@ function renderTouchOverrideControls(laptop, context = 'info') {
   const override = normalizeTouchOverride(laptop.touchOverride);
   const effectiveTouch = isTouchscreenLaptop(laptop);
   const contextClass = context === 'question' ? ' touch-override-panel-compact' : '';
+  let source = 'from list';
+  if (override) source = 'manually adjusted';
+  else if (isAlwaysTouchModel(laptop)) source = 'Surface standard';
   return `
     <div class="touch-override-panel${contextClass}">
       <div class="touch-override-copy">
         <span class="touch-override-title">Touch status</span>
-        <span class="touch-override-status">${effectiveTouch ? 'Touch: yes' : 'Touch: no'} · ${override ? 'manually adjusted' : 'from list'}</span>
+        <span class="touch-override-status">${effectiveTouch ? 'Touch: yes' : 'Touch: no'} · ${source}</span>
       </div>
       <div class="touch-override-actions" role="group" aria-label="Correct touch status">
         <button class="touch-option ${effectiveTouch ? 'selected' : ''}" data-action="set_touch_override" data-touch-override="yes" type="button">Touch yes</button>
