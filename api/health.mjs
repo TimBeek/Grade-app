@@ -1,6 +1,6 @@
 // GET /api/health -> service + storage health and high-level counts.
 
-import { kvReadState, isStorageConfigured, storageKind } from "./_lib/state.mjs";
+import { kvReadHealthSummary, kvReadBackupInfo, isStorageConfigured, storageKind } from "./_lib/state.mjs";
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -16,21 +16,15 @@ export default async function handler(request, response) {
   }
 
   try {
-    const state = await kvReadState();
+    const summary = await kvReadHealthSummary();
+    const backup = await kvReadBackupInfo();
     response.status(200).json({
       ok: true,
       service: "remarkt-grading",
       storage: storageKind(),
-      updatedAt: state.updatedAt,
-      counts: {
-        users: state.users.length,
-        batches: state.batches.length,
-        monitorBatches: state.monitorBatches.length,
-        history: state.history.length,
-        labelPrints: state.labelPrints.length,
-        monitorLabelPrints: state.monitorLabelPrints.length,
-        auditLogs: state.auditLogs.length,
-      },
+      updatedAt: summary && summary.updatedAt ? summary.updatedAt : null,
+      counts: summary ? summary.counts : {},
+      backup,
     });
   } catch (error) {
     response.status(500).json({

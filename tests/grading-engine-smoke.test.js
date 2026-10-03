@@ -344,6 +344,15 @@ test('gedeelde opslag verstuurt na de eerste sync alleen gewijzigde records', ()
   assert.equal(vm.runInContext('__delta.labelPrints.length', app), 0);
 });
 
+test('gedeelde opslag slaat een save zonder zakelijke wijziging over', () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    const before = getSharedDemoSnapshot();
+    globalThis.__emptyDelta = createSharedStateDelta(getSharedDemoSnapshot(), before);
+  `, app);
+  assert.equal(vm.runInContext('sharedStateDeltaHasChanges(__emptyDelta)', app), false);
+});
+
 test('lokale monitorimport blijft staan wanneer gedeelde state ouder is', async () => {
   const app = loadAppSandbox();
 

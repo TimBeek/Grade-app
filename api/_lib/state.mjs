@@ -10,6 +10,8 @@ import {
   pgReadMeta,
   pgReadState,
   pgReadUsers,
+  pgReadHealthSummary,
+  pgReadBackupInfo,
   pgReadStats,
   pgWriteStats,
   pgWriteState,
@@ -152,6 +154,28 @@ export async function kvReadUsers() {
     userSyncAt: state.userSyncAt,
     updatedAt: state.updatedAt,
   };
+}
+
+export async function kvReadHealthSummary() {
+  if (isPostgresConfigured()) return pgReadHealthSummary();
+  const state = await kvReadState();
+  return {
+    updatedAt: state.updatedAt,
+    counts: {
+      users: state.users.length,
+      batches: state.batches.length,
+      monitorBatches: state.monitorBatches.length,
+      history: state.history.length,
+      labelPrints: state.labelPrints.length,
+      monitorLabelPrints: state.monitorLabelPrints.length,
+      auditLogs: state.auditLogs.length,
+    },
+  };
+}
+
+export async function kvReadBackupInfo() {
+  if (isPostgresConfigured()) return pgReadBackupInfo();
+  return null;
 }
 
 export async function kvWriteState(normalizedState) {

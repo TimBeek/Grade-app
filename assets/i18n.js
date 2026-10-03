@@ -53,6 +53,8 @@ const NL_COPY = {
   'Create users, reset passwords and assign access. Demo accounts are stored locally; production should use SSO and backend roles.': 'Maak gebruikers, reset wachtwoorden en wijs toegang toe. Demo-accounts worden lokaal opgeslagen; productie hoort SSO en backend-rollen te gebruiken.',
   'Critical damage counts heavy': 'Kritieke schade telt zwaar',
   'Daily actions for warehouse grading': 'Dagelijkse acties voor warehouse grading',
+  'Database connected · first recovery point is being prepared': 'Database verbonden · eerste herstelpunt wordt voorbereid',
+  'Database protected · daily recovery active': 'Database beschermd · dagelijks herstel actief',
   'Default mode': 'Standaardmodus',
   'Delete': 'Verwijderen',
   'Delete batch': 'Batch verwijderen',

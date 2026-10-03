@@ -1581,6 +1581,7 @@ async function refreshAnalyticsServerStats() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const stats = await response.json();
     const live = (stats && stats.live) || {};
+    const backup = stats && stats.backup;
     const health = live.dataHealth || {};
     const last = live.lastActivity || null;
     const activeNames = Array.isArray(live.activeOperatorNames) ? live.activeOperatorNames : [];
@@ -1605,6 +1606,9 @@ async function refreshAnalyticsServerStats() {
     const lastMeta = last
       ? `${last.user || 'Unknown'} · ${formatLiveRelativeTime(last.at)}`
       : 'waiting for first activity';
+    const protectionText = backup && backup.createdAt
+      ? 'Database protected · daily recovery active'
+      : 'Database connected · first recovery point is being prepared';
     container.setAttribute('data-state', 'ready');
     container.classList.toggle('has-alert', alertCount > 0);
     container.innerHTML = `
@@ -1612,7 +1616,7 @@ async function refreshAnalyticsServerStats() {
         <span class="manager-live-signal" aria-hidden="true"><i></i></span>
         <span>
           <strong>Manager Live</strong>
-          <small>Database connected · refreshed now</small>
+          <small>${escapeHtml(protectionText)}</small>
         </span>
       </div>
       <div class="manager-live-cells">

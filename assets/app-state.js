@@ -2471,6 +2471,13 @@ function changedSharedRows(currentRows, previousRows, keyFn) {
   });
 }
 
+function changedSharedValues(currentValues, previousValues) {
+  const previous = new Set(Array.isArray(previousValues) ? previousValues.map(String) : []);
+  return (Array.isArray(currentValues) ? currentValues : [])
+    .map(String)
+    .filter(value => value && !previous.has(value));
+}
+
 // Only transmit changed records on a normal save. The server's merge function
 // already understands partial lists, so this is wire-compatible with Redis and
 // Postgres while shrinking a completed grading from megabytes to a few KB.
@@ -2491,16 +2498,26 @@ function createSharedStateDelta(snapshot, previous) {
     labelPrints: changedSharedRows(snapshot.labelPrints, previous.labelPrints, sharedLabelPrintKey),
     monitorLabelPrints: changedSharedRows(snapshot.monitorLabelPrints, previous.monitorLabelPrints, sharedMonitorLabelPrintKey),
     auditLogs: changedSharedRows(snapshot.auditLogs, previous.auditLogs, sharedAuditKey),
-    deletedBatchIds: snapshot.deletedBatchIds,
-    deletedLaptopStickers: snapshot.deletedLaptopStickers,
-    deletedMonitorBatchIds: snapshot.deletedMonitorBatchIds,
-    deletedMonitorStickers: snapshot.deletedMonitorStickers,
-    restoreDeletedBatchIds: snapshot.restoreDeletedBatchIds,
-    restoreDeletedLaptopStickers: snapshot.restoreDeletedLaptopStickers,
-    restoreDeletedMonitorBatchIds: snapshot.restoreDeletedMonitorBatchIds,
-    restoreDeletedMonitorStickers: snapshot.restoreDeletedMonitorStickers,
+    deletedBatchIds: changedSharedValues(snapshot.deletedBatchIds, previous.deletedBatchIds),
+    deletedLaptopStickers: changedSharedValues(snapshot.deletedLaptopStickers, previous.deletedLaptopStickers),
+    deletedMonitorBatchIds: changedSharedValues(snapshot.deletedMonitorBatchIds, previous.deletedMonitorBatchIds),
+    deletedMonitorStickers: changedSharedValues(snapshot.deletedMonitorStickers, previous.deletedMonitorStickers),
+    restoreDeletedBatchIds: changedSharedValues(snapshot.restoreDeletedBatchIds, previous.restoreDeletedBatchIds),
+    restoreDeletedLaptopStickers: changedSharedValues(snapshot.restoreDeletedLaptopStickers, previous.restoreDeletedLaptopStickers),
+    restoreDeletedMonitorBatchIds: changedSharedValues(snapshot.restoreDeletedMonitorBatchIds, previous.restoreDeletedMonitorBatchIds),
+    restoreDeletedMonitorStickers: changedSharedValues(snapshot.restoreDeletedMonitorStickers, previous.restoreDeletedMonitorStickers),
     updatedAt: snapshot.updatedAt,
   };
+}
+
+function sharedStateDeltaHasChanges(delta) {
+  if (!delta || typeof delta !== 'object') return false;
+  if (delta.userSync) return true;
+  return [
+    'batches', 'monitorBatches', 'history', 'labelPrints', 'monitorLabelPrints', 'auditLogs',
+    'deletedBatchIds', 'deletedLaptopStickers', 'deletedMonitorBatchIds', 'deletedMonitorStickers',
+    'restoreDeletedBatchIds', 'restoreDeletedLaptopStickers', 'restoreDeletedMonitorBatchIds', 'restoreDeletedMonitorStickers',
+  ].some(key => Array.isArray(delta[key]) && delta[key].length > 0);
 }
 
 async function loadSharedDemoState() {
@@ -2532,6 +2549,14 @@ async function saveSharedDemoState(options = {}) {
   STATE.sharedSyncPending = true;
   saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
   if (!canUseSharedDemoState()) return false;
+  // Rendering, focus changes and retry paths may call save twice without a
+  // business change. Do not wake the database or use bandwidth in that case.
+  if (!sharedStateDeltaHasChanges(delta)) {
+    STATE.sharedSyncPending = false;
+    lastSharedStateSnapshot = snapshot;
+    saveLocalDemoStateBackup(snapshot);
+    return true;
+  }
   try {
     const response = await fetch(SHARED_DEMO_STATE_URL, {
       method: 'POST',
