@@ -38,7 +38,7 @@ function installSharedStateRefresh() {
     refreshInFlight = true;
     try {
       // Goedkope check: herlaad alleen volledig als de serverdata wijzigde.
-      const applied = await syncSharedStateIfChanged();
+      const applied = await syncSharedStateIfChanged({ loadFull: true });
       if (applied && !liveRenderWouldDisruptInput()) render();
     } finally {
       refreshInFlight = false;
@@ -56,7 +56,7 @@ function installSharedStateRefresh() {
 function installLiveUserSync() {
   if (typeof window === 'undefined' || typeof setInterval !== 'function') return;
 
-  const SYNC_INTERVAL_MS = 45000; // instelbaar: lager = sneller live, hoger = zuiniger
+  const SYNC_INTERVAL_MS = 5 * 60 * 1000; // statuscontrole: klein en zuinig
 
   let syncInFlight = false;
   const sync = async () => {
@@ -69,7 +69,7 @@ function installLiveUserSync() {
       if (typeof STATE !== 'undefined' && STATE.sharedSyncPending && typeof saveSharedDemoState === 'function') {
         await saveSharedDemoState();
       }
-      // Lichte meta-check; alleen een volledige herlaad als er iets veranderde.
+      // Lichte meta-check zonder de volledige dataset te downloaden.
       const changed = await syncSharedStateIfChanged();
       if (changed && !liveRenderWouldDisruptInput()) render();
       else if (typeof refreshAnalyticsServerStats === 'function' && document.getElementById('manager-live-stats')) {

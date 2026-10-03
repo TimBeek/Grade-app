@@ -322,6 +322,28 @@ test('gedeelde demo-state heeft lokale backup voor geschiedenis en labels', asyn
   assert.equal(vm.runInContext('STATE.labelPrints.length', app), 1);
 });
 
+test('gedeelde opslag verstuurt na de eerste sync alleen gewijzigde records', () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    BATCHES.push({
+      id: 'batch_delta', nummer: 'DELTA-1', leverancier: 'Supplier', laptops: [{
+        sticker: '90001', merk: 'HP', model: 'EliteBook', serial: 'SERIAL-90001'
+      }]
+    });
+    const before = getSharedDemoSnapshot();
+    STATE.history.push({
+      id: 'history_delta_1', sticker: '90001', serial: 'SERIAL-90001',
+      batchNummer: 'DELTA-1', grade: 'A', user_id: 'tim', tijd: '09:15'
+    });
+    globalThis.__delta = createSharedStateDelta(getSharedDemoSnapshot(), before);
+  `, app);
+
+  assert.equal(vm.runInContext('__delta.batches.length', app), 0);
+  assert.equal(vm.runInContext('__delta.history.length', app), 1);
+  assert.equal(vm.runInContext('__delta.history[0].id', app), 'history_delta_1');
+  assert.equal(vm.runInContext('__delta.labelPrints.length', app), 0);
+});
+
 test('lokale monitorimport blijft staan wanneer gedeelde state ouder is', async () => {
   const app = loadAppSandbox();
 

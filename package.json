@@ -9,6 +9,7 @@
     "test": "node --test tests/grading-engine-smoke.test.js",
     "migrate:kv": "node scripts/migrate-to-kv.mjs",
     "seed:postgres": "node scripts/seed-postgres.mjs",
+    "recover:redis": "node scripts/recover-redis-to-postgres.mjs",
     "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/_lib/postgres-state.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
   },
   "dependencies": {

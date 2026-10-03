@@ -79,12 +79,45 @@ async function writeRow(id, payload) {
 }
 
 export async function pgReadMeta() {
-  const row = await readRow(STATE_ROW);
+  await ensureSchema();
+  const sql = getSql();
+  // Extract only the timestamp in SQL. A background change-check must never
+  // pull the multi-megabyte operational document out of Postgres.
+  const rows = await sql`
+    SELECT payload ->> 'updatedAt' AS state_updated_at, updated_at, byte_size
+    FROM remarkt_app_state
+    WHERE id = ${STATE_ROW}
+  `;
+  const row = rows[0] || null;
   if (!row) return null;
-  const state = parsePayload(row.payload, null);
   return {
-    updatedAt: state && state.updatedAt ? String(state.updatedAt) : new Date(row.updated_at).toISOString(),
+    updatedAt: row.state_updated_at ? String(row.state_updated_at) : new Date(row.updated_at).toISOString(),
     bytes: Number(row.byte_size || 0),
+  };
+}
+
+export async function pgReadUsers() {
+  await ensureSchema();
+  const sql = getSql();
+  // Sign-in only needs these four small values; avoid reading batches and
+  // history simply to validate a user account.
+  const rows = await sql`
+    SELECT
+      payload -> 'users' AS users,
+      payload ->> 'userSync' AS user_sync,
+      payload ->> 'userSyncAt' AS user_sync_at,
+      payload ->> 'updatedAt' AS state_updated_at,
+      updated_at
+    FROM remarkt_app_state
+    WHERE id = ${STATE_ROW}
+  `;
+  const row = rows[0] || null;
+  if (!row) return { users: [], userSync: '', userSyncAt: null, updatedAt: null };
+  return {
+    users: Array.isArray(row.users) ? row.users : parsePayload(row.users, []),
+    userSync: String(row.user_sync || ''),
+    userSyncAt: row.user_sync_at ? String(row.user_sync_at) : null,
+    updatedAt: row.state_updated_at ? String(row.state_updated_at) : new Date(row.updated_at).toISOString(),
   };
 }
 

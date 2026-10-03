@@ -4,6 +4,7 @@
 import {
   kvReadState,
   kvReadMeta,
+  kvReadUsers,
   kvWriteState,
   mergeDemoState,
   toEnvelope,
@@ -20,6 +21,12 @@ export default async function handler(request, response) {
       if (/[?&]meta=1\b/.test(request.url || "")) {
         const meta = await kvReadMeta();
         response.status(200).json({ updatedAt: meta && meta.updatedAt ? meta.updatedAt : null });
+        return;
+      }
+      // Login only needs account records. Returning just this small payload
+      // avoids sending every batch and historical grading record at sign-in.
+      if (/[?&]users=1\b/.test(request.url || "")) {
+        response.status(200).json(await kvReadUsers());
         return;
       }
       const state = await kvReadState();

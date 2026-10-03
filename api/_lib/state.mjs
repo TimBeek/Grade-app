@@ -9,6 +9,7 @@ import {
   isPostgresConfigured,
   pgReadMeta,
   pgReadState,
+  pgReadUsers,
   pgReadStats,
   pgWriteStats,
   pgWriteState,
@@ -138,6 +139,19 @@ export async function kvReadState() {
   } catch {
     return emptyState();
   }
+}
+
+// A login must not download the complete operational state. Postgres can
+// project these fields directly; Redis keeps the compatibility fallback.
+export async function kvReadUsers() {
+  if (isPostgresConfigured()) return pgReadUsers();
+  const state = await kvReadState();
+  return {
+    users: state.users,
+    userSync: state.userSync,
+    userSyncAt: state.userSyncAt,
+    updatedAt: state.updatedAt,
+  };
 }
 
 export async function kvWriteState(normalizedState) {

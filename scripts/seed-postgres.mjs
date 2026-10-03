@@ -31,7 +31,16 @@ const file = path.join(root, "data", "remarkt-demo-state.json");
 if (!isPostgresConfigured()) throw new Error("DATABASE_URL is missing. Connect Neon in Vercel first.");
 if (!fs.existsSync(file)) throw new Error("Local recovery snapshot was not found.");
 
-const incoming = JSON.parse(fs.readFileSync(file, "utf8"));
+const snapshot = JSON.parse(fs.readFileSync(file, "utf8"));
+const usersOnly = process.argv.includes("--users-only");
+const incoming = usersOnly
+  ? {
+    ...emptyState(),
+    users: snapshot.users || [],
+    userSync: "user-management",
+    userSyncAt: snapshot.userSyncAt || snapshot.updatedAt || new Date().toISOString(),
+  }
+  : snapshot;
 const current = process.argv.includes("--fresh") ? emptyState() : await kvReadState();
 const merged = mergeDemoState(current, incoming);
 await kvWriteState(merged);
@@ -39,6 +48,7 @@ await kvWriteState(merged);
 const laptopCount = merged.batches.reduce((sum, batch) => sum + (batch.laptops || []).length, 0);
 const monitorCount = merged.monitorBatches.reduce((sum, batch) => sum + (batch.monitors || []).length, 0);
 console.log(JSON.stringify({
+  usersOnly,
   users: merged.users.length,
   batches: merged.batches.length,
   laptops: laptopCount,

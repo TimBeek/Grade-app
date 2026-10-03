@@ -2422,6 +2422,7 @@ function loadLocalDemoStateBackup() {
 // Last server "updatedAt" stamp we are in sync with. Used by the periodic
 // live-sync so we only re-read the full state when the server data changed.
 let lastSharedStateStamp = null;
+let lastSharedStateSnapshot = null;
 
 // Cheap change-check: one tiny request (1 KV command) returning only updatedAt.
 async function fetchSharedStateStamp() {
@@ -2441,14 +2442,65 @@ async function primeSharedStateStamp() {
   lastSharedStateStamp = await fetchSharedStateStamp();
 }
 
-// Periodic sync: does a full reload ONLY when the server stamp changed.
-async function syncSharedStateIfChanged() {
+// A periodic check only reads the tiny timestamp by default. Full state reloads
+// happen on initial load or when the employee deliberately returns to the tab.
+// This prevents every colleague's completed grade from downloading the entire
+// batch/history dataset to every open browser.
+async function syncSharedStateIfChanged(options = {}) {
+  const loadFull = options.loadFull === true;
   if (!canUseSharedDemoState()) return false;
   const stamp = await fetchSharedStateStamp();
   if (stamp === null) return false;
   if (lastSharedStateStamp !== null && stamp === lastSharedStateStamp) return false;
+  if (!loadFull) return false;
   lastSharedStateStamp = stamp;
   return loadSharedDemoState();
+}
+
+function sharedRowChanged(current, previous) {
+  return JSON.stringify(current) !== JSON.stringify(previous);
+}
+
+function changedSharedRows(currentRows, previousRows, keyFn) {
+  const previous = new Map((Array.isArray(previousRows) ? previousRows : [])
+    .map(row => [keyFn(row), row])
+    .filter(([key]) => key));
+  return (Array.isArray(currentRows) ? currentRows : []).filter(row => {
+    const key = keyFn(row);
+    return key && sharedRowChanged(row, previous.get(key));
+  });
+}
+
+// Only transmit changed records on a normal save. The server's merge function
+// already understands partial lists, so this is wire-compatible with Redis and
+// Postgres while shrinking a completed grading from megabytes to a few KB.
+function createSharedStateDelta(snapshot, previous) {
+  if (!previous || typeof previous !== 'object') return snapshot;
+  const batchKey = batch => sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
+  return {
+    version: snapshot.version,
+    ...(snapshot.userSync ? {
+      users: snapshot.users,
+      userSync: snapshot.userSync,
+      userSyncAt: snapshot.userSyncAt,
+      ...(snapshot.userMutation ? { userMutation: snapshot.userMutation } : {}),
+    } : {}),
+    batches: changedSharedRows(snapshot.batches, previous.batches, batchKey),
+    monitorBatches: changedSharedRows(snapshot.monitorBatches, previous.monitorBatches, batchKey),
+    history: changedSharedRows(snapshot.history, previous.history, sharedHistoryKey),
+    labelPrints: changedSharedRows(snapshot.labelPrints, previous.labelPrints, sharedLabelPrintKey),
+    monitorLabelPrints: changedSharedRows(snapshot.monitorLabelPrints, previous.monitorLabelPrints, sharedMonitorLabelPrintKey),
+    auditLogs: changedSharedRows(snapshot.auditLogs, previous.auditLogs, sharedAuditKey),
+    deletedBatchIds: snapshot.deletedBatchIds,
+    deletedLaptopStickers: snapshot.deletedLaptopStickers,
+    deletedMonitorBatchIds: snapshot.deletedMonitorBatchIds,
+    deletedMonitorStickers: snapshot.deletedMonitorStickers,
+    restoreDeletedBatchIds: snapshot.restoreDeletedBatchIds,
+    restoreDeletedLaptopStickers: snapshot.restoreDeletedLaptopStickers,
+    restoreDeletedMonitorBatchIds: snapshot.restoreDeletedMonitorBatchIds,
+    restoreDeletedMonitorStickers: snapshot.restoreDeletedMonitorStickers,
+    updatedAt: snapshot.updatedAt,
+  };
 }
 
 async function loadSharedDemoState() {
@@ -2464,6 +2516,7 @@ async function loadSharedDemoState() {
     const applied = applySharedDemoState(state);
     if (applied) {
       saveLocalDemoStateBackup(state);
+      lastSharedStateSnapshot = getSharedDemoSnapshot();
       if (shouldRepublish) await saveSharedDemoState();
     }
     return applied;
@@ -2475,6 +2528,7 @@ async function loadSharedDemoState() {
 
 async function saveSharedDemoState(options = {}) {
   const snapshot = getSharedDemoSnapshot(options);
+  const delta = createSharedStateDelta(snapshot, lastSharedStateSnapshot);
   STATE.sharedSyncPending = true;
   saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
   if (!canUseSharedDemoState()) return false;
@@ -2482,11 +2536,12 @@ async function saveSharedDemoState(options = {}) {
     const response = await fetch(SHARED_DEMO_STATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: await encodeSharedDemoStateBody(snapshot),
+      body: await encodeSharedDemoStateBody(delta),
     });
     if (response.ok) {
       STATE.sharedSyncPending = false;
       saveLocalDemoStateBackup(snapshot);
+      lastSharedStateSnapshot = snapshot;
       // Track our own write so the next live-sync doesn't reload needlessly.
       try {
         const result = await response.json();
@@ -2505,7 +2560,7 @@ async function saveSharedDemoState(options = {}) {
 async function refreshSharedUsers() {
   if (!canUseSharedDemoState()) return false;
   try {
-    const response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
+    const response = await fetch(`${SHARED_DEMO_STATE_URL}?users=1`, { cache: 'no-store' });
     if (!response.ok) return false;
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
     return applySharedUsers(remoteState);
