@@ -52,7 +52,16 @@ function bindClick(selector, handler) {
 }
 
 function bindRenderedControlHandlers() {
+  bindClick('[data-inspection-supplier]', button => openGuidedSupplierAdvice(button.dataset.inspectionComponent, button.dataset.inspectionSupplier));
+  bindClick('[data-inspection-finding]', button => selectGuidedPhotoFinding(button.dataset.inspectionFinding, button.dataset.inspectionComponent));
+  bindClick('[data-inspection-touch]', button => confirmGuidedTouch(button.dataset.inspectionTouch));
+  bindClick('[data-inspection-touch-toggle]', () => toggleGuidedTouchSelection());
+  bindClick('[data-inspection-review-part]', button => returnToGuidedUncertainPart(Number(button.dataset.inspectionReviewPart)));
+  bindClick('[data-inspection-step]', button => visitGuidedComponent(Number(button.dataset.inspectionStep)));
+  bindClick('[data-inspection-trigger]', button => toggleGuidedTrigger(button.dataset.inspectionTrigger));
+  bindClick('[data-inspection-remove-repair]', button => removeGuidedRepair(Number(button.dataset.inspectionRemoveRepair)));
   bindClick('[data-decision-option]', button => {
+    if (button.dataset.decisionTitle && (!STATE.pendingDecision || STATE.pendingDecision.title !== button.dataset.decisionTitle)) return;
     return resolvePendingDecision(Number(button.dataset.decisionOption));
   });
 
@@ -123,6 +132,7 @@ function bindRenderedControlHandlers() {
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
     if (!ond) return;
+    if (button.dataset.inspectionComponent && button.dataset.inspectionComponent !== ond.id) return;
     applyComponentChoice(ond.id, button.dataset.keuze, button.dataset.autoAdvance === 'true');
   });
 
@@ -160,6 +170,22 @@ function handleDelegatedPointerDown(e) {
 }
 
 async function handleDelegatedClick(e) {
+  const inspectionSupplier = e.target.closest('[data-inspection-supplier]');
+  if (inspectionSupplier) { openGuidedSupplierAdvice(inspectionSupplier.dataset.inspectionComponent, inspectionSupplier.dataset.inspectionSupplier); return; }
+  const inspectionFinding = e.target.closest('[data-inspection-finding]');
+  if (inspectionFinding) { await selectGuidedPhotoFinding(inspectionFinding.dataset.inspectionFinding, inspectionFinding.dataset.inspectionComponent); return; }
+  const inspectionTouchToggle = e.target.closest('[data-inspection-touch-toggle]');
+  if (inspectionTouchToggle) { e.preventDefault(); toggleGuidedTouchSelection(); return; }
+  const inspectionTouch = e.target.closest('[data-inspection-touch]');
+  if (inspectionTouch) { await confirmGuidedTouch(inspectionTouch.dataset.inspectionTouch); return; }
+  const inspectionReview = e.target.closest('[data-inspection-review-part]');
+  if (inspectionReview) { returnToGuidedUncertainPart(Number(inspectionReview.dataset.inspectionReviewPart)); return; }
+  const inspectionStep = e.target.closest('[data-inspection-step]');
+  if (inspectionStep) { visitGuidedComponent(Number(inspectionStep.dataset.inspectionStep)); return; }
+  const inspectionTrigger = e.target.closest('[data-inspection-trigger]');
+  if (inspectionTrigger) { toggleGuidedTrigger(inspectionTrigger.dataset.inspectionTrigger); return; }
+  const inspectionRepair = e.target.closest('[data-inspection-remove-repair]');
+  if (inspectionRepair) { removeGuidedRepair(Number(inspectionRepair.dataset.inspectionRemoveRepair)); return; }
   const previewOverlay = e.target.closest('[data-image-preview-overlay]');
   if (previewOverlay && e.target === previewOverlay) {
     STATE.imagePreview = null;
@@ -169,6 +195,7 @@ async function handleDelegatedClick(e) {
 
   const decisionButton = e.target.closest('[data-decision-option]');
   if (decisionButton) {
+    if (decisionButton.dataset.decisionTitle && (!STATE.pendingDecision || STATE.pendingDecision.title !== decisionButton.dataset.decisionTitle)) return;
     const previewTarget = e.target.closest('[data-image-preview]');
     if (previewTarget) {
       e.preventDefault();
@@ -256,8 +283,10 @@ async function handleDelegatedClick(e) {
   const keuzeButton = e.target.closest('[data-keuze]');
   if (keuzeButton) {
     if (!canGradeUser()) return;
+    if (!STATE.currentGrading || STATE.pendingDecision) return;
     const onderdelen = getGradingOnderdelen();
     const ond = onderdelen[STATE.currentGrading.huidigeIndex];
+    if (keuzeButton.dataset.inspectionComponent && keuzeButton.dataset.inspectionComponent !== ond.id) return;
     const keuze = keuzeButton.dataset.keuze;
     applyComponentChoice(ond.id, keuze, keuzeButton.dataset.autoAdvance === 'true');
     return;
@@ -613,6 +642,8 @@ function applyMonitorManualVideoInputsToPicker(videoInputs) {
 }
 
 function handleDelegatedKeydown(e) {
+  if (typeof handleGuidedDialogKeydown === 'function' && handleGuidedDialogKeydown(e)) return;
+  if (e.repeat && STATE.currentScreen === 'grading_beginner') return;
   if (e.key === 'Escape' && STATE.imagePreview) {
     e.preventDefault();
     STATE.imagePreview = null;
@@ -650,7 +681,7 @@ function handleDelegatedKeydown(e) {
 
   const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
   const isTypingField = ['input', 'textarea', 'select'].includes(tag);
-  if (isTypingField || STATE.pendingDecision) return;
+  if (isTypingField || STATE.pendingDecision || STATE.supplierNotice) return;
 
   const key = String(e.key || '').toLowerCase();
   if (STATE.currentScreen === 'monitor_label_scan' && STATE.currentMonitor && !STATE.monitorPrintInProgress && !monitorNeedsIdentityChoice(STATE.currentMonitor) && ['a', 'b', 'c', 'd', 'x'].includes(key)) {
@@ -804,6 +835,10 @@ function queueExpertScoreUpdate() {
 
 function applyComponentChoice(componentId, letter, autoAdvance = false) {
   if (!STATE.currentGrading) return;
+  if (STATE.pendingDecision || !['A', 'B', 'C', 'D'].includes(letter)) return;
+  const component = getGradingOnderdelen().find(item => item.id === componentId);
+  if (!component) return;
+  if (isGuidedInspection() && (getGuidedDialogType() || (componentId === 'bovenkap' && STATE.currentGrading.coverCleaning !== 'cleaned') || (componentId === 'lcd' && !STATE.currentGrading.touchChecked && !STATE.currentGrading.touchUncertain))) return;
   STATE.currentGrading.keuzes[componentId] = letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
   STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
@@ -813,6 +848,13 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
   delete STATE.currentGrading.repairActions[componentId];
   STATE.currentGrading.gradeReviewDone = false;
   STATE.currentGrading.finalGradeOverride = null;
+  STATE.currentGrading.result = null;
+  if (isGuidedInspection()) {
+    STATE.currentGrading.inspectionChecks[componentId] = false;
+    STATE.currentGrading.inspectionObservationPaths = STATE.currentGrading.inspectionObservationPaths || {};
+    delete STATE.currentGrading.inspectionObservationPaths[componentId];
+    delete STATE.currentGrading.inspectionDoubts[componentId];
+  }
 
   const decision = getChoiceDecision(componentId, letter);
   if (decision) {
@@ -828,6 +870,7 @@ function applyComponentChoice(componentId, letter, autoAdvance = false) {
     return;
   }
 
+  acknowledgeGuidedChoice(componentId, component.keuzes.find(item => item.letter === letter).titel);
   advanceAfterChoice(autoAdvance);
   if (STATE.currentScreen === 'grading_expert') {
     updateExpertChoiceUI(componentId, letter);
@@ -860,6 +903,10 @@ async function resolvePendingDecision(optionIndex) {
     return;
   }
 
+  if (isGuidedInspection()) {
+    const paths = STATE.currentGrading.inspectionObservationPaths || (STATE.currentGrading.inspectionObservationPaths = {});
+    (paths[decision.componentId] || (paths[decision.componentId] = [])).push(option.label);
+  }
   STATE.currentGrading.keuzes[decision.componentId] = decision.letter;
   STATE.currentGrading.impactOverrides = STATE.currentGrading.impactOverrides || {};
   STATE.currentGrading.repairIssues = STATE.currentGrading.repairIssues || {};
@@ -869,6 +916,7 @@ async function resolvePendingDecision(optionIndex) {
     STATE.currentGrading.repairIssues[decision.componentId] = option.repairIssue;
     const repairAction = typeof getRepairActionForOption === 'function' ? getRepairActionForOption(decision.componentId, option) : null;
     if (repairAction) STATE.currentGrading.repairActions[decision.componentId] = repairAction;
+    recordGuidedRepair(decision.componentId, repairAction);
   } else {
     delete STATE.currentGrading.repairIssues[decision.componentId];
     delete STATE.currentGrading.repairActions[decision.componentId];
@@ -888,6 +936,7 @@ async function resolvePendingDecision(optionIndex) {
     return;
   }
   STATE.pendingDecision = null;
+  acknowledgeGuidedChoice(decision.componentId, option.label);
   advanceAfterChoice(decision.autoAdvance);
   render();
 }
@@ -900,6 +949,7 @@ function cancelPendingDecision() {
       if (STATE.currentGrading.impactOverrides) delete STATE.currentGrading.impactOverrides[decision.componentId];
       if (STATE.currentGrading.repairIssues) delete STATE.currentGrading.repairIssues[decision.componentId];
       if (STATE.currentGrading.repairActions) delete STATE.currentGrading.repairActions[decision.componentId];
+      if (STATE.currentGrading.inspectionObservationPaths) delete STATE.currentGrading.inspectionObservationPaths[decision.componentId];
     }
   }
   STATE.pendingDecision = null;
@@ -1400,11 +1450,52 @@ async function handleAction(action, el) {
       startTestGrading('expert');
       break;
     case 'prev_q':
+      if (isGuidedInspection() && getGuidedDialogType()) return;
       STATE.supplierNotice = null;
       STATE.currentGrading.huidigeIndex = Math.max(0, STATE.currentGrading.huidigeIndex - 1);
       updateSupplierNoticeForCurrentStep();
       break;
+    case 'inspection_doubt':
+      markGuidedDoubt();
+      return;
+    case 'inspection_damage':
+      openGuidedDialog('damage');
+      return;
+    case 'inspection_checks':
+      openGuidedDialog('checks');
+      return;
+    case 'inspection_review':
+      if (getGuidedUncertainParts().length) openGuidedDialog('review');
+      return;
+    case 'inspection_dialog_close':
+      closeGuidedDialog();
+      return;
+    case 'inspection_review_close':
+      if (isGuidedInspection() && !getGuidedUncertainParts().length) {
+        STATE.currentGrading.inspectionDialog = null;
+        render();
+      }
+      return;
+    case 'inspection_clean':
+      setCoverCleaning(false);
+      return;
+    case 'inspection_cleaned':
+      setCoverCleaning(true);
+      return;
+    case 'inspection_restart':
+      if (!confirm(translateCopy('Restart this inspection? The current answers for this laptop will be cleared.'))) return;
+      clearGuidedDraft();
+      startGrading('beginner');
+      break;
     case 'next_q':
+      if (isGuidedInspection()) {
+        if (getGuidedDialogType()) return;
+        const component = getGradingOnderdelen()[STATE.currentGrading.huidigeIndex];
+        if (getGuidedComponentStatus(component.id) !== 'done') {
+          setAppMessage('Choose an observation or mark this part as uncertain.');
+          break;
+        }
+      }
       STATE.supplierNotice = null;
       if (STATE.currentGrading.huidigeIndex < getGradingOnderdelen().length - 1) {
         STATE.currentGrading.huidigeIndex++;
@@ -1638,7 +1729,9 @@ function getCurrentGradingComponent() {
 
 function buildSupplierNoticeForComponent(component, laptop = STATE.currentLaptop) {
   if (!component || !laptop || !normalizeText(laptop.meldingen)) return null;
-  const issues = getSupplierPopupIssues(component.id, laptop);
+  const issues = isGuidedInspection()
+    ? getGuidedSupplierIssues(component.id, laptop).filter(note => isGuidedSupplierImportant(component.id, note))
+    : getSupplierPopupIssues(component.id, laptop);
   if (!issues.length) return null;
   const notes = issues.join(', ');
   return {
@@ -2476,6 +2569,7 @@ function startGrading(modus) {
     render();
     return;
   }
+  STATE.pendingDecision = null;
   STATE.currentGrading = {
     laptop_sticker: STATE.currentLaptop.sticker,
     modus,
@@ -2491,7 +2585,12 @@ function startGrading(modus) {
     testOnly: Boolean(STATE.currentLaptop && STATE.currentLaptop.testOnly),
     result: null,
     supplierNoticesSeen: {},
+    ...(modus === 'beginner' ? {
+      inspectionVersion: GUIDED_INSPECTION_VERSION,
+      inspectionChecks: {}, inspectionDoubts: {}, inspectionObservations: {}, inspectionRepairs: {},
+    } : {}),
   };
+  if (modus === 'beginner') restoreGuidedDraft();
   STATE.currentScreen = modus === 'beginner' ? 'grading_beginner' : 'grading_expert';
   STATE.supplierNotice = null;
   updateSupplierNoticeForCurrentStep();
@@ -2576,6 +2675,14 @@ async function completeExpertRepairGrade() {
 }
 
 function finishGrading() {
+  if (isGuidedInspection() && getGuidedUncertainParts().length) {
+    STATE.currentGrading.inspectionDialog = 'review';
+    STATE.currentGrading.result = null;
+    STATE.currentScreen = 'grading_beginner';
+    render();
+    return;
+  }
+  if (STATE.pendingDecision) return;
   STATE.pendingDecision = null;
   const missing = getMissingGradingOnderdelen(STATE.currentGrading);
   if (missing.length) {
@@ -2600,6 +2707,7 @@ function finishGrading() {
   const repairActions = repairEntries
     .map(([componentId, issue]) => storedRepairActions[componentId] || createRepairAction(componentId, issue))
     .filter(Boolean)
+    .concat(Object.values(STATE.currentGrading.inspectionRepairs || {}).flat())
     .concat(typeof buildTriggerRepairActions === 'function' ? buildTriggerRepairActions(STATE.currentGrading.triggers) : []);
   STATE.currentGrading.result.problems = problemRows;
   if (repairEntries.length) {
@@ -2695,7 +2803,10 @@ async function finishGradingAndMaybeConfirm() {
 
 function getMissingGradingOnderdelen(grading) {
   if (!grading) return getGradingOnderdelen();
-  return getGradingOnderdelen().filter(ond => !grading.keuzes[ond.id]);
+  // Old grading records keep their original rules; new guided inspections also
+  // require acknowledged observations and resolved doubts before any label.
+  const missingChecks = getGuidedMissingChecks(grading);
+  return getGradingOnderdelen().filter(ond => !grading.keuzes[ond.id] || missingChecks.some(item => item.id === ond.id));
 }
 
 // HTML escaping lives in assets/app-state.js.
@@ -2703,6 +2814,7 @@ function getMissingGradingOnderdelen(grading) {
 function saveGrading() {
   const g = STATE.currentGrading;
   const l = STATE.currentLaptop;
+  if (g && g.inspectionVersion && (STATE.pendingDecision || getMissingGradingOnderdelen(g).length)) return false;
   const duurSec = Math.round((g.bevestigd - g.gestart) / 1000);
   
   const historyItem = {
@@ -2740,6 +2852,16 @@ function saveGrading() {
     finalGradeOverride: g.finalGradeOverride,
     expertFinalGrade: g.expertFinalGrade || '',
     expertRepairText: g.expertRepairText || '',
+    ...(g.inspectionVersion ? {
+      inspectionVersion: g.inspectionVersion,
+      inspectionChecks: { ...g.inspectionChecks },
+      inspectionObservations: { ...g.inspectionObservations },
+      inspectionObservationPaths: Object.fromEntries(Object.entries(g.inspectionObservationPaths || {}).map(([id, path]) => [id, [...path]])),
+      inspectionRepairs: JSON.parse(JSON.stringify(g.inspectionRepairs || {})),
+      coverCleaning: g.coverCleaning || '',
+      touchChecked: Boolean(g.touchChecked),
+      touchDecision: g.touchDecision || '',
+    } : {}),
     result: g.result,
   };
   STATE.history.push(historyItem);
@@ -2749,6 +2871,7 @@ function saveGrading() {
   logAudit('save_grading', 'laptop', l.sticker, { grade: g.result.eindgrade, score: g.result.score, rulesVersion: GRADING_RULES_VERSION });
   const savePromise = saveSharedDemoState();
   
+  clearGuidedDraft();
   STATE.currentLaptop = null;
   STATE.currentGrading = null;
   STATE.pendingDecision = null;
@@ -2764,6 +2887,12 @@ async function confirmSaveWithAutomaticLabels() {
   const l = STATE.currentLaptop;
   if (!g || !l || !g.result) {
     setAppMessage('There is no result to confirm yet.');
+    render();
+    return;
+  }
+  if (g.inspectionVersion && (STATE.pendingDecision || getMissingGradingOnderdelen(g).length)) {
+    setAppMessage('Resolve the unchecked or uncertain parts before printing.');
+    STATE.currentScreen = 'grading_beginner';
     render();
     return;
   }

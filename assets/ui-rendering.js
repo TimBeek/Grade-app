@@ -79,6 +79,7 @@ function renderTouchOverrideControls(laptop, context = 'info') {
 // RENDER FUNCTIES
 // =============================================================================
 function render() {
+  if (typeof persistGuidedDraft === 'function') persistGuidedDraft();
   applyThemePreference();
   if (typeof applyContrastPreference === 'function') applyContrastPreference();
   const perf = window.performance;
@@ -92,8 +93,8 @@ function render() {
     if (typeof enforceDeviceAccess === 'function') enforceDeviceAccess();
     html = renderTopbar();
     html += renderAppMessage();
-    if (STATE.pendingDecision) html += renderDecisionModal(STATE.pendingDecision);
-    if (STATE.supplierNotice) html += renderSupplierNoticeModal(STATE.supplierNotice);
+    if (STATE.pendingDecision && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderDecisionModal(STATE.pendingDecision);
+    if (STATE.supplierNotice && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderSupplierNoticeModal(STATE.supplierNotice);
     if (STATE.monitorReprintPrompt) html += renderMonitorReprintModal(STATE.monitorReprintPrompt);
     if (STATE.imagePreview) html += renderImagePreviewModal(STATE.imagePreview);
     if (STATE.currentScreen === 'password_change') html += renderPasswordChange();
@@ -118,6 +119,15 @@ function render() {
   app.innerHTML = html;
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
   attachListeners();
+  if (typeof focusGuidedDialog === 'function') focusGuidedDialog(app);
+  if (STATE.currentScreen === 'grading_beginner' && isGuidedInspection() && !STATE.imagePreview && !getGuidedDialogType()) {
+    const focusKey = `${STATE.currentGrading.huidigeIndex}:${STATE.pendingDecision ? STATE.pendingDecision.title : ''}`;
+    if (app.dataset.inspectionFocus !== focusKey) {
+      const heading = document.getElementById('inspection-title');
+      if (heading && typeof heading.focus === 'function') heading.focus();
+      app.dataset.inspectionFocus = focusKey;
+    }
+  } else { delete app.dataset.inspectionFocus; }
   scheduleScreenWarmup();
   if (document.getElementById('manager-live-stats') && typeof refreshAnalyticsServerStats === 'function') {
     refreshAnalyticsServerStats();
@@ -453,6 +463,23 @@ function getScreenTitle() {
 
 function uiIcon(name) {
   const icons = {
+    part_bovenkap: '<rect x="3" y="4" width="16" height="14" rx="1.5"/><circle cx="11" cy="11" r="1.5"/>',
+    part_onderkant: '<rect x="3" y="4" width="16" height="14" rx="1.5"/><path d="M6 7h.01M16 7h.01M6 15h.01M16 15h.01M8 10h6M8 12h6"/>',
+    part_randen: '<path d="M8 3H4a1 1 0 0 0-1 1v4M14 3h4a1 1 0 0 1 1 1v4M19 14v4a1 1 0 0 1-1 1h-4M8 19H4a1 1 0 0 1-1-1v-4"/><rect x="7" y="7" width="8" height="8" rx="1"/>',
+    part_palmrest: '<rect x="3" y="4" width="16" height="14" rx="1.5"/><path d="M6 7h10M6 10h10"/><rect x="8" y="13" width="6" height="3" rx=".5"/>',
+    part_bezel: '<rect x="3" y="3" width="16" height="16" rx="1.5"/><rect x="6" y="6" width="10" height="10" rx=".5"/>',
+    part_lcd: '<rect x="3" y="4" width="16" height="12" rx="1.5"/><path d="M8 19h6M11 16v3M6 8h4"/>',
+    part_keyboard: '<rect x="2" y="5" width="18" height="12" rx="1.5"/><path d="M5 8h2M10 8h2M15 8h2M5 11h2M10 11h2M15 11h2M7 14h8"/>',
+    part_touchpad: '<rect x="3" y="5" width="16" height="12" rx="2"/><path d="M3 13h16M11 13v4"/>',
+    part_scharnieren: '<rect x="3" y="3" width="16" height="10" rx="1.5"/><path d="M3 19h16M6 15v3M16 15v3"/><circle cx="6" cy="14" r="1.5"/><circle cx="16" cy="14" r="1.5"/>',
+    // Custom cleaning mark: spray bottle + folded cloth, not a wand or blade.
+    clean: '<path d="M4 7h4l2 5v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-7l2-5Z"/><path d="M4 7V3h8l1 2H8v2M8 5l1 3M4.5 13h3"/><path d="M13 12h4l3 3v4l-2-1-2 1-3-1v-6ZM17 12v3h3"/><path d="M17 3v4M15 5h4"/>',
+    touch: '<rect x="3" y="3" width="16" height="12" rx="1.5"/><path d="M11 19v-8a1 1 0 0 1 2 0v4l2-1 3 3-1 3M8 12l3 3"/>',
+    question: '<circle cx="11" cy="11" r="8"/><path d="M8.5 8a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M11 15h.01"/>',
+    damage: '<rect x="3" y="3" width="16" height="16" rx="1.5"/><path d="M12 3l-3 5 4 4-3 7M9 8l-4 1M13 12l4-2"/>',
+    repair: '<path d="M14 3a5 5 0 0 0-6.4 6.4L3.5 13.5a2.8 2.8 0 0 0 4 4l4.1-4.1A5 5 0 0 0 18 7l-3 3-3-3z"/><circle cx="5.5" cy="15.5" r=".6" fill="currentColor" stroke="none"/>',
+    info: '<circle cx="11" cy="11" r="8"/><path d="M11 10v6"/><circle cx="11" cy="6.5" r=".6" fill="currentColor" stroke="none"/>',
+    close: '<path d="M5 5l12 12M17 5L5 17"/>',
     scan: '<path d="M4 7V5a1 1 0 0 1 1-1h2"/><path d="M14 4h2a1 1 0 0 1 1 1v2"/><path d="M17 14v2a1 1 0 0 1-1 1h-2"/><path d="M7 17H5a1 1 0 0 1-1-1v-2"/><path d="M7 9h10"/><path d="M7 12h10"/>',
     gradeScan: '<rect x="4" y="5" width="14" height="10" rx="1.5"/><path d="M8 19h6"/><path d="M11 15v4"/><path d="M7.5 10.5l2.2 2.1 4.8-5.1"/>',
     labelPrint: '<path d="M7 8V4h8v4"/><rect x="5" y="8" width="12" height="7" rx="1.5"/><path d="M8 14h6v4H8z"/><path d="M8 11h.01"/><path d="M10 17h4"/>',
@@ -481,7 +508,7 @@ function uiIcon(name) {
     plus: '<path d="M11 5v12"/><path d="M5 11h12"/>',
     chevron: '<path d="M8 9l3 3 3-3"/>'
   };
-  return `<svg viewBox="0 0 22 22" aria-hidden="true">${icons[name] || icons.scan}</svg>`;
+  return `<svg viewBox="0 0 22 22" aria-hidden="true" stroke-linecap="round" stroke-linejoin="round">${icons[name] || icons.scan}</svg>`;
 }
 
 function renderWorkflowRoute() {
@@ -2315,6 +2342,7 @@ function renderLaptopInfo() {
 }
 
 function renderGradingBeginner() {
+  if (isGuidedInspection()) return renderGuidedInspection();
   const g = STATE.currentGrading;
   const onderdelen = getGradingOnderdelen();
   const ond = onderdelen[g.huidigeIndex];
@@ -2492,6 +2520,32 @@ function renderExpertScorePanel(g = STATE.currentGrading, onderdelen = getGradin
   `;
 }
 
+function getResultInspectionRows(g = STATE.currentGrading) {
+  const result = g.result;
+  return getGradingOnderdelen().map(component => {
+    const detail = (result.detailRows || []).find(row => row.naam === component.naam) || {};
+    const choice = (g.keuzes || {})[component.id];
+    const selected = component.keuzes.find(option => option.letter === choice);
+    const path = (g.inspectionObservationPaths || {})[component.id];
+    const observation = path && path.length ? path.map(label => translateCopy(guidedDecisionLabel(label))).join(' · ') : (g.inspectionObservations || {})[component.id] || (selected && selected.titel) || 'Not specified';
+    const findings = (component.triggers || []).filter(trigger => (g.triggers || {})[trigger.id]).map(trigger => trigger.label);
+    const repairs = (result.repairActions || []).filter(action => action.componentId === component.id);
+    const abnormal = Boolean((choice && choice !== 'A') || Number(detail.punten) > 0 || findings.length || repairs.length);
+    const checked = Boolean(choice && choice !== '-');
+    return {component, detail, observation, findings, repairs, abnormal, checked};
+  });
+}
+
+function renderResultObservationRow(row) {
+  const copy = typeof guidedDecisionLabel === 'function' ? guidedDecisionLabel(row.observation) : row.observation;
+  const issues = [...new Set(row.findings.concat(row.repairs.map(action => action.issue)))];
+  return `<tr class="result-observation ${row.repairs.length ? 'needs-repair' : row.abnormal ? 'has-wear' : 'is-clear'}">
+    <th scope="row"><span class="result-part-name">${uiIcon(`part_${row.component.id}`)}<span>${escapeHtml(translateCopy(row.component.naam))}</span></span></th>
+    <td class="result-observation-copy">${escapeHtml(translateCopy(copy))}${issues.length ? `<ul>${issues.map(issue => `<li>${escapeHtml(translateCopy(guidedDecisionCopy(issue)))}</li>`).join('')}</ul>` : ''}</td>
+    <td><span class="result-part-state">${uiIcon(row.repairs.length ? 'repair' : row.abnormal ? 'damage' : row.checked ? 'complete' : 'question')}<span>${row.repairs.length ? 'Repair recorded' : row.abnormal ? 'Wear / damage' : row.checked ? 'Checked' : 'Not specified'}</span></span></td>
+  </tr>`;
+}
+
 function renderResult() {
   const g = STATE.currentGrading;
   const r = g.result;
@@ -2504,88 +2558,55 @@ function renderResult() {
       : 'Print Repair';
   const testOnly = g.testOnly || (l && l.testOnly);
   const gradeWithheld = isGradeWithheldForRepair(r);
-  const labels = {
-    A: { naam: 'Premium', desc: `Impact score ${r.score} - near new` },
-    B: { naam: 'Good', desc: `Impact score ${r.score} - visible use, fully functional` },
-    C: { naam: 'Heavy Use', desc: `Impact score ${r.score} - clear wear` },
-    D: { naam: 'Repair', desc: 'Repair, parts or not directly sellable' }
-  };
+  const labels = {A:'Premium', B:'Good', C:'Heavy Use', D:'Repair / not sellable'};
+  const rows = getResultInspectionRows(g);
+  const changed = rows.filter(row => row.abnormal);
+  const clear = rows.filter(row => row.checked && !row.abnormal);
+  const route = gradeWithheld ? 'Direct repair' : r.repairLabelType === 'reject' ? 'Not sellable' : r.repairLabelType === 'production' ? 'Repair during production' : grade === 'D' ? 'Repair / not sellable' : 'No repair recorded';
+  const routeCopy = gradeWithheld ? 'Specs label has no grade. Determine the grade after repair.' : r.repairLabelType === 'reject' ? 'Keep this device out of sellable stock.' : r.repairLabelType === 'production' ? 'Specs label shows the grade after repair.' : grade === 'D' ? 'Resolve the recorded damage before releasing this device.' : 'Confirm the assessment before printing the label.';
+  const hasRepair = gradeWithheld || grade === 'D' || Boolean(r.repairLabelType);
+  const reasons = gradeWithheld
+    ? [{type:'bad',text:routeCopy}, {type:'warn',text:'The repair must be completed before a final grade can be assigned.'}]
+    : (r.redenen || []);
   
   return `
-      <div class="screen">
-        <div style="margin-bottom: 16px;">
-        <div style="font-size: 13px; color: #6B6B66;">${testOnly ? 'Test grading' : `${escapeHtml(l.merk)} ${escapeHtml(l.model)} · ${escapeHtml(l.sticker)}`}</div>
-        <div style="font-size: 12px; color: #6B6B66;">Graded by ${escapeHtml(STATE.currentUser.naam)} · ${new Date().toLocaleString('nl-NL', {dateStyle: 'short', timeStyle: 'short'})}</div>
-      </div>
-      
-      ${gradeWithheld ? `
-      <div class="result-grade D">
-        <div class="result-grade-label">Final Grade</div>
-        <div class="result-grade-letter">?</div>
-        <div class="result-grade-desc">Direct repair — determine the grade after repair</div>
-      </div>
-      ` : `
-      <div class="result-grade ${grade}">
-        <div class="result-grade-label">${grade === 'D' ? 'Final Status' : 'Final Grade'}</div>
-        <div class="result-grade-letter">${grade === 'D' ? '×' : grade}</div>
-        <div class="result-grade-desc">${labels[grade].naam} — ${labels[grade].desc}</div>
-      </div>
-      `}
-
-      <h3 style="margin-bottom: 10px; font-weight: 500;">Why ${gradeWithheld || grade === 'D' ? 'repair' : 'grade ' + grade}?</h3>
-      <div class="reasons">
-        ${r.redenen.map(reden => `
-          <div class="reason">
-            <div class="reason-dot ${reden.type}"></div>
-            <div class="reason-text">${escapeHtml(reden.text)}</div>
+      <main class="screen result-screen" aria-labelledby="result-title">
+        <header class="inspection-header"><h1 id="result-title">Assessment overview</h1><span class="inspection-device" data-i18n-skip>${testOnly ? escapeHtml(translateCopy('Test grading')) : `${escapeHtml(l.merk)} ${escapeHtml(l.model)} · ${escapeHtml(l.sticker)}`}</span></header>
+        <p class="result-reviewer"><span>Graded by</span> ${escapeHtml(STATE.currentUser.naam)} · ${new Date(g.bevestigd || Date.now()).toLocaleString(getLanguagePreference() === 'nl' ? 'nl-NL' : 'en-GB', {dateStyle:'short', timeStyle:'short'})}</p>
+        <div class="result-report"><section class="result-summary">
+          <div class="result-grade ${gradeWithheld ? 'D' : grade}">
+            <div class="result-grade-letter">${gradeWithheld ? '?' : grade === 'D' ? 'X' : grade}</div>
           </div>
-        `).join('')}
-      </div>
-      
-      <h3 style="margin-bottom: 10px; font-weight: 500;">Grade Details</h3>
-      <div class="detail-table">
-        <div class="detail-row header">
-          <span>Part</span>
-          <span style="text-align: center;">Choice / impact</span>
-          <span style="text-align: right;">Score</span>
-        </div>
-        ${r.detailRows.map(row => `
-          <div class="detail-row">
-            <span>${escapeHtml(row.naam)}</span>
-            <span style="text-align: center;">${escapeHtml(row.keuze === 'D' ? 'X' : row.keuze)}${row.impact && row.impact !== '-' ? ' / ' + escapeHtml(row.impact) : ''}</span>
-            <span style="text-align: right;">${row.punten}</span>
+          <div class="result-outcome"><p class="result-grade-label">${gradeWithheld ? 'Grade pending repair' : r.gradeAfterRepair ? 'Grade after repair' : grade === 'D' ? 'Final Status' : 'Final Grade'}</p><h2>${gradeWithheld ? 'Direct repair' : labels[grade]}</h2><p><b>${changed.length}</b> <span>Parts with observations</span>${!gradeWithheld && grade !== 'D' ? ` · <span>${r.gradeAfterRepair ? 'Impact score after repair' : 'Impact score'}</span> <b>${r.score}</b>` : ''}</p>
           </div>
-        `).join('')}
-        <div class="detail-row total">
-          <span>Total</span>
-          <span></span>
-          <span style="text-align: right;">${r.score}</span>
-        </div>
-      </div>
-
-      ${testOnly ? '' : `<div class="label-note">
-        Label: ${getLabelRows(l, r).filter(Boolean).map(escapeHtml).join(' · ')}
-      </div>`}
-      ${r.gradeAfterRepair ? `<div class="label-note">
-        ${isGradeWithheldForRepair(r)
-          ? 'Specs label has no grade. Determine the grade after repair.'
-          : 'Specs label shows the grade after repair.'} Extra label: ${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}
-      </div>` : ''}
-      
-      <div class="nav-buttons">
+        </section>
+          <section class="result-explanation" aria-label="Why this result?">
+            ${r.gradeAfterRepair && !gradeWithheld ? '<p class="result-footnote">The explanation below applies after the recorded repairs, not to the device as it is now.</p>' : ''}
+            <ul class="result-reasons">${reasons.map(reason => `<li class="${reason.type === 'bad' ? 'bad' : reason.type === 'warn' ? 'warn' : 'good'}">${uiIcon(reason.type === 'good' ? 'complete' : 'info')}<span>${escapeHtml(reason.text)}</span></li>`).join('')}</ul>
+            ${r.finalGradeOverride || g.finalGradeOverride ? '<p class="result-footnote">The final grade includes a manual review.</p>' : ''}
+          </section>
+          <section class="result-condition"><h2>Recorded condition</h2>
+            ${!changed.length ? `<p class="result-footnote">${clear.length ? 'No additional damage or repair was recorded.' : 'No part-by-part observations were recorded.'}</p>` : ''}
+            <table class="result-condition-table"><thead><tr><th scope="col">Part</th><th scope="col">Observation</th><th scope="col">Status</th></tr></thead><tbody>${rows.map(renderResultObservationRow).join('')}</tbody></table>
+          </section>
+          <section class="result-next-route ${hasRepair ? 'requires-action' : ''}"><span>${uiIcon(hasRepair ? 'repair' : 'complete')}</span><div><h2>${route}</h2><p>${routeCopy}</p>${(r.problems || []).length ? `<ul>${r.problems.map(problem => `<li>${escapeHtml(translateCopy(guidedDecisionCopy(problem)))}</li>`).join('')}</ul>` : ''}</div></section>
+          <details class="result-advanced"><summary>Labels and calculation</summary>
+            <h3>Calculation details</h3><p>${r.gradeAfterRepair ? 'These points describe the condition after the recorded repairs.' : 'The points and part rules together determine the grade.'}</p>
+            <div class="detail-table"><div class="detail-row header"><span>Part</span><span>Choice / impact</span><span>Score</span></div>${(r.detailRows || []).map(row => `<div class="detail-row"><span>${escapeHtml(row.naam)}</span><span>${escapeHtml(row.keuze === 'D' ? 'X' : row.keuze)}${row.impact && row.impact !== '-' ? ' / ' + escapeHtml(row.impact) : ''}</span><span>${row.punten}</span></div>`).join('')}<div class="detail-row total"><span>Total</span><span></span><span>${r.score}</span></div></div>
+            ${testOnly ? '' : `<h3>Label preview</h3><p>${getLabelRows(l, r).filter(Boolean).map(escapeHtml).join(' · ')}</p>${hasRepair ? `<p>${getLabelRows(l, r, 'problems').filter(Boolean).map(escapeHtml).join(' · ')}</p>` : ''}<div class="result-print-actions"><button class="btn btn-secondary" data-action="print_specs_label">Print Specs</button>${hasRepair ? `<button class="btn btn-secondary" data-action="print_problem_label">${extraLabelButton}</button>` : ''}</div>`}
+          </details>
+      <footer class="nav-buttons result-actions">
         <button class="btn btn-secondary" data-action="adjust">← Adjust</button>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+        <div class="result-print-actions">
           ${testOnly ? `
             <button class="btn btn-secondary" data-action="new_test">New Test</button>
             <button class="btn btn-primary" data-action="finish_test">Done</button>
           ` : `
-            <button class="btn btn-secondary" data-action="print_specs_label">Print Specs</button>
-            <button class="btn btn-secondary" data-action="print_problem_label">${extraLabelButton}</button>
             <button class="btn btn-primary" data-action="confirm_save">Confirm & Print</button>
           `}
         </div>
-      </div>
-    </div>
+      </footer></div>
+    </main>
   `;
 }
 
@@ -2603,4 +2624,3 @@ function impactLabel(impact, short = false) {
 function impactPillClass(impact) {
   return impact === 'defect' ? 'defect' : impact === 'max-c' ? 'bad' : '';
 }
-

@@ -6,6 +6,10 @@ screenshots/
 test-results/
 tmp/
 tests/
+tools/guided-inspection-preview.mjs
+tools/verify-guided-inspection.js
+tools/verify-guided-layout.js
+docs/GUIDED-INSPECTION.md
 node_modules/
 *.docx
 *.log

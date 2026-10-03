@@ -7,6 +7,7 @@ const vm = require('node:vm');
 function loadAppSandbox(options = {}) {
   const scriptNames = [
     'grading-engine.js',
+    'guided-inspection.js',
     'app-state.js',
     'import-workflow.js',
     'analytics-history.js',
@@ -120,6 +121,468 @@ function allChoices(sandbox, letter) {
     sandbox.getGradingOnderdelen().map(component => [component.id, letter])
   );
 }
+
+function guidedSandbox({ entryUnchecked = false } = {}) {
+  const app = loadAppSandbox();
+  vm.runInContext("STATE.currentUser = USERS.find(user => user.id === 'tim'); startTestGrading('beginner');", app);
+  if (!entryUnchecked) vm.runInContext("STATE.currentGrading.coverCleaning='cleaned'; STATE.currentGrading.touchChecked=true;", app);
+  return app;
+}
+
+test('schoonmaak opent meteen en is niet te omzeilen via sluiten, navigatie of sneltoets', () => {
+  const app = guidedSandbox({entryUnchecked: true});
+  assert.equal(app.getGuidedDialogType(), 'cleaning');
+  app.closeGuidedDialog();
+  app.visitGuidedComponent(2);
+  app.applyGradingShortcut('A');
+  assert.equal(app.getGuidedDialogType(), 'cleaning');
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  app.setCoverCleaning(true);
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+});
+
+test('alle negen foto-schermen hebben dezelfde opbouw zonder schadebalk of rekenuitleg', () => {
+  const app = guidedSandbox();
+  for (let i = 0; i < 9; i++) {
+    app.visitGuidedComponent(i);
+    const html = app.renderGuidedInspection();
+    assert.match(html, /inspection-toolbar/);
+    assert.match(html, /inspection-photo-hints/);
+    assert.equal((html.match(/class="inspection-choice"/g) || []).length, 4);
+    assert.doesNotMatch(html, /class="inspection-findings|class="inspection-cleaning|class="inspection-doubts/);
+    assert.doesNotMatch(html, /Functional =|functioneel =|not functional =|minGrade|Grade [ABC]/i);
+    assert.ok(vm.runInContext('getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].triggers.every(t => GUIDED_PHOTO_FINDINGS[t.id])', app));
+  }
+});
+
+test('haarscheur bij schermrand-foto B gebruikt de bestaande detailregel', async () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(4);
+  await app.selectGuidedPhotoFinding('haarscheur_bezel', 'bezel');
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bezel', app), 'B');
+  assert.equal(vm.runInContext('STATE.currentGrading.impactOverrides.bezel', app), 'b-minus');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.bezel', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.triggers.haarscheur_bezel', app), true);
+  assert.equal(vm.runInContext('STATE.pendingDecision', app), null);
+  app.visitGuidedComponent(3);
+  await app.selectGuidedPhotoFinding('haarscheur_bezel', 'bezel');
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.palmrest', app), undefined);
+});
+
+test('touch-popup toont onbekende leveranciersinfo eerlijk en blokkeert keuze tot bevestiging', async () => {
+  const app = guidedSandbox({entryUnchecked: true});
+  app.setCoverCleaning(true);
+  app.visitGuidedComponent(5);
+  assert.equal(app.getGuidedDialogType(), 'touch');
+  assert.equal(app.getGuidedSupplierTouch({display:'14"'}), 'unknown');
+  assert.equal(app.getGuidedSupplierTouch({display:'14" touch'}), 'yes');
+  assert.equal(app.getGuidedSupplierTouch({display:'14" non-touch'}), 'no');
+  app.applyComponentChoice('lcd', 'A', true);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.lcd', app), undefined);
+  vm.runInContext("setCurrentLaptopTouchOverride = () => {throw Error('Unnecessary save')};", app);
+  await app.confirmGuidedTouch(vm.runInContext("isTouchscreenLaptop() ? 'yes' : 'no'", app));
+  assert.equal(vm.runInContext('STATE.currentGrading.touchChecked', app), true);
+  assert.equal(app.getGuidedDialogType(), null);
+});
+
+test('touch-schakelaar selecteert leverancier vooraf zonder de fysieke controle te bevestigen', async () => {
+  const app = guidedSandbox({entryUnchecked:true});
+  app.setCoverCleaning(true);
+  vm.runInContext("STATE.currentLaptop.touchscreen='yes';", app);
+  app.visitGuidedComponent(5);
+  assert.equal(app.getGuidedTouchSelection(), 'yes');
+  assert.match(app.renderGuidedInspection(), /role="switch" aria-checked="true"/);
+  assert.equal(vm.runInContext('Boolean(STATE.currentGrading.touchChecked)',app),false);
+  app.toggleGuidedTouchSelection();
+  assert.equal(app.getGuidedTouchSelection(), 'no');
+  assert.match(app.renderGuidedInspection(), /role="switch" aria-checked="false"/);
+  assert.equal(vm.runInContext('STATE.currentLaptop.touchscreen',app),'yes');
+  assert.equal(vm.runInContext('Boolean(STATE.currentGrading.touchChecked)',app),false);
+  await app.confirmGuidedTouch(app.getGuidedTouchSelection());
+  assert.equal(vm.runInContext('STATE.currentGrading.touchDecision',app),'no');
+  assert.equal(vm.runInContext('STATE.currentGrading.touchChecked',app),true);
+});
+
+test('geen-touch leverancier staat vooraf uit; bestaande correctie en Surface-standaard blijven gerespecteerd', () => {
+  const app = guidedSandbox({entryUnchecked:true});
+  vm.runInContext("STATE.currentLaptop={merk:'Dell',model:'Latitude',display:'14 non-touch',testOnly:true};", app);
+  assert.equal(app.getGuidedTouchSelection(),'no');
+  vm.runInContext("STATE.currentLaptop={merk:'Microsoft',model:'Surface Laptop 5',display:'15 non-touch',testOnly:true};", app);
+  assert.equal(app.getGuidedSupplierTouch(),'no');
+  assert.equal(app.getGuidedTouchSelection(),'yes');
+  vm.runInContext("STATE.currentLaptop.touchOverride='no';", app);
+  assert.equal(app.getGuidedTouchSelection(),'no');
+  vm.runInContext("STATE.currentLaptop={merk:'Microsoft',model:'Surface Laptop SE',display:'11 non-touch',testOnly:true};",app);
+  assert.equal(app.getGuidedTouchSelection(),'no');
+});
+
+test('leveranciers-iconen worden niet over ongerelateerde stappen herhaald', () => {
+  const app = guidedSandbox();
+  const cases = [
+    ['Light scratches on top cover corner','bovenkap'], ['Cracked screen frame','bezel'],
+    ['Major key marks on screen','lcd'], ['Used touchpad','touchpad'], ['Invalid touchpad','touchpad'],
+    ['Broken housing around hinge','scharnieren'], ['Used case','bovenkap'],
+    ['Behuizingschade groot','bovenkap'], ['Small crack in bottom casing','onderkant'],
+    ['Heavy wear on keyboard','keyboard'], ['Broken corner','randen'], ['Used palmrest','palmrest'],
+  ];
+  for (const [note, expected] of cases) {
+    for (const c of app.getGradingOnderdelen()) assert.equal(app.getGuidedSupplierIssues(c.id,{meldingen:note}).length,c.id===expected?1:0,`${note}: ${c.id}`);
+  }
+  assert.equal(app.getGuidedSupplierComponents('Unclear note').length,0);
+  const multi=app.getGuidedSupplierComponents('Cracks on top cover and bottom casing');
+  assert.equal(multi.length,2);
+  assert.ok(multi.includes('bovenkap')&&multi.includes('onderkant'));
+});
+
+test('twijfel over touch blijft na fotokeuze bestaan en vraagt eindpopup met coordinator', async () => {
+  const app = guidedSandbox({entryUnchecked: true});
+  app.setCoverCleaning(true);
+  for (let i = 0; i < 5; i++) app.applyComponentChoice(vm.runInContext('getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id', app), 'A', true);
+  await app.confirmGuidedTouch('uncertain');
+  for (let i = 5; i < 9; i++) app.applyComponentChoice(vm.runInContext('getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id', app), 'A', true);
+  assert.equal(app.getGuidedDialogType(), 'review');
+  assert.equal(vm.runInContext('STATE.currentGrading.result', app), null);
+  assert.match(app.__appElement.innerHTML, /Ask a coordinator or manager to join you/);
+  app.closeGuidedDialog();
+  assert.equal(app.getGuidedDialogType(), 'review');
+  app.returnToGuidedUncertainPart(5);
+  assert.equal(app.getGuidedDialogType(), 'touch');
+  await app.confirmGuidedTouch('no');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.lcd', app), false);
+  app.applyComponentChoice('lcd', 'A', false);
+  app.finishGrading();
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+});
+
+test('testapparaat touch aanpassen schrijft niet naar gedeelde data', async () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(5);
+  vm.runInContext("setCurrentLaptopTouchOverride = () => {throw Error('Must not save')};", app);
+  const opposite = vm.runInContext("isTouchscreenLaptop() ? 'no' : 'yes'", app);
+  await app.confirmGuidedTouch(opposite);
+  assert.equal(vm.runInContext('STATE.currentGrading.touchDecision', app), opposite);
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.lcd', app), false);
+});
+
+test('leveranciersadvies is onderdeelgebonden en geeft geen automatische grade', () => {
+  const app = guidedSandbox();
+  const laptop = {meldingen:'Behuizingschade groot, Small scratch on top cover, Hairline crack in screen frame, No damage on bottom, Unclear supplier note'};
+  assert.equal(app.getGuidedSupplierPhotoAdvice('bovenkap', 'C', laptop).length, 1);
+  assert.equal(app.getGuidedSupplierPhotoAdvice('bovenkap', 'B', laptop).length, 1);
+  assert.equal(app.getGuidedSupplierPhotoAdvice('bezel', 'B', laptop).length, 1);
+  assert.equal(app.getGuidedSupplierPhotoAdvice('lcd', 'B', laptop).length, 0);
+  assert.equal(app.getGuidedSupplierAdviceLetter('onderkant', 'No damage on bottom'), null);
+  assert.equal(app.getGuidedSupplierAdviceLetter('bovenkap', 'Used case'), 'B');
+  vm.runInContext("STATE.currentLaptop.meldingen = 'Behuizingschade groot'; render();", app);
+  assert.match(app.__appElement.innerHTML, /data-inspection-supplier="C"/);
+  app.openGuidedSupplierAdvice('bovenkap', 'C');
+  assert.equal(app.getGuidedDialogType(), 'supplier');
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  assert.match(app.__appElement.innerHTML, /Behuizingschade groot/);
+  app.closeGuidedDialog();
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+});
+
+test('oude leverancier-info knop kan geen ander onderdeel openen en ruwe tekst is veilig', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentLaptop.meldingen = 'Major wear mark on screen <script>alert(1)</script>';", app);
+  app.openGuidedSupplierAdvice('lcd', 'C');
+  assert.equal(app.getGuidedDialogType(), null);
+  app.visitGuidedComponent(5);
+  if (app.getGuidedDialogType()) app.closeGuidedDialog();
+  app.openGuidedSupplierAdvice('lcd', 'C');
+  assert.match(app.__appElement.innerHTML, /&lt;script&gt;/);
+  assert.doesNotMatch(app.__appElement.innerHTML, /<script>alert/);
+});
+
+test('keuzehighlight verschijnt uitsluitend na een echte fotokeuze', () => {
+  const app = guidedSandbox();
+  assert.doesNotMatch(app.renderGuidedInspection(), /inspection-choices has-selection/);
+  app.applyComponentChoice('bovenkap', 'A', false);
+  assert.match(app.renderGuidedInspection(), /inspection-choices has-selection/);
+  assert.equal((app.renderGuidedInspection().match(/inspection-example selected/g) || []).length, 1);
+});
+
+test('resultaat toont echte schade en redenen zonder leveranciersadvies als schade te tellen', async () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentLaptop.meldingen='Behuizingschade groot';", app);
+  for (const component of app.getGradingOnderdelen()) {
+    if (app.getGuidedDialogType() === 'checks') app.closeGuidedDialog();
+    app.applyComponentChoice(component.id, 'A', true);
+  }
+  assert.equal(app.getResultInspectionRows().filter(row => row.abnormal).length, 0);
+  assert.match(app.renderResult(), /Assessment overview/);
+  assert.match(app.renderResult(), /No additional damage or repair was recorded/);
+  await app.handleAction('adjust', {});
+  app.visitGuidedComponent(4);
+  await app.selectGuidedPhotoFinding('haarscheur_bezel', 'bezel');
+  app.finishGrading();
+  const html = app.renderResult();
+  assert.match(html, /Recorded condition/);
+  assert.match(html, /Hairline crack/);
+  assert.equal(app.getResultInspectionRows().filter(row => row.abnormal).length, 1);
+  assert.match(html, /result-grade-letter">B</);
+  assert.match(html, /Calculation details/);
+});
+
+test('resultaat onderscheidt directe reparatie van productie en toont geen vrijgegeven grade', () => {
+  const app = guidedSandbox();
+  vm.runInContext(`
+    getGradingOnderdelen().forEach(c => {STATE.currentGrading.keuzes[c.id]='A'; STATE.currentGrading.inspectionChecks[c.id]=true;});
+    STATE.currentGrading.keuzes.lcd='D';
+    STATE.currentGrading.repairIssues.lcd='Cracked screen';
+    STATE.currentGrading.repairActions.lcd=createRepairAction('lcd','Cracked screen',{repairRoute:'direct',repairSeverity:'heavy'});
+    finishGrading();
+  `, app);
+  const html = app.renderResult();
+  assert.match(html, /Grade pending repair/);
+  assert.match(html, /result-grade-letter">\?</);
+  assert.match(html, /Repair recorded/);
+  assert.match(html, /Cracked screen/);
+  assert.doesNotMatch(html, /No repair recorded/);
+  assert.doesNotMatch(html, /falls in A range/);
+  assert.equal(app.getResultInspectionRows().find(row => row.component.id==='lcd').repairs.length, 1);
+});
+
+test('expertresultaat claimt geen negen controles wanneer die niet zijn vastgelegd', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentGrading.modus='expert'; STATE.currentGrading.keuzes={}; STATE.currentGrading.result=buildExpertDirectResult('B');", app);
+  const html = app.renderResult();
+  assert.doesNotMatch(html, /Other checked parts/);
+  assert.match(html, /No part-by-part observations were recorded/);
+});
+
+test('resultaatwoorden zijn ook in het Nederlands beschikbaar', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.language='nl';", app);
+  assert.equal(app.translateCopy('Assessment overview'), 'Beoordelingsoverzicht');
+  assert.equal(app.translateCopy('Why this result?'), 'Waarom deze beoordeling?');
+  assert.equal(app.translateCopy('Grade pending repair'), 'Grade na reparatie bepalen');
+  assert.equal(app.translateCopy('Supplier observation'), 'Waarneming leverancier');
+});
+
+test('lichte leverancierswaarneming geeft oranje advies zonder popup of automatische keuze', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentLaptop.meldingen='Used case'; updateSupplierNoticeForCurrentStep(); render();", app);
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.match(app.renderGuidedInspection(), /inspection-supplier-info minor/);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  assert.equal(app.isGuidedSupplierImportant('bovenkap', 'Small scratch on top cover'), false);
+  assert.equal(app.isGuidedSupplierImportant('lcd', 'Light scratches on screen'), false);
+  assert.equal(app.isGuidedSupplierImportant('bezel', 'Small hairline crack in screen frame'), true);
+  assert.equal(app.isGuidedSupplierImportant('bovenkap', 'No cracks in top cover'), false);
+  assert.equal(app.getGuidedSupplierAdviceLetter('bovenkap', 'Unclear note'), null);
+});
+
+test('grote leveranciersmelding en functionele melding houden verplichte popup en rode foto-info', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentLaptop.meldingen='Behuizingschade groot'; updateSupplierNoticeForCurrentStep();", app);
+  assert.equal(app.getGuidedDialogType(), 'checks');
+  app.applyComponentChoice('bovenkap', 'A', true);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  assert.match(app.renderGuidedInspection(), /inspection-supplier-info important/);
+  app.closeGuidedDialog();
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.equal(app.isGuidedSupplierImportant('lcd', 'White spot on screen'), true);
+  assert.equal(app.isGuidedSupplierImportant('scharnieren', 'Loose hinge'), true);
+});
+
+test('schoonmaakbevestiging slaat de verplichte leveranciersmelding niet over', () => {
+  const app = guidedSandbox({entryUnchecked:true});
+  vm.runInContext("STATE.currentLaptop.meldingen='Behuizingschade groot'; updateSupplierNoticeForCurrentStep();",app);
+  assert.equal(app.getGuidedDialogType(),'cleaning');
+  app.setCoverCleaning(true);
+  assert.equal(app.getGuidedDialogType(),'checks');
+  app.applyComponentChoice('bovenkap','A',true);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap',app),undefined);
+  app.closeGuidedDialog();
+  assert.equal(app.getGuidedDialogType(),null);
+});
+
+test('vervolgvraag is modal met onderdeel en stap; annuleren wist onvoltooide keuzes', async () => {
+  const app = guidedSandbox();
+  app.applyComponentChoice('bovenkap', 'B', false);
+  assert.equal(app.getGuidedDialogType(), 'followup');
+  const html = app.renderGuidedInspection();
+  assert.match(html, /role="dialog" aria-modal="true"/);
+  assert.match(html, /Follow-up question/);
+  assert.match(html, /Step<\/span> 1 \/ 9/);
+  assert.match(html, /inspection-choices has-selection/);
+  app.visitGuidedComponent(3);
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
+  app.closeGuidedDialog();
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+});
+
+test('geneste schermvraag bewaart type én omvang; nieuwe keuze verwijdert oude detailroute', async () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(5);
+  app.applyComponentChoice('lcd', 'B', false);
+  await app.resolvePendingDecision(0);
+  assert.equal(app.getGuidedDialogType(), 'followup');
+  assert.match(app.renderGuidedDecision(vm.runInContext('STATE.pendingDecision', app)), /inspection-followup-path/);
+  await app.resolvePendingDecision(0);
+  vm.runInContext("STATE.currentGrading.result=calculateGrade(STATE.currentGrading.keuzes, STATE.currentGrading.triggers, STATE.currentGrading.impactOverrides);", app);
+  const row = app.getResultInspectionRows().find(row => row.component.id==='lcd');
+  assert.match(row.observation, /0-5 cm/);
+  assert.match(row.observation, /key|toets/i);
+  app.applyComponentChoice('lcd', 'A', false);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionObservationPaths.lcd', app), undefined);
+});
+
+test('rapport toont alle negen onderdelen in één tabel en heeft geen tweede kolom', () => {
+  const app = guidedSandbox();
+  for (const component of app.getGradingOnderdelen()) app.applyComponentChoice(component.id,'A',true);
+  const html = app.renderResult();
+  assert.equal((html.match(/<tr class="result-observation/g)||[]).length,9);
+  assert.match(html, /Labels and calculation/);
+  assert.doesNotMatch(html, /result-review-grid|result-clear-parts/);
+});
+
+test('nieuwe begeleide route voltooit negen schone onderdelen met negen keuzes', () => {
+  const app = guidedSandbox();
+  vm.runInContext(`
+    for (const component of getGradingOnderdelen()) applyComponentChoice(component.id, 'A', true);
+  `, app);
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('Object.keys(STATE.currentGrading.inspectionChecks).length', app), 9);
+  assert.equal(vm.runInContext('getMissingGradingOnderdelen(STATE.currentGrading).length', app), 0);
+});
+
+test('guided Next en opslaan kunnen ontbrekende controles niet omzeilen', async () => {
+  const app = guidedSandbox();
+  await app.handleAction('next_q', {});
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
+  vm.runInContext(`
+    STATE.currentGrading.keuzes = Object.fromEntries(getGradingOnderdelen().map(c => [c.id, 'A']));
+    finishGrading();
+  `, app);
+  assert.equal(vm.runInContext('STATE.currentGrading.result', app), null);
+  vm.runInContext("STATE.currentGrading.result = {eindgrade:'A', score:0};", app);
+  assert.equal(app.saveGrading(), false);
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+});
+
+test('vuile bovenkap blokkeert fotokeuze en sneltoets tot schoonmaak; schoon is niet automatisch A', () => {
+  const app = guidedSandbox();
+  app.setCoverCleaning(false);
+  app.applyGradingShortcut('A');
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
+  assert.match(app.__appElement.innerHTML, /data-keuze="A"[^>]*disabled/);
+  app.setCoverCleaning(true);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  app.applyComponentChoice('bovenkap', 'A', true);
+  assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.bovenkap', app), true);
+});
+
+test('twijfel laat de overige onderdelen beoordelen en blokkeert printen tot oplossing', async () => {
+  const app = guidedSandbox();
+  app.markGuidedDoubt();
+  vm.runInContext("for (const c of getGradingOnderdelen().slice(1)) applyComponentChoice(c.id, 'A', true);", app);
+  assert.equal(vm.runInContext('STATE.currentGrading.result', app), null);
+  vm.runInContext("STATE.currentGrading.result = {eindgrade:'A',score:0}; printLabelJobsWithDymoFallback = () => {throw new Error('Must not print')};", app);
+  await app.confirmSaveWithAutomaticLabels();
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  app.returnToGuidedUncertainPart(0);
+  app.applyComponentChoice('bovenkap', 'A', false);
+  app.finishGrading();
+  assert.equal(vm.runInContext('STATE.currentGrading.result.eindgrade', app), 'A');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionDoubts.bovenkap', app), undefined);
+});
+
+test('gebroken LCD glas gebruikt de expliciete reparatieroute in plaats van max C', () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(5);
+  app.toggleGuidedTrigger('barst_lcd');
+  assert.equal(vm.runInContext('STATE.currentGrading.impactOverrides.lcd', app), 'x');
+  assert.equal(vm.runInContext('STATE.currentGrading.repairActions.lcd.repairRoute', app), 'direct');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionRepairs.lcd.length', app), 1);
+});
+
+test('meerdere schadepunten blijven behouden bij aanpassen van slijtage', () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(3);
+  app.toggleGuidedTrigger('barst_palm');
+  app.toggleGuidedTrigger('plakkerig_palm');
+  app.applyComponentChoice('palmrest', 'B', false);
+  assert.equal(vm.runInContext('STATE.currentGrading.triggers.barst_palm', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.triggers.plakkerig_palm', app), true);
+});
+
+test('twee reparaties in hetzelfde onderdeel blijven bewaard en zijn bewust te verwijderen', async () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(5);
+  app.toggleGuidedTrigger('barst_lcd');
+  app.applyComponentChoice('lcd', 'D', false);
+  await app.resolvePendingDecision(0);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionRepairs.lcd.length', app), 2);
+  app.applyComponentChoice('lcd', 'A', false);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionRepairs.lcd.length', app), 2);
+  app.removeGuidedRepair(0);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionRepairs.lcd.length', app), 1);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.lcd', app), false);
+});
+
+test('reparatie verwijdert geen onafhankelijke slijtage op hetzelfde onderdeel', () => {
+  const app = guidedSandbox();
+  const choices = allChoices(app, 'A');
+  choices.keyboard = 'C';
+  const action = app.createRepairAction('keyboard', 'Missing key', {repairRoute:'production',repairSeverity:'light'});
+  const result = app.calculateGradeAfterRepair(choices, {}, {}, [action]);
+  assert.equal(result.eindgrade, 'B');
+  assert.equal(result.detailRows.find(row => row.naam === 'Keyboard').impact, 'B');
+});
+
+test('lokale guided concepten zijn per gebruiker en laptop, inclusief open detailvraag', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.currentLaptop.testOnly=false; STATE.currentGrading.testOnly=false;", app);
+  app.applyComponentChoice('bovenkap', 'B', true);
+  app.persistGuidedDraft();
+  vm.runInContext("STATE.currentGrading=null; STATE.pendingDecision=null; startGrading('beginner');", app);
+  assert.equal(vm.runInContext('STATE.pendingDecision.title', app), 'Bovenkap B Detail');
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.bovenkap', app), false);
+  vm.runInContext("STATE.currentUser={...STATE.currentUser,id:'another-user'}; STATE.pendingDecision=null; startGrading('beginner');", app);
+  assert.equal(vm.runInContext('STATE.pendingDecision', app), null);
+  assert.equal(vm.runInContext('Object.keys(STATE.currentGrading.keuzes).length', app), 0);
+});
+
+test('ingedrukte sneltoets herhaalt niet automatisch alle volgende gradingstappen', () => {
+  const app = guidedSandbox();
+  app.handleDelegatedKeydown({key:'a', repeat:true, target:{tagName:'BODY'}, preventDefault(){}});
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
+  assert.equal(vm.runInContext('Object.keys(STATE.currentGrading.keuzes).length', app), 0);
+});
+
+test('detailkeuze blijft onbevestigd tot de hele vervolgvraag is beantwoord', async () => {
+  const app = guidedSandbox();
+  app.visitGuidedComponent(5);
+  app.applyComponentChoice('lcd', 'B', true);
+  await app.resolvePendingDecision(0);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.lcd', app), false);
+  await app.resolvePendingDecision(1);
+  assert.equal(vm.runInContext('STATE.currentGrading.inspectionChecks.lcd', app), true);
+  assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 6);
+});
+
+test('nieuwe guided tekst en schadeopties zijn Nederlands en Engels beschikbaar', () => {
+  const app = guidedSandbox();
+  vm.runInContext("STATE.language='nl';", app);
+  assert.equal(app.translateCopy('Dirt is not damage'), 'Vuil is geen beschadiging');
+  assert.equal(app.translateCopy('Hairline crack in the frame'), 'Haarscheurtje bezelrand');
+  assert.equal(app.translateCopy('I am unsure'), 'Ik twijfel');
+  assert.equal(app.translateCopy('Cracked screen'), 'Gebarsten scherm');
+  assert.equal(app.translateCopy('Dead pixels'), 'Dode pixels');
+  assert.equal(app.translateCopy('Missing key'), 'Ontbrekende toets');
+  vm.runInContext("STATE.language='en';", app);
+  assert.equal(app.guidedDecisionCopy('Toetsen ontbreken'), 'Keys missing');
+});
 
 // Bouwt een lichtgewicht DOM-mock voor het "Monitor handmatig invoeren" scherm
 // zodat de autofill-/poort-lifecycle getest kan worden. Referenties komen op
@@ -1409,7 +1872,7 @@ test('afgeronde laptop print niet opnieuw als bevestiging wordt geweigerd', asyn
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /cancelled/);
 });
 
-test('kleine leveranciersmelding verschijnt inline bij het passende grading-onderdeel', async () => {
+test('kleine leveranciersmelding staat achter Controlepunten bij het passende onderdeel', async () => {
   const app = loadAppSandbox();
 
   vm.runInContext(`
@@ -1437,14 +1900,19 @@ test('kleine leveranciersmelding verschijnt inline bij het passende grading-onde
   vm.runInContext(`startGrading('beginner'); render();`, app);
   assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
 
+  app.setCoverCleaning(true);
+  vm.runInContext('STATE.currentGrading.touchChecked = true;', app);
+
   const touchpadIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'touchpad')`, app);
   for (let index = 0; index < touchpadIndex; index++) {
-    await app.handleAction('next_q', { dataset: {} });
+    vm.runInContext("applyComponentChoice(getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id, 'A', true)", app);
   }
 
   assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
-  assert.match(app.__appElement.innerHTML, /component-notice-inline/);
-  assert.match(app.__appElement.innerHTML, /Touchpad.*Used touchpad/s);
+  assert.doesNotMatch(app.__appElement.innerHTML, /component-notice-inline/);
+  app.openGuidedDialog('checks');
+  assert.match(app.__appElement.innerHTML, /inspection-supplier-details/);
+  assert.match(app.__appElement.innerHTML, /Used touchpad/);
 });
 
 test('belangrijke schermmelding verschijnt pas als popup bij LCD grading', async () => {
@@ -1475,15 +1943,18 @@ test('belangrijke schermmelding verschijnt pas als popup bij LCD grading', async
   vm.runInContext(`startGrading('beginner'); render();`, app);
   assert.doesNotMatch(app.__appElement.innerHTML, /supplier-notice-modal/);
 
+  app.setCoverCleaning(true);
+  vm.runInContext('STATE.currentGrading.touchChecked = true;', app);
+
   const lcdIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'lcd')`, app);
   for (let index = 0; index < lcdIndex; index++) {
-    await app.handleAction('next_q', { dataset: {} });
+    vm.runInContext("applyComponentChoice(getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id, 'A', true)", app);
   }
 
-  assert.match(app.__appElement.innerHTML, /supplier-notice-modal/);
-  assert.match(app.__appElement.innerHTML, /LCD &amp; Glass.*Major wear mark\/scratch on screen/s);
+  assert.match(app.__appElement.innerHTML, /id="inspection-dialog"/);
+  assert.match(app.__appElement.innerHTML, /Major wear mark\/scratch on screen/);
 
-  await app.handleAction('confirm_supplier_notice', { dataset: {} });
+  app.closeGuidedDialog();
   assert.equal(vm.runInContext('STATE.supplierNotice', app), null);
 });
 
@@ -2948,15 +3419,18 @@ test('touchcorrectie wordt bewaard in gedeelde state en historie', async () => {
   assert.doesNotMatch(app.__appElement.innerHTML, /touch-override-panel/);
 
   vm.runInContext(`startGrading('beginner'); render();`, app);
+  app.setCoverCleaning(true);
   const lcdIndex = vm.runInContext(`getGradingOnderdelen().findIndex(component => component.id === 'lcd')`, app);
   for (let index = 0; index < lcdIndex; index++) {
-    await app.handleAction('next_q', { dataset: {} });
+    vm.runInContext("applyComponentChoice(getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id, 'A', true)", app);
   }
-  assert.match(app.__appElement.innerHTML, /Touch yes/);
-  assert.match(app.__appElement.innerHTML, /Touch no/);
+  assert.match(app.__appElement.innerHTML, /Touch: yes/);
+  assert.match(app.__appElement.innerHTML, /role="switch" aria-checked="true"/);
+  app.toggleGuidedTouchSelection();
+  assert.match(app.__appElement.innerHTML, /data-inspection-touch="no"/);
   assert.doesNotMatch(app.__appElement.innerHTML, /Volgens lijst \(/);
 
-  await app.handleAction('set_touch_override', { dataset: { touchOverride: 'no' } });
+  await app.confirmGuidedTouch('no');
 
   assert.equal(vm.runInContext("getLaptopBySticker('TOUCH-OVERRIDE-1').touchOverride", app), 'no');
   assert.equal(vm.runInContext("isTouchscreenLaptop(getLaptopBySticker('TOUCH-OVERRIDE-1'))", app), false);
@@ -3346,8 +3820,12 @@ test('X-keuze vraagt specifieke reden en zet die op het reparatielabel', () => {
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'lcd');
     applyComponentChoice('lcd', 'D', false);
@@ -3386,8 +3864,12 @@ test('twee lichte productie-reparaties houden grade na reparatie en productie-la
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.keuzes.keyboard = 'D';
     STATE.currentGrading.impactOverrides.keyboard = 'x';
@@ -3440,8 +3922,12 @@ test('keyboard defect, keyboard ontbreekt en dead battery zijn productie-reparat
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'keyboard');
     applyComponentChoice('keyboard', 'D', false);
@@ -3466,8 +3952,12 @@ test('twee zware reparaties blijven X en krijgen niet-verkoopbaar label', () => 
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.keuzes.lcd = 'D';
     STATE.currentGrading.impactOverrides.lcd = 'x';
@@ -3574,15 +4064,19 @@ test('LCD toetsafdruk workflow opent na B eerst de groottekeuze', () => {
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'lcd');
     applyComponentChoice('lcd', 'B', false);
   `, app);
 
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /LCD B Detail/);
-  assert.match(app.__appElement.innerHTML, /Toetsafdrukken/);
+  assert.match(app.__appElement.innerHTML, /Key marks/);
 
   vm.runInContext(`resolvePendingDecision(0);`, app);
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /toetsafdruk grootte/i);
@@ -3608,8 +4102,12 @@ test('gebroken zijkant telt na reparatie als C in plaats van A+', () => {
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.keuzes.randen = 'D';
     STATE.currentGrading.impactOverrides.randen = 'x';
@@ -3646,8 +4144,12 @@ test('touchpad reparatie is directe reparatie zonder grade op specslabel', () =>
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().findIndex(component => component.id === 'touchpad');
     applyComponentChoice('touchpad', 'D', false);
@@ -3672,8 +4174,12 @@ test('productie-reparatie (toets mist) houdt grade op specslabel', () => {
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.keuzes.keyboard = 'D';
     STATE.currentGrading.impactOverrides.keyboard = 'x';
@@ -3700,8 +4206,12 @@ test('herstelbare zijkant geeft B-impact en reparatielabel', async () => {
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.keuzes.randen = 'C';
     STATE.currentGrading.impactOverrides.randen = 'b';
@@ -3729,14 +4239,14 @@ test('scharnier X opent eerst detailmenu en daarna redenkeuze', () => {
   `, app);
 
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Scharnier X Detail/);
-  assert.match(app.__appElement.innerHTML, /decision-inline/);
-  assert.match(app.__appElement.innerHTML, /Functioneel/);
-  assert.match(app.__appElement.innerHTML, /Niet functioneel/);
+  assert.match(app.__appElement.innerHTML, /inspection-detail/);
+  assert.match(app.__appElement.innerHTML, /Working normally/);
+  assert.match(app.__appElement.innerHTML, /Not working normally/);
   assert.match(app.__appElement.innerHTML, /assets\/dell-grading-fast\/scharnier/);
 
   vm.runInContext(`resolvePendingDecision(1);`, app);
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Scharnier X Reden/);
-  assert.match(app.__appElement.innerHTML, /Scharnier werkt niet/);
+  assert.match(app.__appElement.innerHTML, /Hinge not working/);
 
   vm.runInContext(`
     STATE.pendingDecision = null;
@@ -3759,8 +4269,8 @@ test('keyboard X behoudt detailmenu en vraagt reparatiereden na defectkeuze', ()
   `, app);
 
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Keyboard X Detail/);
-  assert.match(app.__appElement.innerHTML, /Toetsen ontbreken/);
-  assert.match(app.__appElement.innerHTML, /Keyboard ontbreekt \/ defect/);
+  assert.match(app.__appElement.innerHTML, /Keys missing/);
+  assert.match(app.__appElement.innerHTML, /Keyboard missing or faulty/);
   assert.match(app.__appElement.innerHTML, /keyboard-many-missing-keys-ai\.jpg/);
 
   vm.runInContext(`resolvePendingDecision(0);`, app);
@@ -3775,8 +4285,8 @@ test('keyboard X behoudt detailmenu en vraagt reparatiereden na defectkeuze', ()
     resolvePendingDecision(1);
   `, app);
   assert.match(vm.runInContext('STATE.pendingDecision && STATE.pendingDecision.title', app), /Toetsenbord X Reden/);
-  assert.match(app.__appElement.innerHTML, /Toets werkt niet/);
-  assert.match(app.__appElement.innerHTML, /Keyboard defect/);
+  assert.match(app.__appElement.innerHTML, /Key not working/);
+  assert.match(app.__appElement.innerHTML, /Faulty keyboard/);
 });
 
 test('keuze-afbeeldingen zijn gecentreerd voor tabletweergave', () => {
@@ -3883,9 +4393,7 @@ test('gradingbeelden gebruiken snelle tablet-assets', () => {
 
   assert.match(app.__appElement.innerHTML, /assets\/dell-grading-fast\//);
   assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
-  assert.match(app.__appElement.innerHTML, /visual-zoom-action/);
-  assert.match(app.__appElement.innerHTML, /<circle cx="10\.5" cy="10\.5" r="5\.5"/);
-  assert.match(app.__appElement.innerHTML, /fetchpriority="high"/);
+  assert.match(app.__appElement.innerHTML, /inspection-zoom/);
   assert.doesNotMatch(app.__appElement.innerHTML, /loading="lazy"/);
 });
 
@@ -3928,7 +4436,7 @@ test('detailkeuze-menu heeft loep zonder score-uitleg in tekst', () => {
     applyComponentChoice('randen', 'C', false);
   `, app);
 
-  assert.match(app.__appElement.innerHTML, /decision-zoom-action/);
+  assert.match(app.__appElement.innerHTML, /inspection-zoom/);
   assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
   assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-v3-ai\.jpg/);
   assert.doesNotMatch(app.__appElement.innerHTML, /telt als/i);
@@ -3945,10 +4453,10 @@ test('alleen het vergrootglas opent afbeelding, de foto zelf blijft keuze', () =
   `, app);
 
   const html = app.__appElement.innerHTML;
-  assert.match(html, /<div class="visual-thumb component-bovenkap grade-A">/);
-  assert.match(html, /<button class="visual-zoom-action" data-image-preview="true"/);
-  assert.doesNotMatch(html, /visual-thumb[^>]+data-image-preview="true"/);
-  assert.match(html, /<\/button>\s*<button class="visual-zoom-action" data-image-preview="true"/);
+  assert.match(html, /class="inspection-photo"/);
+  assert.match(html, /class="inspection-zoom" data-image-preview="true"/);
+  assert.doesNotMatch(html, /inspection-photo[^>]+data-image-preview="true"/);
+  assert.match(html, /<\/button>\s*<button type="button" class="inspection-zoom"/);
 });
 
 test('vergrootglas gebruikt pointer/touch handler voor tablet', () => {
@@ -4001,6 +4509,7 @@ test('volledige expert-workflow slaat grading op en markeert laptop klaar', () =
     startGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     finishGrading();
     saveGrading();
@@ -4136,6 +4645,7 @@ test('bevestigen print automatisch specs en reparatie-label voor X-resultaat', a
     startGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.triggers.pixel_lcd = true;
     finishGrading();
@@ -4185,6 +4695,7 @@ test('automatisch akkoord print niet via browserfallback bij DYMO-fout', async (
     startGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.triggers.pixel_lcd = true;
     finishGrading();
@@ -4233,6 +4744,7 @@ test('Akkoord grade gebruikt in Edge direct DYMO zonder Chrome/Edge printvenster
     startGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     finishGrading();
   `, app);
@@ -4259,8 +4771,12 @@ test('laatste guided Confirm print automatisch en slaat direct op', async () => 
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().length - 1;
   `, app);
@@ -4287,8 +4803,12 @@ test('laatste guided foto-keuze wacht met printen tot Akkoord grade', async () =
     STATE.currentUser = USERS.find(user => user.id === 'tim');
     STATE.currentLaptop = getLaptopBySticker('8460024');
     startGrading('beginner');
+    // This rule/printing fixture starts after the two entry confirmations.
+    STATE.currentGrading.coverCleaning = 'cleaned';
+    STATE.currentGrading.touchChecked = true;
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     STATE.currentGrading.huidigeIndex = getGradingOnderdelen().length - 1;
   `, app);
@@ -4330,6 +4850,7 @@ test('expert score Confirm print automatisch en slaat direct op', async () => {
     startGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
   `, app);
 
@@ -4350,6 +4871,7 @@ test('grading-test afronden muteert geen voorraad of historie', () => {
     startTestGrading('expert');
     getGradingOnderdelen().forEach(component => {
       STATE.currentGrading.keuzes[component.id] = 'A';
+      if (STATE.currentGrading.inspectionChecks) STATE.currentGrading.inspectionChecks[component.id] = true;
     });
     finishGrading();
   `, app);

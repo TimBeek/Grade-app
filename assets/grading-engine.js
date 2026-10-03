@@ -171,7 +171,7 @@ const ONDERDELEN = [
 ];
 
 const STRAFPUNTEN = { A: 0, B: 1, C: 4, D: 999 };
-const GRADING_RULES_VERSION = 'demo-2026-09-25-edge-after-repair-impact-v1';
+const GRADING_RULES_VERSION = '2026-10-03-independent-wear-after-repair-v1';
 
 const GRADING_IMPACTS = {
   bovenkap: { A: 'a-plus', B: 'a', C: 'c', D: 'x' },
@@ -644,7 +644,12 @@ function buildPostRepairGradeInputs(keuzes = {}, triggers = {}, impactOverrides 
       fixedKeuzes[componentId] = 'A';
       fixedImpactOverrides[componentId] = action.afterRepairImpact || 'a-plus';
     } else if (action.afterRepairImpact && choice) {
-      fixedImpactOverrides[componentId] = action.afterRepairImpact;
+      const repairedProfile = IMPACT_PROFILES[action.afterRepairImpact];
+      // Repairing one fault does not erase independent cosmetic wear or a
+      // higher remaining impact from another repair on the same component.
+      if (repairedProfile && (!profile || repairedProfile.points > profile.points)) {
+        fixedImpactOverrides[componentId] = action.afterRepairImpact;
+      }
     }
   });
 
@@ -786,6 +791,4 @@ function buildProblemRows(keuzes, triggers, impactOverrides = {}) {
   }
   return problems;
 }
-
-
 
