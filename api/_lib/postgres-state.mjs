@@ -9,7 +9,9 @@ import { emptyState, normalizeDemoState, computeStats } from "./state-core.mjs";
 
 const STATE_ROW = "shared_state";
 const STATS_ROW = "dashboard_stats";
-const BACKUP_RETENTION = 14;
+// Seven daily points keep a full working week recoverable while keeping the
+// storage footprint comfortably below the free Neon allowance as history grows.
+const BACKUP_RETENTION = 7;
 
 let sqlSingleton = null;
 let schemaReady = null;
