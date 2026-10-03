@@ -10,6 +10,7 @@ import {
   normalizeDemoState,
   encodeState,
   decodeState,
+  computeStats,
 } from "./state-core.mjs";
 
 export {
@@ -22,6 +23,7 @@ export {
 } from "./state-core.mjs";
 
 export const STATE_KEY = "remarkt:state";
+export const STATS_KEY = "remarkt:state:stats";
 const CHUNK_CHARS = 700_000; // base64 chars per KV value; keeps each command < ~700KB
 
 // ---------------------------------------------------------------------------
@@ -81,6 +83,21 @@ export async function kvReadMeta() {
   return meta && typeof meta === "object" ? meta : null;
 }
 
+// Dashboard statistics are calculated once when production data is written.
+// Reading this small document avoids downloading every batch and history item
+// on each Manager Live refresh.
+export async function kvReadStats() {
+  const redis = getRedis();
+  const stats = await redis.get(STATS_KEY);
+  return stats && typeof stats === "object" ? stats : null;
+}
+
+export async function kvWriteStats(stats) {
+  const redis = getRedis();
+  await redis.set(STATS_KEY, stats);
+  return stats;
+}
+
 export async function kvReadState() {
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
@@ -103,6 +120,7 @@ export async function kvWriteState(normalizedState) {
   const redis = getRedis();
   const base64 = encodeState(normalizedState);
   const chunks = splitChunks(base64);
+  const stats = computeStats(normalizedState);
 
   const previousMeta = await redis.get(`${STATE_KEY}:meta`);
   const previousChunkCount =
@@ -115,6 +133,7 @@ export async function kvWriteState(normalizedState) {
     updatedAt: normalizedState.updatedAt,
     bytes: Buffer.byteLength(base64),
   });
+  pipeline.set(STATS_KEY, stats);
   // Drop chunk keys that are no longer used when the document shrinks.
   for (let i = chunks.length; i < previousChunkCount; i++) {
     pipeline.del(`${STATE_KEY}:${i}`);
