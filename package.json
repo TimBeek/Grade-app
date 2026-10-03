@@ -8,9 +8,11 @@
     "start": "node tools/remarkt-static-server.mjs",
     "test": "node --test tests/grading-engine-smoke.test.js",
     "migrate:kv": "node scripts/migrate-to-kv.mjs",
-    "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
+    "seed:postgres": "node scripts/seed-postgres.mjs",
+    "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/_lib/postgres-state.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "@upstash/redis": "^1.34.3"
   },
   "engines": {

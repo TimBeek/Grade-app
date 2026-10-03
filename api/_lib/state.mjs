@@ -6,6 +6,14 @@
 
 import { Redis } from "@upstash/redis";
 import {
+  isPostgresConfigured,
+  pgReadMeta,
+  pgReadState,
+  pgReadStats,
+  pgWriteStats,
+  pgWriteState,
+} from "./postgres-state.mjs";
+import {
   emptyState,
   normalizeDemoState,
   encodeState,
@@ -51,6 +59,18 @@ export function isKvConfigured() {
   return Boolean(url && token);
 }
 
+// Postgres takes precedence once it is connected. The existing API names stay
+// intact, so the browser workflow switches storage without a risky rewrite.
+export function isStorageConfigured() {
+  return isPostgresConfigured() || isKvConfigured();
+}
+
+export function storageKind() {
+  if (isPostgresConfigured()) return "postgres";
+  if (isKvConfigured()) return "redis";
+  return "none";
+}
+
 export function getRedis() {
   if (redisSingleton) return redisSingleton;
   const { url, token } = resolveRedisCredentials();
@@ -78,6 +98,7 @@ function splitChunks(value) {
 // Cheap "has anything changed?" read: a single GET of the meta key, no mget.
 // Used by the client's periodic live-sync to avoid reading the full state.
 export async function kvReadMeta() {
+  if (isPostgresConfigured()) return pgReadMeta();
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
   return meta && typeof meta === "object" ? meta : null;
@@ -87,18 +108,21 @@ export async function kvReadMeta() {
 // Reading this small document avoids downloading every batch and history item
 // on each Manager Live refresh.
 export async function kvReadStats() {
+  if (isPostgresConfigured()) return pgReadStats();
   const redis = getRedis();
   const stats = await redis.get(STATS_KEY);
   return stats && typeof stats === "object" ? stats : null;
 }
 
 export async function kvWriteStats(stats) {
+  if (isPostgresConfigured()) return pgWriteStats(stats);
   const redis = getRedis();
   await redis.set(STATS_KEY, stats);
   return stats;
 }
 
 export async function kvReadState() {
+  if (isPostgresConfigured()) return pgReadState();
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
   if (!meta || typeof meta.chunks !== "number" || meta.chunks < 1) {
@@ -117,6 +141,7 @@ export async function kvReadState() {
 }
 
 export async function kvWriteState(normalizedState) {
+  if (isPostgresConfigured()) return pgWriteState(normalizedState);
   const redis = getRedis();
   const base64 = encodeState(normalizedState);
   const chunks = splitChunks(base64);
