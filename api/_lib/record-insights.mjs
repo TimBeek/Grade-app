@@ -24,7 +24,9 @@ export async function readRecordInsights(sql,workspace,f) {
       COALESCE(r.summary->>'merk','') brand,
       CASE WHEN r.collection IN ('monitorLabelPrints','monitors') THEN 'monitor' ELSE 'laptop' END product,
       CASE WHEN r.collection IN ('laptops','monitors') THEN 'open' WHEN r.collection='labelPrints' THEN 'label'
-        WHEN upper(r.summary->>'grade') IN ('D','X') OR COALESCE(jsonb_array_length(r.summary->'result'->'problems'),0)>0 THEN 'repair' ELSE 'graded' END status,
+        WHEN upper(r.summary->>'grade') IN ('D','X') OR CASE WHEN jsonb_typeof(r.summary->'result'->'problems')='array' THEN jsonb_array_length(r.summary->'result'->'problems') ELSE 0 END>0 THEN 'repair' ELSE 'graded' END status,
+      CASE WHEN jsonb_typeof(r.summary->'result'->'problems')='array' THEN r.summary->'result'->'problems' ELSE '[]'::jsonb END problem_array,
+      CASE WHEN jsonb_typeof(r.summary->'result'->'repairActions')='array' THEN r.summary->'result'->'repairActions' ELSE '[]'::jsonb END repair_actions,
       CASE WHEN upper(r.summary->>'grade') IN ('D','X') THEN 'D' ELSE upper(r.summary->>'grade') END grade,
       upper(substring(COALESCE(NULLIF(r.summary->>'leverancier_class',''),r.summary->>'supplierGradeRaw',l.summary->>'leverancier_class','')
         from '(?i)(?:CLASS|GRADE)?[[:space:]]*([ABCDX])(?:[^[:alnum:]_]|$)')) supplier_grade_raw,
@@ -71,8 +73,8 @@ export async function readRecordInsights(sql,workspace,f) {
   repair AS (SELECT * FROM completed WHERE collection='history' AND repair_label),
   actions AS (
     SELECT r.*,a.value action FROM repair r CROSS JOIN LATERAL jsonb_array_elements(
-      CASE WHEN jsonb_array_length(COALESCE(summary->'result'->'repairActions','[]'::jsonb))>0
-        THEN summary->'result'->'repairActions' ELSE '[{"repairSeverity":"reject"}]'::jsonb END) a
+      CASE WHEN jsonb_array_length(repair_actions)>0
+        THEN repair_actions ELSE '[{"repairSeverity":"reject"}]'::jsonb END) a
   ), bins AS (
     SELECT CASE WHEN lower(action->>'componentId')='lcd' THEN 'Display / screen'
       WHEN lower(action->>'componentId') IN ('scharnier','scharnieren') THEN 'Hinges'
@@ -129,8 +131,8 @@ export async function readRecordInsights(sql,workspace,f) {
     'bins',COALESCE((SELECT jsonb_agg(to_jsonb(b) ORDER BY total DESC) FROM (SELECT bin,count(*) total,
       count(*) FILTER(WHERE severity NOT IN ('heavy','reject')) light,count(*) FILTER(WHERE severity='heavy') heavy,count(*) FILTER(WHERE severity='reject') reject FROM bins GROUP BY bin) b),'[]'),
     'causes',COALESCE((SELECT jsonb_agg(to_jsonb(c)) FROM (SELECT problem label,count(*) value FROM repair
-      CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_array_length(COALESCE(summary->'result'->'problems','[]'))>0
-        THEN summary->'result'->'problems' ELSE '["X / repair"]'::jsonb END) problem GROUP BY problem ORDER BY value DESC,problem LIMIT 8) c),'[]')
+      CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_array_length(problem_array)>0
+        THEN problem_array ELSE '["X / repair"]'::jsonb END) problem GROUP BY problem ORDER BY value DESC,problem LIMIT 8) c),'[]')
   ) result`;
   const data=rows[0].result;
   data.counts={A:0,B:0,C:0,D:0,...data.grades};

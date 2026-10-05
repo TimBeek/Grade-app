@@ -86,6 +86,9 @@ test('SQL insights keep grade, supplier, repair bins, dates, employee timing and
     const monitors=await readRecordInsights(sql,'qa',{...all,productType:'monitor'});
     assert.equal(monitors.monitorTiming.total,2);assert.equal(monitors.monitorTiming.measured,1);
     assert.equal(monitors.monitorTiming.interrupted,1);assert.equal(monitors.monitorTiming.avgSec,30);
+    await store.merge({mutationId:randomUUID(),operations:[{collection:'history',id:'nullable',expectedRevision:0,
+      payload:{id:'nullable',sticker:'nullable',grade:'X',savedAt,result:{forceProblemLabel:true,problems:null,repairActions:null}}}]});
+    assert.equal((await readRecordInsights(sql,'qa',all)).repairCount,2);
   }finally{await db.close();}
 });
 test('10,000 assessments produce category-sized insight responses rather than archive-sized payloads',async()=>{
