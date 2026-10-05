@@ -49,16 +49,19 @@ if(process.argv.includes('--browser')) {
     `& npx --yes agent-browser --session record-live-readonly ${command}`],{cwd:process.cwd(),timeout:60000,maxBuffer:2*1024*1024});
   const evaluate=script=>new Promise((resolve,reject)=>{
     // Keep the maintenance session out of process arguments and shell history.
-    const child=spawn('powershell.exe',['-NoProfile','-Command','& npx --yes agent-browser --session record-live-readonly eval --stdin'],
+    const child=spawn('powershell.exe',['-NoProfile','-Command',
+      '$privateInput=[Console]::In.ReadToEnd(); $privateInput | & npx --yes agent-browser --session record-live-readonly eval --stdin; exit $LASTEXITCODE'],
       {cwd:process.cwd(),stdio:['pipe','pipe','pipe']});
+    const timeout=setTimeout(()=>{child.kill();reject(new Error('Browser verification timed out; private inputs withheld.'));},60000);
     let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.resume();
-    child.on('error',()=>reject(new Error('Browser verification failed.')));
-    child.on('exit',code=>code===0?resolve(output):reject(new Error('Browser evaluation failed. Private inputs withheld.')));
+    child.on('error',()=>{clearTimeout(timeout);reject(new Error('Browser verification failed.'));});
+    child.on('exit',code=>{clearTimeout(timeout);code===0?resolve(output):reject(new Error('Browser evaluation failed. Private inputs withheld.'));});
     child.stdin.end(script);
   });
   try {
     await browserCommand(`--executable-path 'C:/Program Files/Google/Chrome/Application/chrome.exe' open '${deployment}'`);
-    await browserCommand('snapshot -i');
+    const initial=await browserCommand('snapshot -i');
+    if(initial.stdout.includes('Log in to Vercel'))throw new Error('This deployment has browser protection; verify the public production alias instead.');
     const result=await evaluate(`(async()=>{setLiveSessionToken(${JSON.stringify(token)});STATE.currentUser=${JSON.stringify(publicUser(manager[0].payload))};
       saveSessionUser(STATE.currentUser);STATE.currentScreen='home';await loadSharedDemoState();render();
       return {format:STATE.storageFormat,laptops:getAllLaptops().length,monitors:getAllMonitors().length,error:STATE.sharedStorageError};})()`);
