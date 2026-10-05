@@ -20,6 +20,7 @@ chrome-*/
 deliverables/
 output/
 skills-lock.json
+source.zip
 .env*
 docs/STORAGE-RECOVERY.md
 docs/GUIDED-INSPECTION.md
