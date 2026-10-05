@@ -15,6 +15,8 @@ import {
   pgReadStats,
   pgWriteStats,
   pgWriteState,
+  pgMergeState,
+  pgReadChanges,
 } from "./postgres-state.mjs";
 import {
   emptyState,
@@ -22,6 +24,7 @@ import {
   encodeState,
   decodeState,
   computeStats,
+  mergeDemoState,
 } from "./state-core.mjs";
 
 export {
@@ -105,6 +108,18 @@ export async function kvReadMeta() {
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
   return meta && typeof meta === "object" ? meta : null;
+}
+
+export async function kvReadChanges(since) {
+  return isPostgresConfigured() ? pgReadChanges(since) : null;
+}
+
+export async function kvMergeState(incoming) {
+  if (isPostgresConfigured()) return pgMergeState(incoming);
+  const existing = await kvReadState();
+  const merged = mergeDemoState(existing, incoming);
+  await kvWriteState(merged);
+  return { updatedAt: merged.updatedAt };
 }
 
 // Dashboard statistics are calculated once when production data is written.

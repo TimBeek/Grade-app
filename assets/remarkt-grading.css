@@ -2615,6 +2615,15 @@ html[data-theme="dark"] .pareto-track { background: #2D2D32; }
   box-shadow: 0 0 0 0 rgba(85, 213, 138, 0.5);
   animation: manager-live-pulse 2s ease-out infinite;
 }
+#manager-live-stats[data-state="error"] .manager-live-signal {
+  border-color: #b45309;
+  background: #422715;
+}
+#manager-live-stats[data-state="error"] .manager-live-signal i {
+  background: #ffb454;
+  box-shadow: none;
+  animation: none;
+}
 @keyframes manager-live-pulse {
   0% { box-shadow: 0 0 0 0 rgba(85, 213, 138, 0.5); }
   70%, 100% { box-shadow: 0 0 0 8px rgba(85, 213, 138, 0); }
@@ -3127,3 +3136,9 @@ html[data-theme="dark"] .acc-link-btn:hover:not(:disabled) { background: rgba(25
 html[data-theme="dark"] .acc-link-btn.is-danger { color: #FF8A92; }
 html[data-theme="dark"] .acc-link-btn.is-danger:hover:not(:disabled) { background: rgba(227,6,19,0.14); color: #FFB3B8; }
 html[data-theme="dark"] .acc-search:focus-within { border-color: #EDEDE8; box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+/* Connection incidents must never look like an empty operational database. */
+.storage-status { margin: 16px auto; max-width: 1240px; padding: 18px 22px; border: 2px solid #b45309; border-radius: 12px; background: #fff7ed; color: #78350f; }
+.storage-status strong { font-size: 18px; }
+.storage-status p { margin: 8px 0; line-height: 1.5; }
+.storage-status-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+html[data-theme="dark"] .storage-status { background: #2b2117; color: #ffddb2; border-color: #fbbf24; }

@@ -1,11 +1,11 @@
 // Neon Postgres persistence for the shared ReMarkt state.
 //
-// The operational app still uses one merged state document for now, but this
-// removes the dependency on the Redis bandwidth quota. Statistics live in a
-// separate small row, so the dashboard does not transfer the full dataset.
+// Operational records are stored in compressed, revisioned shards. Routine
+// saves no longer read the entire JSON archive across the database connection.
 
 import { neon } from "@neondatabase/serverless";
-import { emptyState, normalizeDemoState, computeStats } from "./state-core.mjs";
+import { emptyState, normalizeDemoState } from "./state-core.mjs";
+import { createShardedStore } from './sharded-state.mjs';
 
 const STATE_ROW = "shared_state";
 const STATS_ROW = "dashboard_stats";
@@ -15,6 +15,12 @@ const BACKUP_RETENTION = 7;
 
 let sqlSingleton = null;
 let schemaReady = null;
+let shardStore = null;
+
+function getStore() {
+  if (!shardStore) shardStore = createShardedStore(getSql(), ensureSchema);
+  return shardStore;
+}
 
 function databaseUrl() {
   return String(process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
@@ -75,13 +81,6 @@ function parsePayload(value, fallback) {
   return value && typeof value === "object" ? value : fallback;
 }
 
-async function readRow(id) {
-  await ensureSchema();
-  const sql = getSql();
-  const rows = await sql`SELECT payload, updated_at, byte_size FROM remarkt_app_state WHERE id = ${id}`;
-  return rows[0] || null;
-}
-
 async function writeRow(id, payload) {
   await ensureSchema();
   const sql = getSql();
@@ -97,6 +96,8 @@ async function writeRow(id, payload) {
 }
 
 export async function pgReadMeta() {
+  const meta = await getStore().peekMeta();
+  if (meta) return { updatedAt: meta.updatedAt, revision: meta.storageRevision };
   await ensureSchema();
   const sql = getSql();
   // Extract only the timestamp in SQL. A background change-check must never
@@ -115,6 +116,8 @@ export async function pgReadMeta() {
 }
 
 export async function pgReadUsers() {
+  const meta = await getStore().peekMeta();
+  if (meta) return { users: meta.users || [], userSync: meta.userSync || '', userSyncAt: meta.userSyncAt, updatedAt: meta.updatedAt };
   await ensureSchema();
   const sql = getSql();
   // Sign-in only needs these four small values; avoid reading batches and
@@ -140,6 +143,17 @@ export async function pgReadUsers() {
 }
 
 export async function pgReadHealthSummary() {
+  const meta = await getStore().peekMeta();
+  if (meta) {
+    const rows = await getSql()`SELECT collection, SUM(jsonb_array_length(payload)) AS count
+      FROM remarkt_app_shards GROUP BY collection`;
+    const counts = Object.fromEntries(rows.map(row => [row.collection, Number(row.count)]));
+    return { updatedAt: meta.updatedAt, counts: {
+      users: (meta.users || []).length,
+      ...Object.fromEntries(['batches', 'monitorBatches', 'history', 'labelPrints', 'monitorLabelPrints', 'auditLogs']
+        .map(key => [key, counts[key] || 0])),
+    } };
+  }
   await ensureSchema();
   const sql = getSql();
   // PostgreSQL calculates the array lengths in place, so the health endpoint
@@ -228,14 +242,23 @@ export async function pgRestoreBackup(id) {
 }
 
 export async function pgReadState() {
-  const row = await readRow(STATE_ROW);
-  if (!row) return emptyState();
-  return normalizeDemoState(parsePayload(row.payload, emptyState()));
+  return getStore().readState();
+}
+
+export async function pgReadChanges(since) {
+  return getStore().readChanges(since);
+}
+
+export async function pgMergeState(incoming) {
+  const store = getStore();
+  // A daily point is made BEFORE the first modification, not after it.
+  await store.initialize();
+  await store.dailyBackup();
+  return store.merge(incoming);
 }
 
 export async function pgReadStats() {
-  const row = await readRow(STATS_ROW);
-  return row ? parsePayload(row.payload, null) : null;
+  return getStore().readStats();
 }
 
 export async function pgWriteStats(stats) {
@@ -243,36 +266,10 @@ export async function pgWriteStats(stats) {
   return stats;
 }
 
-async function createDailyBackup() {
-  await ensureSchema();
-  const sql = getSql();
-  // A recovery point is created at most once per 24 hours. This is an
-  // intentional, bounded copy. PostgreSQL copies from its own current row,
-  // so we do not send a second large document over the app/database link.
-  await sql`
-    INSERT INTO remarkt_app_backups (payload, reason, byte_size)
-    SELECT payload, 'daily', byte_size
-    FROM remarkt_app_state
-    WHERE id = ${STATE_ROW}
-      AND NOT EXISTS (
-      SELECT 1 FROM remarkt_app_backups
-      WHERE created_at >= NOW() - INTERVAL '24 hours'
-      )
-  `;
-  await sql`
-    DELETE FROM remarkt_app_backups
-    WHERE id IN (
-      SELECT id FROM remarkt_app_backups
-      ORDER BY created_at DESC
-      OFFSET ${BACKUP_RETENTION}
-    )
-  `;
-}
-
 export async function pgWriteState(state) {
-  const normalized = normalizeDemoState(state);
-  await writeRow(STATE_ROW, normalized);
-  await pgWriteStats(computeStats(normalized));
-  await createDailyBackup();
+  const store = getStore();
+  if (await store.peekMeta()) await store.dailyBackup(true, 'before-explicit-replace');
+  const normalized = await store.replace(state);
+  await store.dailyBackup();
   return normalized;
 }

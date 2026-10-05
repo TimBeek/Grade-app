@@ -1139,6 +1139,7 @@ function describeDymoPrintError(error) {
 }
 
 async function printLabelJobsWithDymoFallback(jobs, options = {}) {
+  if (STATE.sharedStorageError) return { ok: false, fallbackReason: 'Live database unavailable. Printing is paused to prevent unregistered labels.' };
   const printJobs = (jobs || []).filter(Boolean);
   if (!printJobs.length) return { ok: true, fallbackUsed: false };
   const firstProfile = printJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel;

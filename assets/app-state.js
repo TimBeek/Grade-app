@@ -45,6 +45,9 @@ const STATE = {
   accountCreateOpen: false,
   accountSearch: '',
   sharedSyncPending: false,
+  sharedStorageError: null,
+  localRecoveryAvailable: false,
+  localBackupError: false,
   appMessage: null,
   manualMode: false,
   importResult: null,
@@ -2084,25 +2087,92 @@ function getSharedDemoSnapshot(options = {}) {
   };
 }
 
-function saveLocalDemoStateBackup(snapshot = getSharedDemoSnapshot()) {
+let durableBackup = null;
+let durableBackupWrite = Promise.resolve(true);
+let recoveryDatabase = null;
+
+function openRecoveryDatabase() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  if (!recoveryDatabase) recoveryDatabase = new Promise((resolve, reject) => {
+    const request = indexedDB.open('remarktRecoveryV1', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('backups');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }).catch(() => { recoveryDatabase = null; return null; });
+  return recoveryDatabase;
+}
+
+async function loadDurableBackup() {
+  await durableBackupWrite;
+  const db = await openRecoveryDatabase();
+  if (!db) return;
   try {
-    let backupSnapshot = snapshot;
+    const saved = await new Promise((resolve, reject) => {
+      const request = db.transaction('backups').objectStore('backups').get('current');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (saved && typeof saved === 'object') {
+      // During an upgrade a legacy localStorage copy can be newer than an
+      // IndexedDB copy. Never replace the newer recovery point silently.
+      let legacy = null;
+      try { legacy = JSON.parse(localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup) || 'null'); } catch {}
+      durableBackup = getSharedDemoStateTimestamp(legacy) > getSharedDemoStateTimestamp(saved) ? legacy : saved;
+    }
+  } catch { /* The legacy localStorage copy remains a fallback. */ }
+}
+
+function saveLocalDemoStateBackup(snapshot = getSharedDemoSnapshot()) {
+  const previousBackup = readLocalDemoStateBackup();
+  let backupSnapshot = { ...snapshot,
+    ...(snapshot.storageRevision || previousBackup?.storageRevision
+      ? { storageRevision: snapshot.storageRevision || previousBackup.storageRevision } : {}),
+  };
+  let smallCopySaved = false;
+  try {
     if ((!Array.isArray(snapshot.users) || !snapshot.users.length) && USERS.length) {
       const existingBackup = readLocalDemoStateBackup();
       backupSnapshot = {
-        ...snapshot,
+        ...backupSnapshot,
         users: USERS.map(serializeUser),
         userSync: 'user-management',
         userSyncAt: (existingBackup && existingBackup.userSyncAt) || snapshot.updatedAt || new Date().toISOString(),
       };
     }
-    localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify(backupSnapshot));
+    durableBackup = typeof structuredClone === 'function' ? structuredClone(backupSnapshot) : JSON.parse(JSON.stringify(backupSnapshot));
+    // localStorage is commonly capped near 5 MB; do not repeatedly serialize
+    // a large operational archive into that small store. IndexedDB is primary.
+    if ((backupSnapshot.history || []).length < 1000) {
+      localStorage.setItem(DEMO_STORAGE_KEYS.sharedBackup, JSON.stringify(backupSnapshot));
+      smallCopySaved = true;
+    }
   } catch {
-    // Local storage may be unavailable in restricted browser contexts.
+    // A large localStorage copy must not prevent the IndexedDB backup.
   }
+  const securedSnapshot = durableBackup;
+  durableBackupWrite = durableBackupWrite.catch(() => false).then(async () => {
+    const db = await openRecoveryDatabase();
+    if (!db || !securedSnapshot) {
+      STATE.localBackupError = !smallCopySaved;
+      return smallCopySaved;
+    }
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('backups', 'readwrite');
+        tx.objectStore('backups').put(securedSnapshot, 'current');
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      STATE.localBackupError = false;
+      return true;
+    } catch { STATE.localBackupError = !smallCopySaved; return smallCopySaved; }
+  });
+  return durableBackupWrite;
 }
 
 function readLocalDemoStateBackup() {
+  if (durableBackup) return durableBackup;
   try {
     return JSON.parse(localStorage.getItem(DEMO_STORAGE_KEYS.sharedBackup) || 'null');
   } catch (error) {
@@ -2423,16 +2493,33 @@ function loadLocalDemoStateBackup() {
 // live-sync so we only re-read the full state when the server data changed.
 let lastSharedStateStamp = null;
 let lastSharedStateSnapshot = null;
+let sharedSaveQueue = Promise.resolve();
+
+function markSharedStorageFailure(payload) {
+  STATE.sharedStorageError = payload && payload.code === 'STORAGE_QUOTA_EXCEEDED'
+    ? 'STORAGE_QUOTA_EXCEEDED' : 'STORAGE_UNAVAILABLE';
+  STATE.localRecoveryAvailable = Boolean(readLocalDemoStateBackup());
+  const app = typeof document !== 'undefined' ? document.getElementById('app') : null;
+  if (app && typeof app.insertAdjacentHTML === 'function' && typeof renderStorageStatus === 'function' && !document.getElementById('storage-status')) {
+    app.insertAdjacentHTML('afterbegin', renderStorageStatus());
+  }
+}
+
+async function readStorageFailure(response) {
+  try { markSharedStorageFailure(await response.json()); }
+  catch { markSharedStorageFailure(null); }
+}
 
 // Cheap change-check: one tiny request (1 KV command) returning only updatedAt.
 async function fetchSharedStateStamp() {
   if (!canUseSharedDemoState()) return null;
   try {
     const response = await fetch(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
-    if (!response.ok) return null;
+    if (!response.ok) { await readStorageFailure(response); return null; }
     const meta = await response.json();
     return meta && meta.updatedAt ? String(meta.updatedAt) : null;
   } catch (error) {
+    markSharedStorageFailure(null);
     return null;
   }
 }
@@ -2453,8 +2540,40 @@ async function syncSharedStateIfChanged(options = {}) {
   if (stamp === null) return false;
   if (lastSharedStateStamp !== null && stamp === lastSharedStateStamp) return false;
   if (!loadFull) return false;
-  lastSharedStateStamp = stamp;
   return loadSharedDemoState();
+}
+
+function sharedStorageRowShard(collection, row, count) {
+  const keys = {
+    batches: item => String(item && (item.id || item.nummer) || ''),
+    monitorBatches: item => String(item && (item.id || item.nummer) || ''),
+    history: sharedHistoryKey, labelPrints: sharedLabelPrintKey,
+    monitorLabelPrints: sharedMonitorLabelPrintKey, auditLogs: sharedAuditKey,
+  };
+  if (!keys[collection] || !Number.isInteger(count) || count < 1 || count > 128) throw new Error('Invalid storage shard');
+  const key = keys[collection](row) || JSON.stringify(row);
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
+  return (hash >>> 0) % count;
+}
+
+async function applyStorageDeltaToBackup(delta, backup) {
+  if (!backup || backup.storageRevision !== delta.baseRevision || !delta.meta ||
+    !Number.isSafeInteger(delta.revision) || delta.revision < delta.baseRevision) throw new Error('Storage delta does not match cached state');
+  const state = { ...backup, ...delta.meta, storageRevision: delta.revision };
+  const seen = new Set();
+  for (const shard of delta.shards || []) {
+    const count = delta.shardCounts && delta.shardCounts[shard.collection];
+    if (!Number.isInteger(shard.shard) || shard.shard < 0 || shard.shard >= count) throw new Error('Invalid storage shard');
+    const identity = `${shard.collection}:${shard.shard}`;
+    if (seen.has(identity)) throw new Error('Duplicate storage shard');
+    seen.add(identity);
+    const rows = await base64GzipToJson(shard.gzip);
+    if (!Array.isArray(rows) || rows.some(row => sharedStorageRowShard(shard.collection, row, count) !== shard.shard)) throw new Error('Invalid storage rows');
+    state[shard.collection] = (state[shard.collection] || []).filter(row =>
+      sharedStorageRowShard(shard.collection, row, count) !== shard.shard).concat(rows);
+  }
+  return state;
 }
 
 function sharedRowChanged(current, previous) {
@@ -2522,39 +2641,54 @@ function sharedStateDeltaHasChanges(delta) {
 
 async function loadSharedDemoState() {
   if (!canUseSharedDemoState()) return loadLocalDemoStateBackup();
+  await loadDurableBackup();
   const localState = readLocalDemoStateBackup();
   STATE.sharedSyncPending = Boolean(localState && localState._clientSyncPending === true);
   try {
-    const response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
-    if (!response.ok) return loadLocalDemoStateBackup();
-    const remoteState = await decodeSharedDemoStatePayload(await response.json());
+    const canDelta = localState && !STATE.sharedSyncPending && Number.isSafeInteger(localState.storageRevision) &&
+      localState.storageRevision > 0 && SHARED_DEMO_STATE_SUPPORTS_GZIP;
+    const url = canDelta ? `${SHARED_DEMO_STATE_URL}?since=${localState.storageRevision}` : sharedDemoStateGetUrl();
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) { await readStorageFailure(response); return loadLocalDemoStateBackup(); }
+    const payload = await response.json();
+    const remoteState = payload.shardedDelta ? await applyStorageDeltaToBackup(payload, localState) : await decodeSharedDemoStatePayload(payload);
+    STATE.sharedStorageError = null;
+    lastSharedStateStamp = remoteState.updatedAt || null;
     const state = chooseSharedDemoState(remoteState, localState);
     const shouldRepublish = STATE.sharedSyncPending && sharedStateNeedsRepublish(remoteState, localState);
     const applied = applySharedDemoState(state);
     if (applied) {
-      saveLocalDemoStateBackup(state);
+      await saveLocalDemoStateBackup(state);
       lastSharedStateSnapshot = getSharedDemoSnapshot();
       if (shouldRepublish) await saveSharedDemoState();
     }
     return applied;
   } catch (error) {
+    markSharedStorageFailure(null);
     reportAppWarning('Gedeelde demo-opslag kon niet worden geladen', error);
     return loadLocalDemoStateBackup();
   }
 }
 
-async function saveSharedDemoState(options = {}) {
+function saveSharedDemoState(options = {}) {
+  const job = sharedSaveQueue.catch(() => false).then(() => performSharedStateSave(options));
+  sharedSaveQueue = job;
+  return job;
+}
+
+async function performSharedStateSave(options = {}) {
+  if (STATE.sharedStorageError) return false;
   const snapshot = getSharedDemoSnapshot(options);
   const delta = createSharedStateDelta(snapshot, lastSharedStateSnapshot);
   STATE.sharedSyncPending = true;
-  saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
+  await saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
   if (!canUseSharedDemoState()) return false;
   // Rendering, focus changes and retry paths may call save twice without a
   // business change. Do not wake the database or use bandwidth in that case.
   if (!sharedStateDeltaHasChanges(delta)) {
     STATE.sharedSyncPending = false;
     lastSharedStateSnapshot = snapshot;
-    saveLocalDemoStateBackup(snapshot);
+    await saveLocalDemoStateBackup(snapshot);
     return true;
   }
   try {
@@ -2565,18 +2699,28 @@ async function saveSharedDemoState(options = {}) {
     });
     if (response.ok) {
       STATE.sharedSyncPending = false;
-      saveLocalDemoStateBackup(snapshot);
       lastSharedStateSnapshot = snapshot;
       // Track our own write so the next live-sync doesn't reload needlessly.
       try {
         const result = await response.json();
-        if (result && result.updatedAt) lastSharedStateStamp = String(result.updatedAt);
+        if (result && result.updatedAt) {
+          snapshot.updatedAt = String(result.updatedAt);
+        }
+        // Do NOT advance the cached revision to our write revision: another
+        // colleague may have saved changes not represented in this snapshot.
+        // Keep its previous revision so the next delta includes both writes.
+        const previousBackup = readLocalDemoStateBackup();
+        if (previousBackup && previousBackup.storageRevision) snapshot.storageRevision = previousBackup.storageRevision;
       } catch (parseError) {
         // Non-fatal: a missing body just means the next sync re-checks.
       }
+      await saveLocalDemoStateBackup(snapshot);
+    } else {
+      await readStorageFailure(response);
     }
     return response.ok;
   } catch (error) {
+    markSharedStorageFailure(null);
     reportAppWarning('Gedeelde demo-opslag kon niet worden opgeslagen', error);
     return false;
   }
@@ -2586,10 +2730,11 @@ async function refreshSharedUsers() {
   if (!canUseSharedDemoState()) return false;
   try {
     const response = await fetch(`${SHARED_DEMO_STATE_URL}?users=1`, { cache: 'no-store' });
-    if (!response.ok) return false;
+    if (!response.ok) { await readStorageFailure(response); return false; }
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
     return applySharedUsers(remoteState);
   } catch (error) {
+    markSharedStorageFailure(null);
     reportAppWarning('Gebruikers konden niet live worden bijgewerkt', error);
     return false;
   }

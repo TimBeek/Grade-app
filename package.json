@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "node tools/remarkt-static-server.mjs",
     "start": "node tools/remarkt-static-server.mjs",
-    "test": "node --test tests/grading-engine-smoke.test.js",
+    "test": "node --test tests/grading-engine-smoke.test.js tests/storage-shards.test.mjs",
     "migrate:kv": "node scripts/migrate-to-kv.mjs",
     "seed:postgres": "node scripts/seed-postgres.mjs",
     "recover:redis": "node scripts/recover-redis-to-postgres.mjs",
     "backups:postgres": "node scripts/list-postgres-backups.mjs",
     "restore:postgres": "node scripts/restore-postgres-backup.mjs",
-    "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/_lib/postgres-state.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
+    "check": "node --check tools/remarkt-static-server.mjs && node --check api/_lib/state.mjs && node --check api/_lib/postgres-state.mjs && node --check api/_lib/sharded-state.mjs && node --check api/_lib/storage-error.mjs && node --check api/demo-state.mjs && node --check api/health.mjs && node --check api/stats.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -20,5 +20,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "fake-indexeddb": "^6.2.5"
   }
 }

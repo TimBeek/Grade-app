@@ -5,12 +5,13 @@ import {
   kvReadState,
   kvReadMeta,
   kvReadUsers,
-  kvWriteState,
-  mergeDemoState,
+  kvMergeState,
+  kvReadChanges,
   toEnvelope,
   fromBody,
 } from "./_lib/state.mjs";
 import { readJsonBody } from "./_lib/http.mjs";
+import { sendStorageError } from './_lib/storage-error.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -29,6 +30,11 @@ export default async function handler(request, response) {
         response.status(200).json(await kvReadUsers());
         return;
       }
+      const since = new URL(request.url, 'http://local').searchParams.get('since');
+      if (since !== null) {
+        const changes = await kvReadChanges(Number(since));
+        if (changes) { response.status(200).json(changes); return; }
+      }
       const state = await kvReadState();
       // `?raw=1` returns the plain state for clients without DecompressionStream
       // and for local debugging. The default response is the gzip envelope.
@@ -39,15 +45,13 @@ export default async function handler(request, response) {
 
     if (request.method === "POST") {
       const incoming = fromBody(await readJsonBody(request));
-      const existing = await kvReadState();
-      const merged = mergeDemoState(existing, incoming);
-      await kvWriteState(merged);
-      response.status(200).json({ ok: true, updatedAt: merged.updatedAt });
+      const result = await kvMergeState(incoming);
+      response.status(200).json({ ok: true, ...result });
       return;
     }
 
     response.status(405).json({ ok: false, error: "Method not allowed" });
   } catch (error) {
-    response.status(400).json({ ok: false, error: String(error && error.message || error) });
+    sendStorageError(response, error);
   }
 }

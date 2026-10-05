@@ -6,6 +6,18 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.': 'Het label is geprint, maar live opslaan en de lokale herstelkopie zijn mislukt. Houd dit tabblad open en neem contact op met je manager voordat je verdergaat.',
+  'Database usage limit reached': 'Databaselimiet bereikt',
+  'Live database unavailable': 'Live database niet bereikbaar',
+  'Local recovery copy could not be saved': 'Lokale herstelkopie kon niet worden opgeslagen',
+  'This is a connection failure, not an empty database. Live saving and label printing are paused.': 'Dit is een verbindingsstoring, geen lege database. Live opslaan en labels printen zijn gepauzeerd.',
+  'Browser storage is unavailable or full. Download a recovery copy and contact your manager.': 'Browseropslag is niet beschikbaar of vol. Download een herstelkopie en waarschuw je manager.',
+  'A local recovery copy is available. You can view it, but it may not include recent work by colleagues.': 'Er is een lokale herstelkopie. Je kunt deze bekijken, maar recent werk van collega’s kan ontbreken.',
+  'No local operational copy is available in this browser. Do not recreate accounts or batches.': 'In deze browser is geen lokale kopie van de werkgegevens aanwezig. Maak accounts of batches niet opnieuw aan.',
+  'Retry connection': 'Verbinding opnieuw proberen',
+  'Download local recovery copy': 'Lokale herstelkopie downloaden',
+  'Live saving is unavailable. Retry the connection before changing or printing operational data.': 'Live opslaan is niet beschikbaar. Herstel eerst de verbinding voordat je werkgegevens wijzigt of print.',
+  'Live database unavailable. Printing is paused to prevent unregistered labels.': 'Live database niet bereikbaar. Printen is gepauzeerd om niet-geregistreerde labels te voorkomen.',
   'Checked, continue': 'Gecontroleerd, verder',
   'Change the switch if your physical check shows something different.': 'Pas de schakelaar aan als je bij controle iets anders ziet.',
   'Follow-up question': 'Vervolgvraag',

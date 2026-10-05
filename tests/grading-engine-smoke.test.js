@@ -108,10 +108,16 @@ function loadAppSandbox(options = {}) {
     },
   };
   sandbox.__appElement = appElement;
+  if (options.indexedDB) sandbox.indexedDB = options.indexedDB;
+  if (options.gzip) Object.assign(sandbox, { Blob, Response, CompressionStream, DecompressionStream, Uint8Array, atob, btoa });
+  sandbox.structuredClone = structuredClone;
 
   vm.createContext(sandbox);
   scripts.forEach(script => {
-    vm.runInContext(script.source, sandbox, { filename: `assets/${script.name}` });
+    // Each test explicitly drives startup/networking. A parallel bootstrap
+    // would otherwise consume its mocked response or re-render a form later.
+    const source = script.name === 'remarkt-grading.js' ? script.source.replace(/^initApp\(\);$/m, '') : script.source;
+    vm.runInContext(source, sandbox, { filename: `assets/${script.name}` });
   });
   return sandbox;
 }
@@ -814,6 +820,84 @@ test('gedeelde opslag slaat een save zonder zakelijke wijziging over', () => {
     globalThis.__emptyDelta = createSharedStateDelta(getSharedDemoSnapshot(), before);
   `, app);
   assert.equal(vm.runInContext('sharedStateDeltaHasChanges(__emptyDelta)', app), false);
+});
+
+test('quota-storing behoudt herstelkopie en blokkeert opnieuw opslaan en printen', async () => {
+  const app = loadAppSandbox();
+  vm.runInContext(`
+    saveLocalDemoStateBackup({version: 1, users: USERS.map(serializeUser), batches: [], monitorBatches: [],
+      history: [{id:'kept', sticker:'123', grade:'A'}], labelPrints: [], monitorLabelPrints: [], auditLogs: [], updatedAt:'2026-10-03T12:00:00Z'});
+    window.location.protocol = 'https:';
+  `, app);
+  let requests = 0;
+  app.fetch = async () => { requests++; return { ok: false, json: async () => ({ code: 'STORAGE_QUOTA_EXCEEDED' }) }; };
+  assert.equal(await app.loadSharedDemoState(), true);
+  assert.equal(vm.runInContext('STATE.sharedStorageError', app), 'STORAGE_QUOTA_EXCEEDED');
+  assert.equal(vm.runInContext('STATE.history[0].id', app), 'kept');
+  assert.match(app.renderStorageStatus(), /Database usage limit reached/);
+  assert.match(app.renderStorageStatus(), /local recovery copy is available/);
+  assert.equal(await app.saveSharedDemoState(), false);
+  assert.equal(requests, 1);
+  assert.equal((await app.printLabelJobsWithDymoFallback([])).ok, false);
+  assert.equal(vm.runInContext('readLocalDemoStateBackup().history[0].id', app), 'kept');
+});
+
+test('storing zonder kopie ziet er niet uit als een succesvolle lege database', async () => {
+  const app = loadAppSandbox();
+  app.fetch = async () => ({ ok: false, json: async () => ({ code: 'STORAGE_UNAVAILABLE' }) });
+  assert.equal(await app.loadSharedDemoState(), false);
+  assert.equal(vm.runInContext('STATE.localRecoveryAvailable', app), false);
+  assert.match(app.renderLogin(), /No local operational copy/);
+  vm.runInContext("STATE.language='nl';", app);
+  assert.equal(app.translateCopy('Database usage limit reached'), 'Databaselimiet bereikt');
+});
+
+test('grote herstelkopie blijft via IndexedDB bewaard wanneer localStorage vol is', async () => {
+  const { IDBFactory } = require('fake-indexeddb');
+  const indexedDB = new IDBFactory();
+  const app = loadAppSandbox({ indexedDB });
+  app.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+  vm.runInContext(`globalThis.bigBackup = {
+    version:1, users:USERS.map(serializeUser), batches:[], monitorBatches:[],
+    history:[{id:'large', sticker:'LARGE', note:'x'.repeat(6000000)}],
+    labelPrints:[], monitorLabelPrints:[], auditLogs:[], updatedAt:'2026-10-05T10:00:00Z'
+  };`, app);
+  assert.equal(await app.saveLocalDemoStateBackup(app.bigBackup), true);
+  assert.equal(vm.runInContext('STATE.localBackupError', app), false);
+  const reopened = loadAppSandbox({ indexedDB });
+  await reopened.loadDurableBackup();
+  assert.equal(vm.runInContext('readLocalDemoStateBackup().history[0].note.length', reopened), 6000000);
+});
+
+test('browser past gecomprimeerde sharddelta toe zonder andere records te wissen', async () => {
+  const { encodeState } = await import('../api/_lib/state-core.mjs');
+  const { rowShard } = await import('../api/_lib/sharded-state.mjs');
+  const app = loadAppSandbox({ gzip: true });
+  const changed = {id:'changed', sticker:'C', grade:'B'};
+  const shard = rowShard('history', changed);
+  let i = 0, unrelated;
+  do { unrelated = {id:`other-${i++}`, sticker:'O', grade:'A'}; } while (rowShard('history', unrelated) === shard);
+  const backup = { storageRevision: 1, history: [{...changed,grade:'A'}, unrelated], batches: [] };
+  const result = await app.applyStorageDeltaToBackup({
+    baseRevision:1, revision:2, meta:{storageRevision:2}, shardCounts:{history:64},
+    shards:[{collection:'history',shard,gzip:encodeState([changed])}],
+  }, backup);
+  assert.equal(result.history.length, 2);
+  assert.equal(result.history.find(row => row.id === changed.id).grade, 'B');
+  assert.ok(result.history.some(row => row.id === unrelated.id));
+  await assert.rejects(app.applyStorageDeltaToBackup({baseRevision:2,revision:3,meta:{}}, backup), /cached state/);
+});
+
+test('verbinding herstellen ruimt storingsstatus op en haalt opnieuw echte gegevens op', async () => {
+  const app = loadAppSandbox();
+  vm.runInContext("STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';", app);
+  app.fetch = async () => ({ ok:true, json:async()=>({
+    version:1, users:[], batches:[], monitorBatches:[], history:[{id:'restored',sticker:'R'}],
+    labelPrints:[], monitorLabelPrints:[], auditLogs:[], updatedAt:'2026-10-05T12:00:00Z',
+  }) });
+  assert.equal(await app.loadSharedDemoState(), true);
+  assert.equal(vm.runInContext('STATE.sharedStorageError', app), null);
+  assert.equal(vm.runInContext('STATE.history[0].id', app), 'restored');
 });
 
 test('lokale monitorimport blijft staan wanneer gedeelde state ouder is', async () => {

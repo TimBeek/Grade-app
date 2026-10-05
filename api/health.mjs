@@ -1,6 +1,7 @@
 // GET /api/health -> service + storage health and high-level counts.
 
 import { kvReadHealthSummary, kvReadBackupInfo, isStorageConfigured, storageKind } from "./_lib/state.mjs";
+import { sendStorageError } from './_lib/storage-error.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -27,11 +28,6 @@ export default async function handler(request, response) {
       backup,
     });
   } catch (error) {
-    response.status(500).json({
-      ok: false,
-      service: "remarkt-grading",
-      storage: storageKind(),
-      error: String(error && error.message || error),
-    });
+    sendStorageError(response, error);
   }
 }

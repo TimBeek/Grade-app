@@ -1032,6 +1032,27 @@ function guardPasswordChangeAction(action) {
 }
 
 async function handleAction(action, el) {
+  if (action === 'retry_storage') {
+    await loadSharedDemoState();
+    render();
+    return;
+  }
+  if (action === 'download_local_backup') {
+    const backup = readLocalDemoStateBackup();
+    if (!backup) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `remarkt-recovery-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  if (STATE.sharedStorageError && /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_laptop|remove_batch|remove_monitor|remove_monitor_batch|manual_submit|monitor_manual_submit|verify_batch_completion|reopen_batch_completion|set_touch_override|confirm_save|confirm_expert|confirm_expert_repair|print_.*|monitor_reprint_confirm)$/.test(action)) {
+    setAppMessage('Live saving is unavailable. Retry the connection before changing or printing operational data.', 'warning');
+    if (typeof liveRenderWouldDisruptInput !== 'function' || !liveRenderWouldDisruptInput()) render();
+    return;
+  }
   if (guardStickerAction(action)) return;
   if (guardPasswordChangeAction(action)) return;
   switch (action) {
@@ -2279,6 +2300,7 @@ async function reprintMonitorLabel(sticker) {
 
 async function loginWithPassword() {
   await refreshSharedUsers();
+  if (STATE.sharedStorageError && !STATE.localRecoveryAvailable) { render(); return; }
   const id = document.getElementById('loginUser').value;
   const password = document.getElementById('loginPassword').value;
   const user = USERS.find(u => u.id === id);
@@ -2920,7 +2942,9 @@ async function confirmSaveWithAutomaticLabels() {
       : 'Specs label printed. Grading saved.',
     'success');
   } else {
-    setAppMessage('The label was printed and the grading is secured locally. Live synchronization is pending and will retry automatically.', 'warning');
+    setAppMessage(STATE.localBackupError
+      ? 'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.'
+      : 'The label was printed and the grading is secured locally. Live synchronization is pending and will retry automatically.', 'warning');
   }
   render();
 }

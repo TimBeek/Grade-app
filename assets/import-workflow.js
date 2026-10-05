@@ -748,6 +748,11 @@ function createImportedBatchId(prefix, nummer, importRunId, fileIndex, existingB
 }
 
 async function importSupplierFiles(files) {
+  if (STATE.sharedStorageError) {
+    setAppMessage('Live saving is unavailable. Retry the connection before changing or printing operational data.', 'warning');
+    render();
+    return;
+  }
   const allImported = [];
   const allImportedMonitors = [];
   const importedByFile = new Map();
@@ -899,4 +904,3 @@ async function importSupplierFiles(files) {
   };
   await setImportProgress(null);
 }
-

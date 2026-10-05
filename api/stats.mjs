@@ -2,6 +2,7 @@
 // database (not from the client's in-memory copy).
 
 import { kvReadStats, kvWriteStats, kvReadState, kvReadBackupInfo, storageKind, computeStats } from "./_lib/state.mjs";
+import { sendStorageError } from './_lib/storage-error.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -23,6 +24,6 @@ export default async function handler(request, response) {
     await kvWriteStats(computed);
     response.status(200).json({ ...computed, storage: storageKind(), backup });
   } catch (error) {
-    response.status(500).json({ ok: false, error: String(error && error.message || error) });
+    sendStorageError(response, error);
   }
 }

@@ -92,6 +92,7 @@ function render() {
   } else {
     if (typeof enforceDeviceAccess === 'function') enforceDeviceAccess();
     html = renderTopbar();
+    html += renderStorageStatus();
     html += renderAppMessage();
     if (STATE.pendingDecision && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderDecisionModal(STATE.pendingDecision);
     if (STATE.supplierNotice && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderSupplierNoticeModal(STATE.supplierNotice);
@@ -222,6 +223,7 @@ function renderImagePreviewModal(preview) {
 function renderLogin() {
   return `
     <div class="screen">
+      ${renderStorageStatus()}
       ${renderAppMessage()}
       <div class="login-card">
         <div class="login-language-row">${renderOptionalLanguageToggle()}</div>
@@ -240,6 +242,24 @@ function renderLogin() {
       </div>
     </div>
   `;
+}
+
+function renderStorageStatus() {
+  if (!STATE.sharedStorageError && !STATE.localBackupError) return '';
+  const quota = STATE.sharedStorageError === 'STORAGE_QUOTA_EXCEEDED';
+  return `<section id="storage-status" class="storage-status" role="alert" aria-live="polite">
+    <strong>${quota ? 'Database usage limit reached' : STATE.sharedStorageError ? 'Live database unavailable' : 'Local recovery copy could not be saved'}</strong>
+    <p>${STATE.sharedStorageError
+      ? 'This is a connection failure, not an empty database. Live saving and label printing are paused.'
+      : 'Browser storage is unavailable or full. Download a recovery copy and contact your manager.'}</p>
+    ${STATE.sharedStorageError ? `<p>${STATE.localRecoveryAvailable
+      ? 'A local recovery copy is available. You can view it, but it may not include recent work by colleagues.'
+      : 'No local operational copy is available in this browser. Do not recreate accounts or batches.'}</p>` : ''}
+    <div class="storage-status-actions">
+      ${STATE.sharedStorageError ? '<button class="btn btn-secondary" data-action="retry_storage" type="button">Retry connection</button>' : ''}
+      ${readLocalDemoStateBackup() ? '<button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button>' : ''}
+    </div>
+  </section>`;
 }
 
 function renderPasswordChange() {

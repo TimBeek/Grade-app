@@ -220,30 +220,30 @@ function mergeLaptopBatchRows(existingRows, incomingRows) {
   });
 }
 
-function batchKey(batch) {
+export function batchKey(batch) {
   return batch && (batch.id || batch.nummer) ? String(batch.id || batch.nummer) : "";
 }
 
-function historyKey(item) {
+export function historyKey(item) {
   if (!item || typeof item !== "object") return "";
   if (item.id) return String(item.id);
   return [item.sticker, item.serial, item.batchNummer, item.grade, item.user_id, item.tijd]
     .map(value => String(value || "")).join("|");
 }
 
-function labelPrintKey(item) {
+export function labelPrintKey(item) {
   if (!item || typeof item !== "object") return "";
   return [normalizeStickerCode(item.sticker), item.batchNummer, item.user_id, item.printedAt]
     .map(value => String(value || "")).join("|");
 }
 
-function monitorLabelPrintKey(item) {
+export function monitorLabelPrintKey(item) {
   if (!item || typeof item !== "object") return "";
   return [normalizeStickerCode(item.sticker), item.batchId || item.batchNummer]
     .map(value => String(value || "")).join("|");
 }
 
-function auditKey(item) {
+export function auditKey(item) {
   if (!item || typeof item !== "object") return "";
   return [item.action, item.entityType, item.entityId, item.userId, item.createdAt]
     .map(value => String(value || "")).join("|");

@@ -4,7 +4,8 @@
 async function initApp() {
   await loadMonitorPortDatabase();
   await loadSharedDemoState();
-  await primeSharedStateStamp();
+  // loadSharedDemoState records the stamp of the state it actually read.
+  // A second stamp request could acknowledge an unseen colleague's change.
   rebuildLaptopIndex();
   rebuildMonitorIndex();
   rebuildHistoryIndexes();
@@ -63,6 +64,7 @@ function installLiveUserSync() {
     // Pauzeer wanneer het tabblad niet zichtbaar is: geen database-verkeer op
     // de achtergrond. Dit bespaart de meeste commando's.
     if (typeof document !== 'undefined' && document.hidden) return;
+    if (STATE.sharedStorageError) return; // explicit retry/focus only during incidents
     if (syncInFlight) return;
     syncInFlight = true;
     try {
