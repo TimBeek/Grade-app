@@ -1,0 +1,11 @@
+import fs from 'node:fs/promises';
+import { neon } from '@neondatabase/serverless';
+import { loadEnv } from './_lib/env.mjs';
+import { sqlStatements } from './_lib/schema.mjs';
+loadEnv(process.env.REMARKT_ENV_FILE);
+const sql=neon(process.env.REMARKT_DATABASE_URL);
+if(!process.env.REMARKT_WORKSPACE_ID)throw new Error('Explicit active workspace required.');
+const rows=await sql`SELECT id FROM remarkt_workspaces WHERE id=${process.env.REMARKT_WORKSPACE_ID}`;
+if(!rows.length)throw new Error('Active record workspace does not exist.');
+for(const statement of sqlStatements(await fs.readFile(new URL('../migrations/005-backup-monitor.sql',import.meta.url),'utf8')))await sql.query(statement);
+console.log('Additive backup diagnostics installed; operational records unchanged.');

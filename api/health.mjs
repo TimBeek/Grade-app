@@ -4,6 +4,7 @@ import { kvReadHealthSummary, kvReadBackupInfo, isStorageConfigured, storageKind
 import { sendStorageError } from './_lib/storage-error.mjs';
 import { recordStorageEnabled, pgRecordStore, pgRateLimit } from './_lib/postgres-state.mjs';
 import { requireSession } from './_lib/session-auth.mjs';
+import { backupStatus } from './_lib/backup-status.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -32,7 +33,7 @@ export default async function handler(request, response) {
       workspaceId: String(process.env.REMARKT_WORKSPACE_ID || ''),
       updatedAt: summary && summary.updatedAt ? summary.updatedAt : null,
       counts: summary ? summary.counts : {},
-      backup,
+      backup:recordStorageEnabled()?backupStatus(backup,summary.storageRevision):backup,
     });
   } catch (error) {
     sendStorageError(response, error);

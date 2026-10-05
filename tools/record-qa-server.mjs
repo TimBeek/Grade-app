@@ -16,6 +16,7 @@ process.env.REMARKT_STORAGE_FORMAT='3';
 process.env.REMARKT_SESSION_SECRET='synthetic-local-session-secret-not-used-in-production';
 const db=new PGlite();
 await db.exec(await fs.readFile(new URL('../migrations/003-record-storage.sql',import.meta.url),'utf8'));
+await db.exec(await fs.readFile(new URL('../migrations/005-backup-monitor.sql',import.meta.url),'utf8'));
 await db.query('INSERT INTO remarkt_workspaces(id) VALUES ($1)',[process.env.REMARKT_WORKSPACE_ID]);
 const sql=(parts,...values)=>{
   const text=parts.reduce((out,part,i)=>out+(i?`$${i}`:'')+part,'');

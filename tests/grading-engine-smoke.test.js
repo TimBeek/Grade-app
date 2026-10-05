@@ -153,6 +153,43 @@ function guidedSandbox({ entryUnchecked = false } = {}) {
   return app;
 }
 
+test('insight filter races and saves cannot restore stale cached aggregates',async()=>{
+  const app=loadAppSandbox();app.URLSearchParams=URLSearchParams;
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='qa';STATE.currentUser=USERS.find(u=>u.id==='tim');",app);
+  const pending=[];
+  app.fetch=url=>new Promise(resolve=>pending.push({url,resolve}));
+  const tick=()=>new Promise(resolve=>setImmediate(resolve));
+  const answer=(index,value)=>pending[index].resolve({ok:true,json:async()=>({marker:value})});
+  const first=app.loadRecordInsights();await tick();
+  vm.runInContext("STATE.analyticsFilters={...getAnalyticsFilters(),batch:'new'};",app);
+  const second=app.loadRecordInsights();await tick();
+  assert.match(pending[0].url,/batch=all/);assert.match(pending[1].url,/batch=new/);
+  answer(1,'new');await second;answer(0,'old');await first;
+  assert.equal(vm.runInContext('STATE.recordInsights.data.marker',app),'new');
+  app.invalidateRecordInsights();
+  const stale=app.loadRecordInsights();await tick();
+  app.invalidateRecordInsights();
+  const fresh=app.loadRecordInsights();await tick();
+  assert.notEqual(pending[2].url,pending[3].url);
+  answer(3,'fresh');await fresh;answer(2,'stale');assert.equal(await stale,false);
+  assert.equal(vm.runInContext('STATE.recordInsights.data.marker',app),'fresh');
+  assert.equal((await app.loadRecordInsights()).marker,'fresh');assert.equal(pending.length,4);
+  app.rememberRecordProtection({storageRevision:99,backup:{status:'current'}});
+  assert.equal(vm.runInContext('STATE.recordInsights',app),null);
+});
+
+test('backup warnings are manager-only and cannot be hidden by dismissing the temporary notice',()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='recovery-qa';STATE.currentUser=USERS.find(u=>u.id==='tim');STATE.recordProtection={status:'stale',mirrorStatus:'failed'};",app);
+  assert.match(app.renderRecordProtectionAlerts(),/over two hours old/);
+  assert.match(app.renderRecordProtectionAlerts(),/second backup location/);
+  vm.runInContext("STATE.dismissedRecoveryNotice='recovery-qa';STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';",app);
+  assert.match(app.renderStorageStatus(),/Database usage limit reached/);
+  assert.match(app.renderStorageStatus(),/over two hours old/);
+  vm.runInContext("STATE.currentUser={id:'grader',rol:'Grader'};",app);
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+});
+
 test('record reads never acknowledge dirty local fields or advance their revision; projection completeness survives caching',async()=>{
   const app=loadAppSandbox();
   vm.runInContext(`STATE.storageFormat=3;STATE.serverAuth=true;STATE.sharedWorkspaceId='test';

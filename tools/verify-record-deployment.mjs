@@ -38,6 +38,10 @@ const health=await get('/api/health');
 const products=await get('/api/demo-state?collection=laptops');assert.ok(products.records.length<=50);
 const stats=await get('/api/stats');assert.equal(stats.totals.laptopsInVoorraad,5004);
 assert.equal(stats.totals.monitorsInVoorraad,1827);
+const insights=await get('/api/stats?insights=1&productType=all&dateRange=all');
+assert.equal(Number(insights.revision),Number(meta.storageRevision));
+assert.ok(Array.isArray(insights.bins) && Array.isArray(insights.employees));
+assert.ok(!Object.hasOwn(insights,'history') && !Object.hasOwn(insights,'payload'));
 assert.equal(health.counts.users,29);assert.equal(health.counts.batches,10);assert.equal(health.counts.monitorBatches,3);
 console.log(JSON.stringify({verified:true,counts:health.counts,revision:meta.storageRevision,backup:health.backup}));
 if(process.argv.includes('--browser')) {
@@ -60,7 +64,7 @@ if(process.argv.includes('--browser')) {
       return {format:STATE.storageFormat,laptops:getAllLaptops().length,monitors:getAllMonitors().length,error:STATE.sharedStorageError};})()`);
     if(!result.includes('5004') || !result.includes('1827') || !result.includes('"error": null'))throw new Error('Browser did not load all preserved products.');
     console.log(result.trim());
-    await evaluate("handleAction('dismiss_recovery_notice',{}).then(()=>({noticeClosed:renderStorageStatus()===''}))");
+    await evaluate("handleAction('dismiss_recovery_notice',{}).then(()=>({noticeClosed:!renderStorageStatus().includes('dismiss_recovery_notice')}))");
     const errors=await browserCommand('errors');if(errors.stdout.trim())throw new Error('Browser reported an application error.');
     console.log('Live read-only browser verified: inventory loaded, notice dismissed, no browser errors.');
   }finally {

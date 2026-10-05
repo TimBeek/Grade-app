@@ -11,6 +11,38 @@ function setLiveSessionToken(token) {
 const appReadRequests = new Map();
 let appRetryAfter = 0;
 let appStatsCache=null;
+const recordTraffic=[];
+function rememberRecordResponse(response) {
+  recordTraffic.push({at:Date.now(),bytes:Number(response.headers?.get('Content-Length') || 0)});
+  while(recordTraffic.length && recordTraffic[0].at<Date.now()-60000)recordTraffic.shift();
+  STATE.recordTrafficAlert=recordTraffic.length>120 || recordTraffic.reduce((sum,row)=>sum+row.bytes,0)>10*1024*1024;
+}
+function rememberRecordProtection(stats) {
+  STATE.recordProtection=stats.backup || null;
+  if(STATE.recordInsights && stats.storageRevision!==undefined &&
+    Number(STATE.recordInsights.data.revision)!==Number(stats.storageRevision))invalidateRecordInsights();
+}
+function renderRecordProtectionAlerts() {
+  if(STATE.storageFormat!==3 || !STATE.currentUser || !isAdminUser())return '';
+  const alerts=[];
+  const backup=STATE.recordProtection;
+  if(backup) {
+    const age=Date.now()-Date.parse(backup.createdAt || '');
+    if(backup.status==='missing')alerts.push('No verified external backup is available.');
+    else if(backup.status==='stale' || age>2*60*60*1000)alerts.push('The backup check is over two hours old. Check the backup computer.');
+    else if(backup.status==='pending')alerts.push('Recent work is waiting for the next hourly backup.');
+    if(backup.mirrorStatus==='failed' || backup.mirrorStatus==='stale')alerts.push('The second backup location is unavailable or outdated.');
+    if(backup.mirrorStatus==='not-configured')alerts.push('A second backup location has not been configured.');
+  }
+  if(STATE.sharedSyncPending)alerts.push('Changes in this browser have not yet been saved live. Do not clear browser data.');
+  if(STATE.recordTrafficAlert)alerts.push('Unusually high traffic in this browser. This is not the provider quota measurement.');
+  if(!alerts.length)return '';
+  const urgent=STATE.sharedSyncPending || STATE.recordTrafficAlert || backup?.status==='missing' || backup?.status==='stale' ||
+    Date.now()-Date.parse(backup?.createdAt||'')>2*60*60*1000 || ['failed','stale'].includes(backup?.mirrorStatus);
+  return `<details class="storage-status storage-protection" role="status" aria-live="polite" ${urgent?'open':''}><summary><strong>Data protection</strong></summary>
+    ${alerts.map(message=>`<p>${escapeHtml(message)}</p>`).join('')}
+    <p>Last verified backup: ${escapeHtml(backup?.createdAt?new Date(backup.createdAt).toLocaleString('nl-NL'):'—')}</p></details>`;
+}
 async function appFetch(url, options = {}) {
   const method = options.method || 'GET';
   const token = liveSessionToken();
@@ -29,6 +61,7 @@ async function appFetch(url, options = {}) {
     }
     try {
       const response = await fetch(url, settings);
+      rememberRecordResponse(response);
       if (response.status === 401 && STATE.serverAuth) {
         setLiveSessionToken(''); clearSessionUser(); STATE.currentUser = null; STATE.currentScreen = 'login';
       }
@@ -194,6 +227,9 @@ async function performRecordLoad() {
     const stampResponse = await appFetch(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
     if (!stampResponse.ok) { await readStorageFailure(stampResponse); return false; }
     const stamp = await stampResponse.json();
+    if(backup?.storageRevision!==stamp.storageRevision) {
+      invalidateRecordInsights();
+    }
     const same = backup?.storageFormat === 3 && backup.workspaceId === stamp.workspaceId;
     if (backup && !same) await archivePreviousWorkspace(backup);
     let state = same ? backup : { version: 1, workspaceId: stamp.workspaceId, storageFormat: 3, users: USERS.map(serializeUser) };
@@ -221,7 +257,7 @@ async function performRecordLoad() {
     STATE.sharedStorageError = null;
     const statistics = await appFetch('/api/stats',{cache:'no-store'});
     if(!statistics.ok) { await readStorageFailure(statistics);return false; }
-    STATE.recordDashboard=(await statistics.json()).dashboard;
+    const summary=await statistics.json();STATE.recordDashboard=summary.dashboard;rememberRecordProtection(summary);
     const pending = same && backup._pendingRecordMutation;
     if (pending) {
       STATE.pendingRecordMutation = pending;
@@ -246,6 +282,48 @@ async function performRecordLoad() {
 }
 
 let recordProjectionRequest=null;
+const recordInsightsCache=new Map();
+let recordInsightsRequest=null;
+let recordInsightsGeneration=0;
+function invalidateRecordInsights() {
+  recordInsightsGeneration++;
+  recordInsightsCache.clear();recordInsightsRequest=null;
+  STATE.recordInsights=null;STATE.recordBatchInsights={};
+}
+function recordInsightsKey(filters=getAnalyticsFilters()) {
+  return JSON.stringify([STATE.sharedWorkspaceId,STATE.currentUser?.id,filters]);
+}
+async function loadRecordInsights(filters=getAnalyticsFilters(), forBatch=false) {
+  if(STATE.storageFormat!==3)return true;
+  filters={...filters};
+  const key=recordInsightsKey(filters);
+  const cached=recordInsightsCache.get(key);
+  if(cached && cached.until>Date.now()) {
+    if(!forBatch)STATE.recordInsights={key,data:cached.data,until:cached.until};return cached.data;
+  }
+  if(recordInsightsRequest?.key===key)return recordInsightsRequest.promise;
+  const promise=(async()=>{
+    try {
+      if(!await prepareRecordRead())return false;
+      const generation=recordInsightsGeneration;
+      const response=await appFetch('/api/stats?'+new URLSearchParams({insights:'1',...filters,cacheRevision:String(generation)}),{cache:'no-store'});
+      if(!response.ok){await readStorageFailure(response);return false;}
+      const data=await response.json();
+      if(generation!==recordInsightsGeneration || key!==recordInsightsKey(filters))return false;
+      const until=Date.now()+45000;
+      recordInsightsCache.set(key,{data,until});
+      if(recordInsightsCache.size>20)recordInsightsCache.delete(recordInsightsCache.keys().next().value);
+      if(!forBatch && recordInsightsKey()===key)STATE.recordInsights={key,data,until};
+      return data;
+    } catch {markSharedStorageFailure(null);return false;}
+  })();
+  recordInsightsRequest={key,promise};
+  try{return await promise;}finally{if(recordInsightsRequest?.promise===promise)recordInsightsRequest=null;}
+}
+async function loadRecordBatchInsights(id) {
+  const data=await loadRecordInsights({...ANALYTICS_FILTER_DEFAULTS,productType:'laptop',batch:id},true);
+  if(data){STATE.recordBatchInsights={...(STATE.recordBatchInsights||{}),[id]:data};return true;}return false;
+}
 async function ensureRecordProjections() {
   if(STATE.storageFormat!==3 || STATE.recordProjectionsComplete) return true;
   if(!await prepareRecordRead())return false;
@@ -290,6 +368,7 @@ async function saveRecordState(snapshot, mutation, options={}, savedRows=[]) {
   if (!response.ok) { await readStorageFailure(response); return false; }
   const result = await response.json();
   appStatsCache=null;
+  invalidateRecordInsights();
   recordTraceCache.clear();
   STATE.recordRevisions = { ...STATE.recordRevisions, ...result.recordRevisions };
   STATE.pendingRecordMutation = null; STATE.sharedSyncPending = false;

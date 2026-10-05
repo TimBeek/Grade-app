@@ -75,8 +75,8 @@ function bindRenderedControlHandlers() {
   });
 
   bindClick('[data-batch-stats]', async button => {
-    if(STATE.storageFormat===3 && !await ensureRecordProjections()) {render();return;}
     const id = button.dataset.batchStats;
+    if(STATE.storageFormat===3 && STATE.expandedBatchStats!==id && !await loadRecordBatchInsights(id)) {render();return;}
     STATE.expandedBatchStats = STATE.expandedBatchStats === id ? null : id;
     render();
   });
@@ -1333,7 +1333,7 @@ async function handleAction(action, el) {
         break;
       }
       STATE.currentScreen = 'analytics';
-      if(STATE.storageFormat===3 && !await ensureRecordProjections()) {render();return;}
+      if(STATE.storageFormat===3 && !await loadRecordInsights()) {render();return;}
       break;
     case 'analytics_filters_clear_advanced':
       if (typeof clearAnalyticsAdvancedFilters === 'function') clearAnalyticsAdvancedFilters();

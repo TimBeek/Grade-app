@@ -14,6 +14,7 @@ tools/record-qa-server.mjs
 tools/verify-record-deployment.mjs
 tools/probe-historical-redis.mjs
 tools/test-record-backup-restore.mjs
+tools/verify-record-concurrency.mjs
 scripts/
 migrations/
 docs/RECORD-STORAGE.md

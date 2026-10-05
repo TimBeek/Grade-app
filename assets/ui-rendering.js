@@ -257,6 +257,9 @@ function renderLogin() {
 }
 
 function renderStorageStatus() {
+  return renderStorageStatusCore() + (typeof renderRecordProtectionAlerts==='function'?renderRecordProtectionAlerts():'');
+}
+function renderStorageStatusCore() {
   if (!STATE.sharedStorageError && !STATE.localBackupError && STATE.sharedWorkspaceId.startsWith('recovery-')) {
     const key = 'remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId;
     let dismissed = STATE.dismissedRecoveryNotice === STATE.sharedWorkspaceId;
@@ -264,7 +267,7 @@ function renderStorageStatus() {
     if (dismissed) return '';
     return `<section class="storage-status storage-status-dismissible" role="status"><strong>Temporary working database</strong>
       <button class="storage-status-close" data-action="dismiss_recovery_notice" type="button" aria-label="Close" title="Close">×</button>
-      <p>Existing accounts are restored. Import the required supplier lists to start working. Previous grading history is awaiting recovery.</p>
+      <p>Existing accounts and current batches are available. Previous grading history is awaiting recovery.</p>
       <button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button></section>`;
   }
   if (!STATE.sharedStorageError && !STATE.localBackupError) return '';

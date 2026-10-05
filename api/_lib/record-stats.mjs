@@ -36,7 +36,8 @@ export async function readRecordStats(sql, workspaceId) {
     SELECT user_id,session_id,count(*) AS units,greatest(1,round((max(occurred_ms)-min(started_ms))/1000.0)) AS seconds
       FROM session_flags GROUP BY user_id,session_id
   ) SELECT jsonb_build_object(
-    'generatedAt',now(),'updatedAt',(SELECT updated_at FROM remarkt_workspaces WHERE id=${workspaceId}),
+    'generatedAt',now(),'storageRevision',(SELECT revision FROM remarkt_workspaces WHERE id=${workspaceId}),
+    'updatedAt',(SELECT updated_at FROM remarkt_workspaces WHERE id=${workspaceId}),
     'totals',jsonb_build_object('graded',t.graded,'laptopGraded',t.laptops,'monitorGraded',t.monitors,
       'gradedToday',t.today,'gradedLast7Days',t.week,'repair',t.repair,
       'repairRatePct',CASE WHEN t.graded>0 THEN round(t.repair*1000.0/t.graded)/10 ELSE 0 END,

@@ -58,6 +58,11 @@ function getBatchRepairStatsFor(batch, allStats) {
 // batch-rij (grade-mix, gem. tijd, rendement vs leverancier, reparatie).
 function getBatchDashboardStats(batch) {
   const id = batch && batch.id;
+  const remote=STATE.storageFormat===3 && STATE.recordBatchInsights?.[id];
+  if(remote)return {graded:remote.completed,counts:remote.counts,avgSec:remote.laptopTiming.avgSec,
+    uplift:remote.supplierStats.summary.total?remote.supplierStats.summary.avgUplift:null,
+    improvedPercent:remote.supplierStats.summary.improvedPercent,
+    repair:{repair:remote.repairCount,production:remote.repairRoutes.production||0,reject:remote.repairCount-(remote.repairRoutes.production||0)}};
   const nummer = batch && batch.nummer;
   const items = (STATE.history || []).filter(h => (id && h.batchId === id) || (!h.batchId && nummer && h.batchNummer === nummer));
   const counts = { A: 0, B: 0, C: 0, D: 0 };
@@ -316,8 +321,8 @@ function renderSupplierScorecard(rows) {
   `;
 }
 
-function renderSupplierComparisonPanel(items) {
-  const comparison = getSupplierComparisonStats(items);
+function renderSupplierComparisonPanel(items, aggregate) {
+  const comparison = aggregate || getSupplierComparisonStats(items);
   const { summary, batches } = comparison;
   return `
     <div class="analytics-panel analytics-wide supplier-compare-panel">
@@ -1376,8 +1381,8 @@ function renderEmployeeTable(rows, productScope = 'all') {
         </thead>
         <tbody>
           ${rows.map(row => {
-            const laptop = buildLaptopTimingStats(row.items);
-            const monitor = buildMonitorTimingStats(row.items);
+            const laptop = row.laptop || buildLaptopTimingStats(row.items);
+            const monitor = row.monitor || buildMonitorTimingStats(row.items);
             const timingCells = productScope === 'laptop'
               ? `<td>${renderMeasuredTime(laptop.avgSec, laptop.measured)}</td><td>${laptop.measured}/${laptop.total}</td>`
               : productScope === 'monitor'
@@ -1582,6 +1587,9 @@ async function refreshAnalyticsServerStats() {
     const response = await (typeof appFetch === 'function' ? appFetch : fetch)('/api/stats', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const stats = await response.json();
+    const hadInsights=Boolean(STATE.recordInsights);
+    if(STATE.storageFormat===3 && typeof rememberRecordProtection==='function')rememberRecordProtection(stats);
+    if(hadInsights && !STATE.recordInsights && STATE.currentScreen==='analytics') {render();return;}
     if(STATE.storageFormat===3 && stats.dashboard) {
       const changed=JSON.stringify(STATE.recordDashboard)!==JSON.stringify(stats.dashboard);
       STATE.recordDashboard=stats.dashboard;
@@ -1614,7 +1622,8 @@ async function refreshAnalyticsServerStats() {
       ? `${last.user || 'Unknown'} · ${formatLiveRelativeTime(last.at)}`
       : 'waiting for first activity';
     const protectionText = backup && backup.createdAt
-      ? 'Database protected · daily recovery active'
+      ? backup.status==='stale' || backup.status==='missing' ? 'External backup needs attention'
+        : backup.status==='pending' ? 'Recent work awaits the next hourly backup' : 'External backup checked · hourly recovery'
       : 'Database connected · first recovery point is being prepared';
     container.setAttribute('data-state', 'ready');
     container.classList.toggle('has-alert', alertCount > 0);
@@ -2157,41 +2166,58 @@ function renderAnalytics() {
   const isAdmin = isAdminUser();
   const filters = getAnalyticsFilters();
   const activeTab = getAnalyticsTab();
-  const allItems = buildAnalyticsItems(isAdmin);
+  const v3=STATE.storageFormat===3;
+  const remote=v3 && STATE.recordInsights?.key===recordInsightsKey() && STATE.recordInsights.until>Date.now() ? STATE.recordInsights.data : null;
+  if(v3 && !remote) {
+    if(!STATE.sharedStorageError && !STATE.recordInsightsLoading) {
+      STATE.recordInsightsLoading=true;
+      loadRecordInsights().then(()=>{STATE.recordInsightsLoading=false;if(STATE.currentScreen==='analytics')render();});
+    }
+    return `<div class="screen analytics-screen">${renderDashboardTabs('analytics')}
+      ${renderAnalyticsSidebar(activeTab,filters.productType)}
+      ${renderAnalyticsFilters(filters,STATE.recordInsightsOptions||[],0)}
+      <p role="status">${STATE.sharedStorageError?'Database figures could not be loaded':'Loading filtered insights…'}</p></div>`;
+  }
+  if(remote)STATE.recordInsightsOptions=Object.entries(remote.facets).flatMap(([key,list])=>list.map(value=>({[key==='employee'?'employeeName':key]:value})));
+  const allItems = remote ? STATE.recordInsightsOptions : buildAnalyticsItems(isAdmin);
   const filterOptionItems = filters.productType === 'all'
     ? allItems
-    : allItems.filter(item => item.productType === filters.productType);
-  const filteredItems = filterAnalyticsItems(allItems, filters);
+    : remote ? allItems : allItems.filter(item => item.productType === filters.productType);
+  const filteredItems = remote ? [] : filterAnalyticsItems(allItems, filters);
   const completedItems = filteredItems.filter(item => item.status === 'graded' || item.status === 'repair');
   const activeWorkItems = filteredItems.filter(item => item.status !== 'label');
-  const counts = getAnalyticsCounts(completedItems);
-  const totalCompleted = completedItems.length;
-  const openCount = countAnalyticsStatus(filteredItems, 'open');
-  const laptopTiming = buildLaptopTimingStats(filteredItems);
-  const monitorTiming = buildMonitorTimingStats(filteredItems);
-  const todayCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
-  const weekCompleted = completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
-  const completionRate = safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
-  const employeeRows = buildEmployeeRows(filteredItems);
+  const counts = remote ? remote.counts : getAnalyticsCounts(completedItems);
+  const totalCompleted = remote ? remote.completed : completedItems.length;
+  const openCount = remote ? remote.open : countAnalyticsStatus(filteredItems, 'open');
+  const laptopTiming = remote ? remote.laptopTiming : buildLaptopTimingStats(filteredItems);
+  const monitorTiming = remote ? remote.monitorTiming : buildMonitorTimingStats(filteredItems);
+  const todayCompleted = remote ? remote.today : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
+  const weekCompleted = remote ? remote.week : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
+  const completionRate = remote ? safePercent(totalCompleted,totalCompleted+openCount) : safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
+  const employeeRows = remote ? remote.employees : buildEmployeeRows(filteredItems);
   const batchProgressRows = buildBatchProgressRows(filters.productType);
-  const trendBuckets = buildTrendBuckets(filteredItems, 7);
+  const trendBuckets = buildTrendBuckets(filteredItems,7).map(bucket=>{
+    if(!remote)return bucket;
+    const day=bucket.date.toLocaleDateString('sv-SE',{timeZone:'Europe/Amsterdam'});
+    const row=remote.trend.find(row=>row.day===day);return {...bucket,value:Number(row?.value||0),repair:Number(row?.repair||0)};
+  });
   const supplierComparisonItems = filteredItems.filter(item => item.source === 'history' && item.rawItem).map(item => item.rawItem);
-  const supplierStats = getSupplierComparisonStats(supplierComparisonItems);
+  const supplierStats = remote ? remote.supplierStats : getSupplierComparisonStats(supplierComparisonItems);
   const supplierSummary = supplierStats.summary;
   const upliftAvg = supplierSummary.total ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100 : 0;
-  const supplierScorecardRows = getSupplierScorecardRows(supplierComparisonItems);
+  const supplierScorecardRows = remote ? remote.supplierScorecard : getSupplierScorecardRows(supplierComparisonItems);
   const favorabilityRows = getSupplierFavorabilityRows(supplierScorecardRows);
-  const batchYieldRows = buildBatchYieldRows(supplierComparisonItems);
+  const batchYieldRows = remote ? supplierStats.batches.slice(0,12).map(row=>({label:`Batch ${row.batchNummer}`,value:row.avgUplift,meta:`${row.batchSupplier} · ${row.total} devices`})) : buildBatchYieldRows(supplierComparisonItems);
   const premiumBase = (counts.A || 0) + (counts.B || 0) + (counts.C || 0);
   const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), premiumBase);
   const usableYield = safePercent((counts.A || 0) + (counts.B || 0) + (counts.C || 0), totalCompleted);
   const rejectRate = safePercent(counts.D || 0, totalCompleted);
   const concordance = safePercent(supplierSummary.same, supplierSummary.total);
-  const repairItems = getRepairItems(filteredItems);
-  const repairBinRows = buildRepairBinRows(repairItems);
-  const repairBatchRows = buildRepairBatchRows(filteredItems);
-  const routeSplit = getRepairRouteSplit(repairItems);
-  const paretoRows = buildAnalyticsProblemRows(repairItems);
+  const repairItems = remote ? {length:remote.repairCount} : getRepairItems(filteredItems);
+  const repairBinRows = remote ? remote.bins : buildRepairBinRows(repairItems);
+  const repairBatchRows = remote ? remote.repairBatches : buildRepairBatchRows(filteredItems);
+  const routeSplit = remote ? {production:remote.repairRoutes.production||0,direct:remote.repairRoutes.direct||0,reject:remote.repairCount-(remote.repairRoutes.production||0)-(remote.repairRoutes.direct||0)} : getRepairRouteSplit(repairItems);
+  const paretoRows = remote ? remote.causes : buildAnalyticsProblemRows(repairItems);
   const rangeLabel = filters.dateRange === 'today' ? 'today'
     : filters.dateRange === 'week' ? 'last 7 days'
       : filters.dateRange === 'month' ? 'last 30 days'
@@ -2248,7 +2274,7 @@ function renderAnalytics() {
       <div class="analytics-grid">
         ${renderAnalyticsPanel('Grade mix', 'Distribution across A/B/C/X for the current filters.', render100StackedGradeBar(counts))}
         ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device; green beats and red misses.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }))}
-        ${renderSupplierComparisonPanel(supplierComparisonItems)}
+        ${renderSupplierComparisonPanel(supplierComparisonItems,remote?supplierStats:null)}
         ${renderAnalyticsPanel('Supplier favourability index', 'One 0–100 buy/avoid score per supplier (uplift + % above − % below).', renderScoreBars(favorabilityRows, { empty: 'No supplier grades yet.' }), 'analytics-wide')}
         ${renderAnalyticsPanel('Supplier scorecard', 'Per supplier: who under- or over-grades and the average uplift per device.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
       </div>
@@ -2314,7 +2340,7 @@ function renderAnalytics() {
               <p>${escapeHtml(activeTabMeta.description)}</p>
             </div>
           </header>
-          ${renderAnalyticsFilters(filters, filterOptionItems, filteredItems.length)}
+          ${renderAnalyticsFilters(filters, filterOptionItems, remote?remote.total:filteredItems.length)}
           ${tabBody}
         </main>
       </div>

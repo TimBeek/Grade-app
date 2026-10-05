@@ -6,6 +6,20 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Existing accounts and current batches are available. Previous grading history is awaiting recovery.':'Bestaande accounts en huidige batches zijn beschikbaar. Eerdere beoordelingshistorie wacht nog op herstel.',
+  'Data protection':'Gegevensbescherming',
+  'No verified external backup is available.':'Er is geen gecontroleerde externe back-up beschikbaar.',
+  'The backup check is over two hours old. Check the backup computer.':'De back-upcontrole is meer dan twee uur oud. Controleer de back-upcomputer.',
+  'Recent work is waiting for the next hourly backup.':'Recent werk wacht op de volgende back-up die elk uur wordt gemaakt.',
+  'The second backup location is unavailable or outdated.':'De tweede back-uplocatie is niet bereikbaar of verouderd.',
+  'A second backup location has not been configured.':'Er is nog geen tweede back-uplocatie ingesteld.',
+  'Changes in this browser have not yet been saved live. Do not clear browser data.':'Wijzigingen in deze browser zijn nog niet live opgeslagen. Wis de browsergegevens niet.',
+  'Unusually high traffic in this browser. This is not the provider quota measurement.':'Ongebruikelijk veel dataverkeer in deze browser. Dit is niet de quotameting van de provider.',
+  'Last verified backup:':'Laatst gecontroleerde back-up:',
+  'External backup needs attention':'Externe back-up vraagt aandacht',
+  'Recent work awaits the next hourly backup':'Recent werk wacht op de volgende back-up',
+  'External backup checked · hourly recovery':'Externe back-up gecontroleerd · back-up elk uur',
+  'Loading filtered insights…':'Gefilterde inzichten laden…',
   'Your session expired. Sign in again; unsynchronized work is kept on this computer.': 'Je sessie is verlopen. Log opnieuw in; nog niet gesynchroniseerd werk blijft op deze computer bewaard.',
   'This record changed on another computer. Your local changes are preserved; ask a manager to review before saving.': 'Dit gegeven is op een andere computer gewijzigd. Je lokale wijzigingen zijn bewaard; laat een manager dit controleren voordat je opslaat.',
   'The label was printed and the grading is secured locally. Live synchronization is pending. Retry the connection before continuing.': 'Het label is geprint en de beoordeling is lokaal bewaard. Synchronisatie staat nog open. Probeer de verbinding opnieuw voordat je verdergaat.',

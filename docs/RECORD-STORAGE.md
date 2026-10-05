@@ -15,7 +15,7 @@ deze migratie schrijft uitsluitend naar de expliciet aangewezen werkdatabase.
 | Historie | volledige browserlijst | sleutel-paginering, zoek-/medewerkerfilter, detail apart |
 | Herprint | afhankelijk van alle historische registraties | gerichte trace voor één barcode, maximaal 50 per registratietype |
 | Dashboard | decompressie/statistiekrecords naar server | SQL-aggregaties; korte browsercache, invalidatie na save |
-| Uitgebreide Inzichten | volledige beoordelingen | compacte projecties uitsluitend na openen; inspectiebomen blijven op server |
+| Uitgebreide Inzichten | volledige beoordelingen | gefilterde SQL-aggregaties; alleen grafiekcategorieën en counters naar de browser |
 | Achtergrond | herhaalde volledige reloads | revisie + delta, verborgen tabbladen gepauzeerd, verzoeken ontdubbeld |
 | Back-up | afhankelijk van dezelfde provider | externe AES-256-GCM checkpoint + immutable incrementen |
 
@@ -45,8 +45,9 @@ Een verouderde sessie wordt na verwijdering/wachtwoordreset geweigerd.
 2. Opslag: individuele records; v2-bron blijft intact.
 3. Laden: historie paged; detail/trace gericht; voorraad paged maar lokaal compleet
    voor direct scannen. Zeer grote actieve voorraad is dus nog niet volledig lazy.
-4. Statistiek: kerncijfers via SQL. Uitgebreide analyses gebruiken compacte
-   projecties; niet iedere grafiek is al een eigen SQL-endpoint.
+4. Statistiek: kerncijfers en alle vier Insights-tabbladen via SQL-aggregaties.
+   Batch/medewerker/periode/grade/status/zoekfilters worden server-side toegepast.
+   Volledige compacte projecties alleen voor expliciete export of account-purge.
 5. Sync: deltas, request-deduplicatie, beperkte retries, pending wijzigingen
    duurzaam in IndexedDB vóór verzenden, ongewijzigde saves zonder databasewrite.
 6. Back-up: externe versleutelde keten, integriteitscontrole en geteste restore
@@ -86,7 +87,8 @@ maakt een uurtaak onder de huidige Windows-gebruiker. De PC moet aan staan en
 die gebruiker aangemeld zijn; dit is geen 24/7-cloudback-up. Een niet-actuele
 back-upstatus moet door een manager onderzocht worden.
 
-Geen verandering = uitsluitend kleine revisielezing. Verandering = alleen records
+Geen verandering = kleine revisielezing, lokale ketencontrole en health-heartbeat;
+geen herhaald downloaden van het archief. Verandering = alleen records
 na de vorige revisie. Immutable bestanden blijven behouden; checkpoint is alleen
 de cursor. Verwijder geen incrementen uit een actieve keten. De `.lock` voorkomt
 overlap; een lock na crash alleen verwijderen nadat is gecontroleerd dat geen
@@ -103,6 +105,34 @@ zonder enige schrijfactie op de actieve database. Productieherstel gebeurt nooit
 Historische full-export vergelijken: `plan-recovery-merge.mjs <current> <old>`.
 Nieuwe werkgegevens en bewuste verwijderingen mogen niet verdwijnen door restore.
 
+### Tweede fysieke locatie en sleutel
+
+`configure-record-backup-mirror.ps1 -ConfigPath <privéconfig> -Directory <NAS/map>`
+toont eerst alleen een plan. `-Apply` vereist een bestaande, goedgekeurde map op
+een andere schijf, NAS of bedrijfsserver. De huidige primaire map blijft intact.
+De uurtaak kopieert uitsluitend immutable versleutelde recoverybestanden, controleert
+alle checksums en reconstrueert ook de tweede keten. Een afwijkend bestaand bestand
+wordt nooit overschreven. Configuratie, databasecredentials en AES-sleutel worden
+niet meegekopieerd. De sleutel moet apart in een bedrijfswachtwoordkluis worden
+bewaard; Windows-DPAPI-config alleen is niet overdraagbaar naar een andere PC.
+
+Op 5 oktober is **nog geen tweede fysieke locatie ingesteld**: het juiste pad en
+de aparte sleutelbewaring moeten door ReMarkt worden gekozen. De lokale primaire
+kopie werkt, maar beschermt nog niet tegen verlies van deze gehele PC/schijf.
+
+### Veilige toevoeging van oudere historie
+
+`recover-historical-records.mjs <volledige-export.json>` maakt standaard alleen
+een read-only plan. Accounts-only bestanden en losse incrementen worden geweigerd.
+Voor `--apply --confirm-workspace <workspace>` zijn expliciete private verbinding,
+workspace, AES-sleutel en externe back-upmap vereist. Eerst wordt een gecontroleerd
+versleuteld herstelpunt van de huidige administratie opgeslagen. Daarna worden
+uitsluitend ontbrekende identities toegevoegd, met expectedRevision=0. Een
+gelijktijdige wijziging blokkeert de betreffende transactie; conflicten en
+verwijdermarkers worden nooit blind vervangen. Reeds toegevoegde chunks blijven
+bij een latere fout intact; maak dan opnieuw het plan. Oude providers worden
+door deze hersteltool nooit beschreven. Dit is geen automatische productie-restore.
+
 ## Monitoring en metingen
 
 Vercel logs bevatten gestructureerde endpoint/status/duur/response-bytes en
@@ -116,6 +146,19 @@ Daarmee groeit een normale save niet met de historie. Login-, permissie- en
 rate-limitqueries komen daar in de echte HTTP-route nog bij. Deze cijfers zijn
 geen garantie dat een gratis abonnement onder iedere belasting voldoende is.
 Controleer werkelijke Neon/Vercel quota en foutpercentages tijdens dagelijks gebruik.
+
+Managers zien meldingen bij een ontbrekende/verouderde gecontroleerde back-up
+(ouder dan twee uur), nieuwe revisies die nog op de uurtaak wachten, een falende
+tweede kopie en niet live opgeslagen browserwerk. Informatieve status is
+uitklapbaar; urgente fouten blijven zichtbaar. De browser waarschuwt ook bij
+meer dan 120 responses/minuut of 10 MiB/minuut aan beschikbare Content-Length.
+Dat is een beperkte lokale indicatie, geen complete datameting/providerfactuur.
+
+De Insights-cache is 45 seconden geldig en wordt bij save of een nieuwere
+database-revisie geïnvalideerd. Langzame antwoorden van eerdere filters of vóór
+een save mogen de huidige grafiek niet vervangen. Een load downloadt geen
+inspectiebomen. Een SQL-test met 10.000 beoordelingen gaf 2.234 B resultaat;
+de precieze grootte hangt af van aantallen medewerkers, batches en categorieën.
 
 ## Extra UI-verzoek
 
@@ -146,3 +189,20 @@ deze browser onthouden. Echte opslag-/quota-/lokale back-upfouten blijven zichtb
   Oude Redis weigert nog de ene kleine metadataread wegens quota. Geen oude
   providerdata gewijzigd. Historische restore blijft afhankelijk van vrijgave
   of een bruikbare volledige export; accounts-only bestanden zijn onvoldoende.
+
+## Aanvullende betrouwbaarheidstest op 5 oktober 2026
+
+- Additieve schema-upgrade `005-backup-monitor.sql` toegepast zonder werkrecords
+  te wijzigen. Back-upheartbeat en de Windows-uurtaak opnieuw gecontroleerd:
+  resultaat 0. Echte keten opnieuw geïsoleerd hersteld: 6.876 records intact.
+- 206 automatische tests geslaagd, inclusief SQL-filteruitkomsten, back-upmirror,
+  corruptie, dubbele crashbestanden en filter/cache-races.
+- Vier synthetische medewerkers via echte lokale HTTP-routes: 24 beoordelingen,
+  24 idempotente herhalingen en 24 geweigerde stale writes. Quota-uitval/herstel
+  liet de opgeslagen records intact. Geen productiegegevens hiervoor gewijzigd.
+- Browser: vier Insights-tabbladen, periodefilter, Nederlands/donker,
+  serienummerscan en één mock-labelprint/save getest; geen inspectiearchief
+  gedownload. Fysieke DYMO en langdurig gebruik op vier echte werkstations
+  moeten nog met ReMarkt worden gecontroleerd.
+- Oude providers opnieuw één keer read-only gecontroleerd: beide quota-blocked.
+  Historische gegevens zijn in deze ronde niet hersteld.

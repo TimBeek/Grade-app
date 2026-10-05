@@ -10,6 +10,7 @@ import { storageError, validateSnapshot } from './storage-safety.mjs';
 import { createRecordStore } from './record-state.mjs';
 import { createHash } from 'node:crypto';
 import { readRecordStats } from './record-stats.mjs';
+import { readRecordInsights } from './record-insights.mjs';
 import { emitMetric } from './telemetry.mjs';
 
 const STATE_ROW = "shared_state";
@@ -227,8 +228,10 @@ export async function pgReadHealthSummary() {
 
 export async function pgReadBackupInfo() {
   if(recordStorageEnabled()) {
-    const rows=await getSql()`SELECT revision,verified_at FROM remarkt_backup_health WHERE workspace_id=${process.env.REMARKT_WORKSPACE_ID}`;
-    return rows[0] ? {external:true,revision:Number(rows[0].revision),createdAt:new Date(rows[0].verified_at).toISOString()} : {external:true,configured:false};
+    const rows=await getSql()`SELECT revision,verified_at,mirror_configured,mirror_verified_at,mirror_error FROM remarkt_backup_health WHERE workspace_id=${process.env.REMARKT_WORKSPACE_ID}`;
+    return rows[0] ? {external:true,revision:Number(rows[0].revision),createdAt:new Date(rows[0].verified_at).toISOString(),
+      mirrorConfigured:rows[0].mirror_configured,mirrorVerifiedAt:rows[0].mirror_verified_at?new Date(rows[0].mirror_verified_at).toISOString():null,
+      mirrorError:rows[0].mirror_error} : {external:true,configured:false};
   }
   await ensureSchema();
   const sql = getSql();
@@ -306,6 +309,7 @@ export async function pgReadStats() {
   if (recordStorageEnabled()) return readRecordStats(getSql(), process.env.REMARKT_WORKSPACE_ID);
   return getStore().readStats();
 }
+export function pgReadInsights(filters) {return readRecordInsights(getSql(),process.env.REMARKT_WORKSPACE_ID,filters);}
 
 export async function pgWriteStats(stats) {
   await writeRow(STATS_ROW, stats);

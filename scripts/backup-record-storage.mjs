@@ -6,6 +6,7 @@ import { neon } from '@neondatabase/serverless';
 import { loadEnv } from './_lib/env.mjs';
 import { createRecordStore, recordsToSnapshot } from '../api/_lib/record-state.mjs';
 import { makeRecoveryEnvelope, readRecoveryEnvelope } from '../api/_lib/recovery-envelope.mjs';
+import { verifyBackupDirectory, mirrorBackupDirectory } from './_lib/backup-mirror.mjs';
 
 loadEnv(process.env.REMARKT_ENV_FILE || '.env.local');
 const directory = process.env.REMARKT_BACKUP_DIR;
@@ -24,7 +25,26 @@ let previous = null;
 try { previous = readRecoveryEnvelope(JSON.parse(await fs.readFile(checkpoint, 'utf8'))); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 const stamp = await store.meta();
-if (previous?.storageRevision === stamp.storageRevision) { console.log('No changes: backup current; no archive downloaded.'); return; }
+async function publishHealth(revision) {
+  const checked=await verifyBackupDirectory(directory,workspaceId,process.env.REMARKT_BACKUP_KEY);
+  if(checked.state.storageRevision!==revision)throw new Error('Recovery chain does not match the backup cursor.');
+  let mirrorVerified=false,mirrorError=false;
+  const mirror=process.env.REMARKT_BACKUP_MIRROR_DIR || '';
+  if(mirror) {
+    try {await mirrorBackupDirectory(directory,mirror,workspaceId,process.env.REMARKT_BACKUP_KEY);mirrorVerified=true;}
+    catch {mirrorError=true;console.error('Second backup location unavailable or unverified; primary backup preserved.');}
+  }
+  await sql`INSERT INTO remarkt_backup_health(workspace_id,revision,mirror_configured,mirror_verified_at,mirror_error)
+    VALUES (${workspaceId},${revision},${Boolean(mirror)},CASE WHEN ${mirrorVerified} THEN now() ELSE NULL END,${mirrorError})
+    ON CONFLICT(workspace_id) DO UPDATE SET revision=EXCLUDED.revision,verified_at=now(),
+      mirror_configured=EXCLUDED.mirror_configured,mirror_error=EXCLUDED.mirror_error,
+      mirror_verified_at=CASE WHEN ${mirrorVerified} THEN now() ELSE remarkt_backup_health.mirror_verified_at END`;
+  if(mirrorError)throw new Error('Primary backup verified, but second backup failed.');
+}
+if (previous?.storageRevision === stamp.storageRevision) {
+  await publishHealth(stamp.storageRevision);
+  console.log('No changes: local chain verified; heartbeat updated without downloading the archive.');return;
+}
 // A full checkpoint is intentionally periodic, not on each action. Incremental
 // export uses a fixed upper revision and preserves deleted records/tombstones.
 let state;
@@ -51,8 +71,7 @@ await fs.writeFile(file, JSON.stringify(envelope), { flag: 'wx', mode: 0o600 });
 const cursor = makeRecoveryEnvelope({ ...state, _recordBackup: undefined });
 await fs.writeFile(checkpoint + '.pending', JSON.stringify(cursor), { mode: 0o600 });
 await fs.rename(checkpoint + '.pending', checkpoint);
-await sql`INSERT INTO remarkt_backup_health(workspace_id,revision) VALUES (${workspaceId},${stamp.storageRevision})
-  ON CONFLICT(workspace_id) DO UPDATE SET revision=EXCLUDED.revision,verified_at=now()`;
+await publishHealth(stamp.storageRevision);
 await sql`DELETE FROM remarkt_rate_limits WHERE window_start < ${Date.now()-2*24*60*60*1000}`;
 console.log(JSON.stringify({ file, revision: stamp.storageRevision, incremental: Boolean(previous) }));
 } finally {await lock.close();await fs.unlink(lockPath);}
