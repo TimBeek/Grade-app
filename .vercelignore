@@ -11,6 +11,9 @@ tools/verify-guided-inspection.js
 tools/verify-guided-layout.js
 tools/storage-qa-server.mjs
 tools/record-qa-server.mjs
+tools/verify-record-deployment.mjs
+tools/probe-historical-redis.mjs
+tools/test-record-backup-restore.mjs
 scripts/
 migrations/
 docs/RECORD-STORAGE.md

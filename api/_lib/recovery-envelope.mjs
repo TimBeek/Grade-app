@@ -34,19 +34,21 @@ export function planRecoveryMerge(current, historical) {
   return import('./record-state.mjs').then(({ snapshotRecords }) => {
     const identity = row => JSON.stringify([row.collection, row.id]);
     const existing = new Map(snapshotRecords(current).map(row => [identity(row), row]));
+    const canonical=value=>Array.isArray(value)?value.map(canonical):value && typeof value==='object'?
+      Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])])):value;
     const additions = [], conflicts = [];
     for (const row of snapshotRecords(historical)) {
       const previous = existing.get(identity(row));
       // Old deletion markers must never delete products in today's workspace.
       // Likewise, deleted products/batches are not resurrected by an old copy.
-      const blocked = row.collection.startsWith('deleted') ||
+      const blocked = row.collection.startsWith('deleted') || (!previous && Number(current.recordRevisions?.[identity(row)] || 0)>0) ||
         (['batches','laptops'].includes(row.collection) && (current.deletedBatchIds || []).includes(row.batchId)) ||
         (row.collection === 'laptops' && (current.deletedLaptopStickers || []).includes(String(row.payload.sticker).replace(/^0+(?=[0-9])/,''))) ||
         (['monitorBatches','monitors'].includes(row.collection) && (current.deletedMonitorBatchIds || []).includes(row.batchId)) ||
         (row.collection === 'monitors' && (current.deletedMonitorStickers || []).includes(String(row.payload.sticker).replace(/^0+(?=[0-9])/,'')));
       if (!previous && blocked) conflicts.push({collection:row.collection,id:row.id,reason:'explicit-restoration-required'});
       else if (!previous) additions.push(row);
-      else if (JSON.stringify(previous.payload) !== JSON.stringify(row.payload)) conflicts.push({ collection: row.collection, id: row.id });
+      else if (JSON.stringify(canonical(previous.payload)) !== JSON.stringify(canonical(row.payload))) conflicts.push({ collection: row.collection, id: row.id });
     }
     return { additions, conflicts, policy: 'existing-records-win; conflicts-not-applied' };
   });

@@ -96,7 +96,10 @@ De lokale map is onafhankelijk van Neon, niet van de PC of zijn schijf.
 
 `verify-recovery-chain.mjs <map>` valideert authenticatie, volgorde, workspace,
 revisies en herstelbaarheid. Tests reconstrueren de keten en schrijven deze in
-een geïsoleerde PostgreSQL-testdatabase. Productieherstel gebeurt nooit automatisch.
+een geïsoleerde PostgreSQL-testdatabase. `run-record-maintenance.ps1 -Mode TestRestore`
+controleert ook de echte lokale back-upketen in een wegwerp-in-memory Postgres:
+alle accounts, batches en apparaten worden teruggeschreven en inhoudelijk vergeleken,
+zonder enige schrijfactie op de actieve database. Productieherstel gebeurt nooit automatisch.
 Historische full-export vergelijken: `plan-recovery-merge.mjs <current> <old>`.
 Nieuwe werkgegevens en bewuste verwijderingen mogen niet verdwijnen door restore.
 
@@ -118,3 +121,28 @@ Controleer werkelijke Neon/Vercel quota en foutpercentages tijdens dagelijks geb
 
 ‘Tijdelijke werkdatabase’ heeft een sluitknop. De keuze wordt per workspace in
 deze browser onthouden. Echte opslag-/quota-/lokale back-upfouten blijven zichtbaar.
+
+## Uitgevoerde controles op 5 oktober 2026
+
+- V3 is geverifieerd en gepromoveerd op `https://grade-app-three.vercel.app/`.
+- Werkdatabase: 29 accounts, 10 laptopbatches/5.004 laptops, 3 monitorbatches/1.827
+  monitoren en 3 auditregistraties. De huidige werkdatabase had nog geen nieuwe
+  beoordelingen/labels. Dit zijn niet de ontbrekende historische registraties.
+- Migratiecontrole: aantallen en alle recordinhoud gelijk aan de v2-bron;
+  v2-bron blijft bestaan en is tegen oude writers beschermd.
+- Eerste externe encrypted checkpoint: revisie 36. Ketenauthenticatie geslaagd;
+  uurtaak geïnstalleerd en zowel expliciet als via zijn tijdtrigger succesvol (resultaat 0).
+- Echte back-up hersteld in geïsoleerde in-memory Postgres: alle 6.876 records
+  inclusief accounts en apparaten inhoudelijk gecontroleerd; productie niet gewijzigd.
+- Lokale browser: inloggen, serienummer MP2526X1 scannen, B opslaan, historie/detail,
+  Insights en quota-uitval/herstel getest. Eén gesimuleerde labelprint;
+  fysieke DYMO is niet in deze opslagronde opnieuw getest.
+- Live read-only browser: alle 6.831 apparaten geladen, geen browserfouten;
+  sluitknop werkt. Privé hashes ontbreken in de publieke accountdirectory.
+- 199 automatische tests geslaagd; 10.000 historie-records gebruikt in de verkeerproef.
+- Geen errorlogs gevonden op de gepromoveerde deployment in de gecontroleerde
+  20-minutenperiode. Dit vervangt geen langdurige productiebelastingstest.
+- Oude Neon geeft bij een kleine read-only controle nog SQLSTATE 53000 (quota).
+  Oude Redis weigert nog de ene kleine metadataread wegens quota. Geen oude
+  providerdata gewijzigd. Historische restore blijft afhankelijk van vrijgave
+  of een bruikbare volledige export; accounts-only bestanden zijn onvoldoende.

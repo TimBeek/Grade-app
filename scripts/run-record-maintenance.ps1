@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)][string]$ConfigPath,
-  [ValidateSet('Plan','Migrate','Resume','Verify')][string]$Mode='Plan'
+  [ValidateSet('Plan','Migrate','Resume','Verify','TestRestore')][string]$Mode='Plan'
 )
 $ErrorActionPreference='Stop'
 $maintenanceConfig=Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
@@ -16,7 +16,9 @@ $env:REMARKT_BACKUP_KEY=Reveal-MaintenanceSecret $maintenanceConfig.Key
 $env:REMARKT_WORKSPACE_ID=$maintenanceConfig.Workspace
 $env:REMARKT_BACKUP_DIR=$maintenanceConfig.Directory
 try {
-  if($Mode -eq 'Verify') {
+  if($Mode -eq 'TestRestore') {
+    & $maintenanceConfig.Node (Join-Path $PSScriptRoot '../tools/test-record-backup-restore.mjs')
+  } elseif($Mode -eq 'Verify') {
     & $maintenanceConfig.Node (Join-Path $PSScriptRoot 'verify-recovery-chain.mjs') $maintenanceConfig.Directory
   } else {
     $maintenanceArgs=@()

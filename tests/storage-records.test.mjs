@@ -208,6 +208,11 @@ test('encrypted recovery authenticates files, restores incremental deletions and
   assert.throws(()=>restoreRecoveryChain([incremental]),{code:'STORAGE_CORRUPT'});
   const plan=await planRecoveryMerge(base,{...base,users:[{id:'m',passwordHash:'old'},{id:'alice',passwordHash:'private'}]});
   assert.equal(plan.additions.length,1);assert.equal(plan.conflicts[0].id,'m');
+  const removed={...base,recordRevisions:{'["users","alice"]':3}};
+  const removedPlan=await planRecoveryMerge(removed,{...base,users:[{naam:'Earlier',passwordHash:'private',id:'alice'}]});
+  assert.equal(removedPlan.additions.length,0);assert.equal(removedPlan.conflicts[0].reason,'explicit-restoration-required');
+  const orderedPlan=await planRecoveryMerge(base,{...base,users:[{passwordHash:'private',id:'m'}]});
+  assert.equal(orderedPlan.conflicts.length,0);
 });
 
 test('server auth refuses forged/expired tokens, password resets revoke sessions, and permissions are enforced',async()=>{
