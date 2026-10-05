@@ -19,7 +19,8 @@ function loadEnvFile(file) {
 }
 
 const backupId = process.argv[2];
-if (!backupId) throw new Error('Usage: npm run restore:postgres -- <backup-id>');
+if (!backupId || !process.argv.includes('--confirm-replace'))
+  throw new Error('A restore replaces current work. Export and review first; then use <backup-id> --confirm-replace only with manager approval.');
 
 loadEnvFile('.env');
 loadEnvFile('.env.local');

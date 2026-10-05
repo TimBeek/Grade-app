@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { Redis } from "@upstash/redis";
 import { decodeState, emptyState, mergeDemoState, normalizeDemoState } from "../api/_lib/state-core.mjs";
 import { isPostgresConfigured, pgReadState, pgWriteState } from "../api/_lib/postgres-state.mjs";
+import { planRecoveryMerge } from '../api/_lib/recovery-envelope.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 function loadEnvFile(file) {
@@ -39,8 +40,12 @@ if (!base64) throw new Error("Redis state chunks could not be read.");
 
 const recovered = normalizeDemoState(decodeState(base64));
 const current = await pgReadState();
-const merged = mergeDemoState(current || emptyState(), recovered);
-await pgWriteState(merged);
+const plan = await planRecoveryMerge(current, recovered);
+console.log(JSON.stringify({ additions: plan.additions.length, conflicts: plan.conflicts, policy: plan.policy }, null, 2));
+// Historical recovery must not silently overwrite newer jobs. Applying a
+// reviewed plan belongs to a separate, revision-checked administrative action.
+if (process.argv.includes('--apply')) throw new Error('Automatic historical overwrite disabled. Review the merge plan and apply missing identities through record mutations.');
+const merged = current;
 
 console.log(JSON.stringify({
   users: merged.users.length,

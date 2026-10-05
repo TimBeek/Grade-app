@@ -10,6 +10,17 @@ tools/guided-inspection-preview.mjs
 tools/verify-guided-inspection.js
 tools/verify-guided-layout.js
 tools/storage-qa-server.mjs
+tools/record-qa-server.mjs
+scripts/
+migrations/
+docs/RECORD-STORAGE.md
+.agents/
+.codex/
+chrome-*/
+deliverables/
+output/
+skills-lock.json
+.env*
 docs/STORAGE-RECOVERY.md
 docs/GUIDED-INSPECTION.md
 node_modules/

@@ -3,9 +3,14 @@
 // Operational records are stored in compressed, revisioned shards. Routine
 // saves no longer read the entire JSON archive across the database connection.
 
-import { neon } from "@neondatabase/serverless";
+import { neon, neonConfig } from "@neondatabase/serverless";
 import { emptyState, normalizeDemoState } from "./state-core.mjs";
 import { createShardedStore } from './sharded-state.mjs';
+import { storageError, validateSnapshot } from './storage-safety.mjs';
+import { createRecordStore } from './record-state.mjs';
+import { createHash } from 'node:crypto';
+import { readRecordStats } from './record-stats.mjs';
+import { emitMetric } from './telemetry.mjs';
 
 const STATE_ROW = "shared_state";
 const STATS_ROW = "dashboard_stats";
@@ -16,6 +21,19 @@ const BACKUP_RETENTION = 7;
 let sqlSingleton = null;
 let schemaReady = null;
 let shardStore = null;
+let recordStore = null;
+export const recordStorageEnabled = () => process.env.REMARKT_STORAGE_FORMAT === '3';
+export function pgRecordStore() {
+  if (!recordStore) recordStore = createRecordStore(getSql(), String(process.env.REMARKT_WORKSPACE_ID || ''));
+  return recordStore;
+}
+export async function pgRateLimit(scope, limit = 500, windowMs = 60000) {
+  const key = createHash('sha256').update(String(process.env.REMARKT_WORKSPACE_ID) + ':' + scope).digest('hex');
+  const start = Math.floor(Date.now() / windowMs) * windowMs;
+  const rows = await getSql()`INSERT INTO remarkt_rate_limits(scope, window_start, hits) VALUES (${key}, ${start}, 1)
+    ON CONFLICT(scope,window_start) DO UPDATE SET hits = remarkt_rate_limits.hits + 1 RETURNING hits`;
+  if (Number(rows[0].hits) > limit) throw storageError('RATE_LIMITED', 'Too many requests. Please wait.', 429);
+}
 
 function getStore() {
   if (!shardStore) shardStore = createShardedStore(getSql(), ensureSchema);
@@ -35,6 +53,13 @@ function getSql() {
   if (sqlSingleton) return sqlSingleton;
   const url = databaseUrl();
   if (!url) throw new Error("Postgres is not configured. Set DATABASE_URL.");
+  if(!neonConfig.fetchFunction && process.env.REMARKT_METRICS==='1')neonConfig.fetchFunction=async(endpoint,options)=>{
+    const started=Date.now();
+    const response=await fetch(endpoint,options);
+    emitMetric({query:'postgres-http',status:response.status,durationMs:Date.now()-started,
+      requestBytes:Buffer.byteLength(String(options?.body || '')),responseBytes:(await response.clone().arrayBuffer()).byteLength});
+    return response;
+  };
   sqlSingleton = neon(url);
   return sqlSingleton;
 }
@@ -97,6 +122,7 @@ async function writeRow(id, payload) {
 }
 
 export async function pgReadMeta() {
+  if (recordStorageEnabled()) return pgRecordStore().meta();
   const meta = await getStore().peekMeta();
   if (meta) return { updatedAt: meta.updatedAt, revision: meta.storageRevision };
   await ensureSchema();
@@ -117,6 +143,12 @@ export async function pgReadMeta() {
 }
 
 export async function pgReadUsers() {
+  if (recordStorageEnabled()) {
+    const rows = await getSql()`SELECT summary FROM remarkt_records WHERE workspace_id = ${process.env.REMARKT_WORKSPACE_ID}
+      AND collection = 'users' AND NOT deleted ORDER BY id`;
+    await pgRecordStore().meta();
+    return { users: rows.map(row => row.summary), serverAuth: true, storageFormat: 3, userSync: 'user-management' };
+  }
   const meta = await getStore().peekMeta();
   if (meta) return { users: meta.users || [], userSync: meta.userSync || '', userSyncAt: meta.userSyncAt, updatedAt: meta.updatedAt };
   await ensureSchema();
@@ -134,7 +166,7 @@ export async function pgReadUsers() {
     WHERE id = ${STATE_ROW}
   `;
   const row = rows[0] || null;
-  if (!row) return { users: [], userSync: '', userSyncAt: null, updatedAt: null };
+  if (!row) throw storageError('STORAGE_NOT_INITIALIZED', 'No operational accounts found. Explicit initialization is required.');
   return {
     users: Array.isArray(row.users) ? row.users : parsePayload(row.users, []),
     userSync: String(row.user_sync || ''),
@@ -144,6 +176,11 @@ export async function pgReadUsers() {
 }
 
 export async function pgReadHealthSummary() {
+  if (recordStorageEnabled()) {
+    const [meta, counts] = await Promise.all([pgRecordStore().meta(), getSql()`SELECT collection,count(*)::int AS count FROM remarkt_records
+      WHERE workspace_id = ${process.env.REMARKT_WORKSPACE_ID} AND NOT deleted GROUP BY collection`]);
+    return { ...meta, counts: Object.fromEntries(counts.map(row => [row.collection, row.count])) };
+  }
   const meta = await getStore().peekMeta();
   if (meta) {
     const rows = await getSql()`SELECT collection, SUM(jsonb_array_length(payload)) AS count
@@ -189,6 +226,10 @@ export async function pgReadHealthSummary() {
 }
 
 export async function pgReadBackupInfo() {
+  if(recordStorageEnabled()) {
+    const rows=await getSql()`SELECT revision,verified_at FROM remarkt_backup_health WHERE workspace_id=${process.env.REMARKT_WORKSPACE_ID}`;
+    return rows[0] ? {external:true,revision:Number(rows[0].revision),createdAt:new Date(rows[0].verified_at).toISOString()} : {external:true,configured:false};
+  }
   await ensureSchema();
   const sql = getSql();
   const rows = await sql`
@@ -237,20 +278,23 @@ export async function pgRestoreBackup(id) {
     SELECT payload FROM remarkt_app_backups WHERE id = ${backupId}
   `;
   if (!rows[0]) throw new Error(`Backup ${backupId} was not found.`);
-  const restored = normalizeDemoState(parsePayload(rows[0].payload, emptyState()));
+  const restored = normalizeDemoState(validateSnapshot(rows[0].payload));
   await pgWriteState(restored);
   return restored;
 }
 
 export async function pgReadState() {
+  if (recordStorageEnabled()) throw storageError('REQUEST_INVALID', 'Use paginated entity endpoints or an explicit backup export.', 400);
   return getStore().readState();
 }
 
 export async function pgReadChanges(since) {
+  if (recordStorageEnabled()) return pgRecordStore().changes(since);
   return getStore().readChanges(since);
 }
 
 export async function pgMergeState(incoming) {
+  if (recordStorageEnabled()) return pgRecordStore().merge(incoming);
   const store = getStore();
   // A daily point is made BEFORE the first modification, not after it.
   await store.initialize();
@@ -259,6 +303,7 @@ export async function pgMergeState(incoming) {
 }
 
 export async function pgReadStats() {
+  if (recordStorageEnabled()) return readRecordStats(getSql(), process.env.REMARKT_WORKSPACE_ID);
   return getStore().readStats();
 }
 
@@ -268,6 +313,7 @@ export async function pgWriteStats(stats) {
 }
 
 export async function pgWriteState(state) {
+  if (recordStorageEnabled()) throw storageError('REQUEST_INVALID', 'Use an explicit additive record migration or recovery plan, not whole-state replacement.', 400);
   const store = getStore();
   if (await store.peekMeta()) await store.dailyBackup(true, 'before-explicit-replace');
   const normalized = await store.replace(state);

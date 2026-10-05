@@ -9,6 +9,7 @@ function loadAppSandbox(options = {}) {
     'grading-engine.js',
     'guided-inspection.js',
     'app-state.js',
+    'record-sync.js',
     'import-workflow.js',
     'analytics-history.js',
     'label-printing.js',
@@ -128,12 +129,79 @@ function allChoices(sandbox, letter) {
   );
 }
 
+test('tijdelijke werkdatabase is sluitbaar per werkdatabase, maar echte opslagfouten blijven zichtbaar', async () => {
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.sharedWorkspaceId='recovery-a'; STATE.currentUser=USERS[0]; STATE.currentScreen='home';",app);
+  assert.match(app.renderStorageStatus(), /dismiss_recovery_notice/);
+  await app.handleAction('dismiss_recovery_notice',{});
+  assert.equal(app.renderStorageStatus(),'');
+  vm.runInContext("STATE.dismissedRecoveryNotice=null;",app);
+  assert.equal(app.renderStorageStatus(),'');
+  vm.runInContext("STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';",app);
+  assert.match(app.renderStorageStatus(),/Database usage limit reached/);
+  assert.doesNotMatch(app.renderStorageStatus(),/dismiss_recovery_notice/);
+  vm.runInContext("STATE.sharedStorageError=null; STATE.localBackupError=true;",app);
+  assert.match(app.renderStorageStatus(),/Local recovery copy could not be saved/);
+  vm.runInContext("STATE.localBackupError=false; STATE.sharedWorkspaceId='recovery-b';",app);
+  assert.match(app.renderStorageStatus(),/dismiss_recovery_notice/);
+});
+
 function guidedSandbox({ entryUnchecked = false } = {}) {
   const app = loadAppSandbox();
   vm.runInContext("STATE.currentUser = USERS.find(user => user.id === 'tim'); startTestGrading('beginner');", app);
   if (!entryUnchecked) vm.runInContext("STATE.currentGrading.coverCleaning='cleaned'; STATE.currentGrading.touchChecked=true;", app);
   return app;
 }
+
+test('record reads never acknowledge dirty local fields or advance their revision; projection completeness survives caching',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext(`STATE.storageFormat=3;STATE.serverAuth=true;STATE.sharedWorkspaceId='test';
+    const base={...getSharedDemoSnapshot({includeUsers:true}),history:[{id:'h',sticker:'123',grade:'A'}],
+      recordRevisions:{'["history","h"]':1},_recordProjectionsComplete:true};
+    applySharedDemoState(base);lastSharedStateSnapshot=base;STATE.history[0].grade='B';`,app);
+  app.applyLoadedRecordRows([{collection:'history',id:'h',revision:2,payload:{id:'h',sticker:'123',grade:'C'}},
+    {collection:'history',id:'other',revision:2,payload:{id:'other',sticker:'456',grade:'A'}}]);
+  assert.equal(vm.runInContext('STATE.history.find(row=>row.id===\'h\').grade',app),'B');
+  assert.equal(vm.runInContext('STATE.recordRevisions[\'["history","h"]\']',app),1);
+  assert.equal(vm.runInContext('lastSharedStateSnapshot.history.find(row=>row.id===\'h\').grade',app),'A');
+  assert.ok(vm.runInContext('STATE.history.some(row=>row.id===\'other\')',app));
+  await app.saveLocalDemoStateBackup(app.getSharedDemoSnapshot());
+  assert.equal(app.readLocalDemoStateBackup()._recordProjectionsComplete,true);
+});
+
+test('lost-response replay preserves newer edits and does not endlessly resend user changes',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext(`STATE.storageFormat=3;STATE.serverAuth=true;STATE.sharedWorkspaceId='test';
+    lastSharedStateSnapshot={...getSharedDemoSnapshot({includeUsers:true}),history:[]};
+    STATE.history=[{id:'h',sticker:'123',grade:'C'}];`,app);
+  const submitted=[];
+  app.fetch=async(url,options)=>{
+    const mutation=JSON.parse(options.body);submitted.push(mutation);
+    return {ok:true,json:async()=>({recordRevisions:Object.fromEntries(mutation.operations.map(op=>[JSON.stringify([op.collection,op.id]),submitted.length]))})};
+  };
+  const sealed={workspaceId:'test',mutationId:'sealed-mutation-identity',operations:[{collection:'history',id:'h',
+    expectedRevision:0,payload:{id:'h',sticker:'123',grade:'A'}}]};
+  assert.equal(await app.saveRecordState(app.getSharedDemoSnapshot(),sealed),true);
+  assert.equal(submitted.length,2);assert.equal(submitted[0].mutationId,sealed.mutationId);
+  assert.equal(submitted[1].operations[0].payload.grade,'C');assert.equal(submitted[1].operations[0].expectedRevision,1);
+  assert.equal(app.readLocalDemoStateBackup()._pendingRecordMutation,undefined);
+  submitted.length=0;
+  const options={includeUsers:true,userMutation:{action:'update',id:'tim'}};
+  vm.runInContext("USERS[0].naam='Updated';",app);
+  const snapshot=app.getSharedDemoSnapshot(options);
+  const mutation=app.createRecordMutation(snapshot,vm.runInContext('lastSharedStateSnapshot',app),options);
+  assert.equal(await app.saveRecordState(snapshot,mutation,options),true);
+  assert.equal(submitted.length,1);
+});
+
+test('expired server sessions show sign-in rather than a false database outage and retain pending work',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedSyncPending=true;",app);
+  await app.readStorageFailure({json:async()=>({code:'AUTH_REQUIRED'})});
+  assert.equal(vm.runInContext('STATE.sharedStorageError',app),null);
+  assert.equal(vm.runInContext('STATE.sharedSyncPending',app),true);
+  assert.match(app.renderLogin(),/id="loginPassword"/);
+});
 
 test('schoonmaak opent meteen en is niet te omzeilen via sluiten, navigatie of sneltoets', () => {
   const app = guidedSandbox({entryUnchecked: true});

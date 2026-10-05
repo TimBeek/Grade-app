@@ -74,7 +74,8 @@ function bindRenderedControlHandlers() {
     render();
   });
 
-  bindClick('[data-batch-stats]', button => {
+  bindClick('[data-batch-stats]', async button => {
+    if(STATE.storageFormat===3 && !await ensureRecordProjections()) {render();return;}
     const id = button.dataset.batchStats;
     STATE.expandedBatchStats = STATE.expandedBatchStats === id ? null : id;
     render();
@@ -82,8 +83,9 @@ function bindRenderedControlHandlers() {
 
   bindClick('[data-action]', button => handleAction(button.dataset.action, button));
 
-  bindClick('[data-history-toggle]', button => {
+  bindClick('[data-history-toggle]', async button => {
     const id = button.dataset.historyToggle;
+    if(STATE.storageFormat===3) await loadAssessmentDetail(id);
     STATE.historyOpenId = STATE.historyOpenId === id ? null : id;
     render();
   });
@@ -222,6 +224,7 @@ async function handleDelegatedClick(e) {
   const historyButton = e.target.closest('[data-history-toggle]');
   if (historyButton) {
     const id = historyButton.dataset.historyToggle;
+    if (STATE.storageFormat === 3 && typeof loadAssessmentDetail === 'function') await loadAssessmentDetail(id);
     STATE.historyOpenId = STATE.historyOpenId === id ? null : id;
     render();
     return;
@@ -783,10 +786,11 @@ function scheduleMonitorScanSearch(value) {
 let historySearchTimer = null;
 function scheduleHistorySearch(value) {
   clearTimeout(historySearchTimer);
-  historySearchTimer = setTimeout(() => {
+  historySearchTimer = setTimeout(async () => {
     STATE.historySearch = value;
     STATE.historyPage = 1;
     STATE.historyOpenId = null;
+    if(STATE.storageFormat===3) await loadRecordHistory(1);
     render();
     const input = document.getElementById('historySearch');
     if (input) {
@@ -1032,7 +1036,13 @@ function guardPasswordChangeAction(action) {
 }
 
 async function handleAction(action, el) {
+  if (action === 'dismiss_recovery_notice') {
+    STATE.dismissedRecoveryNotice = STATE.sharedWorkspaceId;
+    try { localStorage.setItem('remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId, '1'); } catch { /* Memory fallback. */ }
+    render(); return;
+  }
   if (action === 'retry_storage') {
+    if(typeof appRetryAfter!=='undefined')appRetryAfter=0;
     await loadSharedDemoState();
     render();
     return;
@@ -1281,7 +1291,7 @@ async function handleAction(action, el) {
       await resetUserPassword(el.dataset.userId);
       return;
     case 'delete_user':
-      deleteUser(el.dataset.userId);
+      await deleteUser(el.dataset.userId);
       return;
     case 'cancel_decision':
       cancelPendingDecision();
@@ -1292,14 +1302,21 @@ async function handleAction(action, el) {
         break;
       }
       STATE.currentScreen = 'history';
+      if(STATE.storageFormat===3 && !await loadRecordHistory(1)) {render();return;}
       STATE.historyPage = 1;
       STATE.historyOpenId = null;
       break;
     case 'history_prev':
+      if(STATE.storageFormat===3) {
+        await loadRecordHistory(Math.max(1,(STATE.historyPage||1)-1));STATE.historyOpenId=null;break;
+      }
       STATE.historyPage = Math.max(1, (STATE.historyPage || 1) - 1);
       STATE.historyOpenId = null;
       break;
     case 'history_next':
+      if(STATE.storageFormat===3) {
+        await loadRecordHistory((STATE.historyPage||1)+1);STATE.historyOpenId=null;break;
+      }
       STATE.historyPage = (STATE.historyPage || 1) + 1;
       STATE.historyOpenId = null;
       break;
@@ -1316,6 +1333,7 @@ async function handleAction(action, el) {
         break;
       }
       STATE.currentScreen = 'analytics';
+      if(STATE.storageFormat===3 && !await ensureRecordProjections()) {render();return;}
       break;
     case 'analytics_filters_clear_advanced':
       if (typeof clearAnalyticsAdvancedFilters === 'function') clearAnalyticsAdvancedFilters();
@@ -1811,12 +1829,14 @@ function confirmSupplierNotice() {
 
 async function selectLaptop(sticker) {
   const cleanSticker = String(sticker || '').trim();
-  const l = getLaptopBySticker(sticker);
+  let l = getLaptopBySticker(sticker);
   if (!l) {
     setAppMessage(`Barcode ${cleanSticker || '-'} not found. Search again, or use Manual Entry.`);
     render();
     return;
   }
+  if(STATE.storageFormat===3 && !await loadRecordTrace(l.sticker)) {render();return;}
+  l=getLaptopBySticker(sticker) || l;
   if (isLaptopGraded(l.sticker) || isLaptopLabelPrinted(l.sticker)) {
     await reprintCompletedLaptopLabels(l.sticker, { source: 'scan', confirmBeforePrint: true });
     return;
@@ -1903,6 +1923,7 @@ function confirmCompletedLaptopReprint(laptop) {
 }
 
 async function reprintCompletedLaptopLabels(sticker, options = {}) {
+  if(STATE.storageFormat===3 && !await loadRecordTrace(sticker)) {render();return false;}
   const cleanSticker = String(sticker || '').trim();
   if (!cleanSticker) {
     setAppMessage('Scan or select a completed barcode first.');
@@ -1969,6 +1990,7 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
 }
 
 async function scanAndPrintStickerLabel(sticker, options = {}) {
+  if(STATE.storageFormat===3 && !await loadRecordTrace(getCanonicalSticker(sticker))) {render();return false;}
   const cleanSticker = String(sticker || '').trim();
   if (!cleanSticker) {
     setAppMessage('Scan or enter a barcode first.');
@@ -2034,7 +2056,8 @@ async function scanAndPrintStickerLabel(sticker, options = {}) {
   return true;
 }
 
-function selectMonitorForLabel(sticker) {
+async function selectMonitorForLabel(sticker) {
+  if(STATE.storageFormat===3 && !await loadRecordTrace(getCanonicalMonitorSticker(sticker))) {render();return false;}
   const cleanSticker = String(sticker || '').trim();
   if (!cleanSticker) {
     setAppMessage('Scan or enter a monitor barcode first.');
@@ -2304,6 +2327,22 @@ async function loginWithPassword() {
   const id = document.getElementById('loginUser').value;
   const password = document.getElementById('loginPassword').value;
   const user = USERS.find(u => u.id === id);
+  if (STATE.serverAuth) {
+    try {
+      const response = await appFetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password }) });
+      if (!response.ok) {
+        if(response.status===401)setAppMessage('Incorrect login or password.');
+        else await readStorageFailure(response);
+        render(); return;
+      }
+      const session = await response.json();
+      setLiveSessionToken(session.token); STATE.currentUser = session.user; saveSessionUser(session.user);
+      await loadSharedDemoState();
+      STATE.currentScreen = session.user.mustChangePassword ? 'password_change' : 'home';
+      STATE.homeTab = 'workflow'; setAppMessage(null); render(); return;
+    } catch { setAppMessage('Login is temporarily unavailable. Please try again later.'); render(); return; }
+  }
   const passwordHash = await hashDemoPassword(password);
   if (!user || user.passwordHash !== passwordHash) {
     setAppMessage('Incorrect login or password.');
@@ -2340,6 +2379,20 @@ async function changeOwnPassword() {
     return;
   }
 
+  if (STATE.serverAuth) {
+    try {
+      const response = await appFetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'password', password }) });
+      if (!response.ok) { await readStorageFailure(response); render(); return; }
+      const session = await response.json(); setLiveSessionToken(session.token);
+      const profile = USERS.find(account => account.id === session.user.id);
+      if (profile) Object.assign(profile, session.user);
+      STATE.currentUser = session.user; saveSessionUser(session.user);
+      await loadSharedDemoState(); STATE.currentScreen = 'home'; STATE.homeTab = 'workflow';
+      setAppMessage('Your password has been saved.', 'success');
+    } catch { markSharedStorageFailure(null); }
+    render(); return;
+  }
   const user = USERS.find(u => u.id === STATE.currentUser.id);
   if (!user) {
     setAppMessage('Account could not be updated. Log in again.');
@@ -2530,8 +2583,9 @@ function removeUserRecords(id) {
   if (typeof rebuildLabelPrintIndexes === 'function') rebuildLabelPrintIndexes();
 }
 
-function deleteUser(id) {
+async function deleteUser(id) {
   if (!isAdminUser()) return;
+  if(STATE.storageFormat===3 && !await ensureRecordProjections()) {render();return;}
   if (STATE.currentUser && STATE.currentUser.id === id) return;
   const index = USERS.findIndex(u => u.id === id);
   if (index < 0) return;
@@ -2554,7 +2608,7 @@ function deleteUser(id) {
   USERS.splice(index, 1);
   if (purge) removeUserRecords(id);
   saveUsers();
-  saveSharedDemoState({ includeUsers: true, userMutation: { action: 'delete', id } });
+  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'delete', id },...(purge?{purgeUserId:id}:{}) });
   setAppMessage(purge ? `User and ${owned.total} records deleted.` : 'User deleted.', 'success');
   render();
 }
@@ -2905,6 +2959,13 @@ function saveGrading() {
 }
 
 async function confirmSaveWithAutomaticLabels() {
+  const grading=STATE.currentGrading;
+  if(grading?._processingSave) return false;
+  if(grading) grading._processingSave=true;
+  try { return await performConfirmSaveWithAutomaticLabels(); }
+  finally {if(grading)grading._processingSave=false;}
+}
+async function performConfirmSaveWithAutomaticLabels() {
   const g = STATE.currentGrading;
   const l = STATE.currentLaptop;
   if (!g || !l || !g.result) {
@@ -2944,7 +3005,7 @@ async function confirmSaveWithAutomaticLabels() {
   } else {
     setAppMessage(STATE.localBackupError
       ? 'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.'
-      : 'The label was printed and the grading is secured locally. Live synchronization is pending and will retry automatically.', 'warning');
+      : 'The label was printed and the grading is secured locally. Live synchronization is pending. Retry the connection before continuing.', 'warning');
   }
   render();
 }

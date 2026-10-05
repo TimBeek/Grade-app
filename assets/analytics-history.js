@@ -33,6 +33,7 @@ function historyItemHadRepairLabel(item) {
 // Reparatiestatistiek gegroepeerd per batch-id: { [batchId]: {graded, repair,
 // production, reject, batchNummer, leverancier} }.
 function getBatchRepairStats(historyItems = STATE.history) {
+  if (STATE.storageFormat === 3 && STATE.recordDashboard && historyItems === STATE.history) return STATE.recordDashboard.batchRepairs || {};
   const stats = {};
   (historyItems || []).forEach(item => {
     const key = item.batchId || item.batchNummer || '—';
@@ -1561,6 +1562,7 @@ function formatLiveRelativeTime(value) {
 
 // Fetches the authoritative, database-computed live pulse from /api/stats.
 async function refreshAnalyticsServerStats() {
+  if(STATE.storageFormat===3 && typeof appRetryAfter!=='undefined' && appRetryAfter>Date.now())return;
   const container = document.getElementById('manager-live-stats');
   if (!container) return;
   if (typeof canUseSharedDemoState === 'function' && !canUseSharedDemoState()) {
@@ -1577,9 +1579,14 @@ async function refreshAnalyticsServerStats() {
     return;
   }
   try {
-    const response = await fetch('/api/stats', { cache: 'no-store' });
+    const response = await (typeof appFetch === 'function' ? appFetch : fetch)('/api/stats', { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const stats = await response.json();
+    if(STATE.storageFormat===3 && stats.dashboard) {
+      const changed=JSON.stringify(STATE.recordDashboard)!==JSON.stringify(stats.dashboard);
+      STATE.recordDashboard=stats.dashboard;
+      if(changed && STATE.currentScreen==='home') {render();return;}
+    }
     const live = (stats && stats.live) || {};
     const backup = stats && stats.backup;
     const health = live.dataHealth || {};
@@ -1595,7 +1602,7 @@ async function refreshAnalyticsServerStats() {
         ? `${alertCount} digital check${alertCount === 1 ? '' : 's'}`
         : 'Registrations complete';
     const attentionDetail = pendingLocal
-      ? 'automatic retry active'
+      ? 'retry connection to resume'
       : alertCount
         ? `${Number(health.unresolvedGaps || 0)} unresolved · ${Number(health.verifiedGaps || 0)} physically confirmed`
         : 'no batch gaps detected';
@@ -2402,13 +2409,15 @@ function renderHistory() {
   const query = STATE.historySearch || '';
   const items = getFilteredHistoryItems(allItems, query);
   const pageSize = STATE.historyPageSize || 50;
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const remotePage=STATE.storageFormat===3 ? STATE.recordHistoryPage : null;
+  const resultCount=remotePage ? remotePage.total : items.length;
+  const totalPages = Math.max(1, Math.ceil(resultCount / pageSize));
   const currentPage = Math.min(Math.max(STATE.historyPage || 1, 1), totalPages);
   if (currentPage !== STATE.historyPage) STATE.historyPage = currentPage;
   const pageStart = (currentPage - 1) * pageSize;
-  const pageItems = items.slice(pageStart, pageStart + pageSize);
+  const pageItems = remotePage ? remotePage.items.map(item=>({item:STATE.history.find(h=>h.id===item.id)||item,originalIndex:0})) : items.slice(pageStart, pageStart + pageSize);
 
-  if (allItems.length === 0) {
+  if (allItems.length === 0 && !remotePage) {
     return `
       <div class="screen">
         ${renderDashboardTabs('analytics')}
@@ -2423,7 +2432,15 @@ function renderHistory() {
   const counts = { A: 0, B: 0, C: 0, D: 0 };
   let totalSec = 0;
   allItems.forEach(i => { counts[i.grade]++; totalSec += i.duurSec; });
-  const gem = Math.round(totalSec / allItems.length);
+  let gem = allItems.length ? Math.round(totalSec / allItems.length) : 0;
+  let gradedTotal=allItems.length;
+  if(remotePage && STATE.recordDashboard) {
+    const groups=STATE.recordDashboard.groups.filter(g=>g.collection==='history' && (isAdmin || g.userId===STATE.currentUser.id));
+    gradedTotal=groups.reduce((sum,g)=>sum+Number(g.count),0);
+    for(const grade of Object.keys(counts)) counts[grade]=groups.reduce((sum,g)=>sum+Number(g.counts[grade]||0),0);
+    const timed=groups.reduce((sum,g)=>sum+Number(g.timedCount),0);
+    gem=timed ? Math.round(groups.reduce((sum,g)=>sum+Number(g.timeTotal||0),0)/timed) : 0;
+  }
   const maxCount = Math.max(counts.A, counts.B, counts.C, counts.D, 1);
 
   return `
@@ -2432,7 +2449,7 @@ function renderHistory() {
       <div class="metrics">
         <div class="metric">
           <div class="metric-label">Total Graded</div>
-          <div class="metric-value">${allItems.length}</div>
+          <div class="metric-value">${gradedTotal}</div>
           <div class="metric-sub">${isAdmin ? 'all operators' : 'your session'}</div>
         </div>
         <div class="metric">
@@ -2451,8 +2468,8 @@ function renderHistory() {
         </div>
         <div class="metric">
           <div class="metric-label">Latest Result</div>
-          <div class="metric-value">${allItems[allItems.length - 1].grade === 'D' ? 'Repair' : allItems[allItems.length - 1].grade}</div>
-          <div class="metric-sub">${escapeHtml(allItems[allItems.length - 1].user_naam)}</div>
+          <div class="metric-value">${allItems.at(-1)?.grade === 'D' ? 'Repair' : escapeHtml(allItems.at(-1)?.grade || '-')}</div>
+          <div class="metric-sub">${escapeHtml(allItems.at(-1)?.user_naam || '-')}</div>
         </div>
       </div>
 
@@ -2470,7 +2487,7 @@ function renderHistory() {
       <h3 style="margin-bottom: 10px; font-weight: 500;">Search History</h3>
       <input class="history-search" id="historySearch" type="search" placeholder="Search barcode, serial number, supplier grade, ReMarkt grade, operator or batch..." value="${escapeHtml(query)}">
       <div class="history-pager">
-        <span>${items.length} result${items.length === 1 ? '' : 's'} · page ${currentPage} of ${totalPages} · max ${pageSize}</span>
+        <span>${resultCount} result${resultCount === 1 ? '' : 's'} · page ${currentPage} of ${totalPages} · max ${pageSize}</span>
         <div class="history-pager-actions">
           <button class="btn btn-secondary" data-action="history_prev" ${currentPage <= 1 ? 'disabled' : ''}>← Previous</button>
           <button class="btn btn-secondary" data-action="history_next" ${currentPage >= totalPages ? 'disabled' : ''}>Next →</button>

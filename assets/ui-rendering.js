@@ -249,7 +249,7 @@ function renderLogin() {
           <label class="form-label" for="loginPassword">Password</label>
           <input type="password" class="form-input" id="loginPassword" placeholder="Password" autocomplete="current-password">
           <button class="btn btn-primary" data-action="login_password">Sign in</button>
-          <div class="field-help">Demo passwords are hashed in browser code; this is not production security.</div>
+          <div class="field-help">${STATE.serverAuth ? 'Your password is verified securely by the server.' : 'Demo passwords are hashed in browser code; this is not production security.'}</div>
         </div>
       </div>
     </div>
@@ -258,7 +258,12 @@ function renderLogin() {
 
 function renderStorageStatus() {
   if (!STATE.sharedStorageError && !STATE.localBackupError && STATE.sharedWorkspaceId.startsWith('recovery-')) {
-    return `<section class="storage-status" role="status"><strong>Temporary working database</strong>
+    const key = 'remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId;
+    let dismissed = STATE.dismissedRecoveryNotice === STATE.sharedWorkspaceId;
+    try { dismissed = dismissed || localStorage.getItem(key) === '1'; } catch { /* Memory fallback. */ }
+    if (dismissed) return '';
+    return `<section class="storage-status storage-status-dismissible" role="status"><strong>Temporary working database</strong>
+      <button class="storage-status-close" data-action="dismiss_recovery_notice" type="button" aria-label="Close" title="Close">×</button>
       <p>Existing accounts are restored. Import the required supplier lists to start working. Previous grading history is awaiting recovery.</p>
       <button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button></section>`;
   }
@@ -1034,7 +1039,15 @@ function getDashboardData() {
     if (counts[item.grade] !== undefined) counts[item.grade]++;
   });
   const totalSec = items.reduce((sum, item) => sum + Number(item.duurSec || 0), 0);
-  const avg = items.length ? Math.round(totalSec / items.length) : 0;
+  let avg = items.length ? Math.round(totalSec / items.length) : 0;
+  let gradedTotal = items.length;
+  if (STATE.storageFormat === 3 && STATE.recordDashboard) {
+    const groups = STATE.recordDashboard.groups.filter(g => g.collection === 'history' && (isAdmin || g.userId === STATE.currentUser.id));
+    for (const grade of Object.keys(counts)) counts[grade] = groups.reduce((sum,g)=>sum+Number(g.counts[grade]||0),0);
+    gradedTotal=groups.reduce((sum,g)=>sum+Number(g.count),0);
+    const timed=groups.reduce((sum,g)=>sum+Number(g.timedCount),0);
+    avg=timed ? Math.round(groups.reduce((sum,g)=>sum+Number(g.timeTotal||0),0)/timed) : 0;
+  }
   const allLaptops = getAllLaptops();
   const openCount = getOpenLaptops().length;
   const completedCount = Math.max(allLaptops.length - openCount, 0);
@@ -1049,6 +1062,10 @@ function getDashboardData() {
     const grade = normalizeMonitorGrade(item.grade);
     if (monitorCounts[grade] !== undefined) monitorCounts[grade]++;
   });
+  if (STATE.storageFormat === 3 && STATE.recordDashboard) {
+    const groups=STATE.recordDashboard.groups.filter(g=>g.collection==='monitorLabelPrints' && (isAdmin || g.userId === STATE.currentUser.id));
+    for (const grade of Object.keys(monitorCounts)) monitorCounts[grade]=groups.reduce((sum,g)=>sum+Number(g.counts[grade]||0),0);
+  }
   const latest = items[items.length - 1];
   const monitorLatest = monitorItems[monitorItems.length - 1];
   const maxGradeCount = Math.max(counts.A, counts.B, counts.C, counts.D, 1);
@@ -1135,7 +1152,7 @@ function getDashboardData() {
       </div>
     `;
   }).join('');
-  return { isAdmin, items, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, completedBatchRows, activeBatchCount: activeBatches.length, completedBatchCount: completedBatches.length, stickerBatchRows, monitorBatchRows };
+  return { isAdmin, items, gradedTotal, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, completedBatchRows, activeBatchCount: activeBatches.length, completedBatchCount: completedBatches.length, stickerBatchRows, monitorBatchRows };
 }
 
 // Compacte actiekaart: groot icoon + titel + korte omschrijving. Extra detail
@@ -1343,7 +1360,7 @@ function renderWorkflowDashboard(data) {
     <div class="ops-status-grid">
       <div class="ops-stat warning"><strong>${openCount}</strong><span>open devices</span></div>
       <div class="ops-stat"><strong>${completedCount}</strong><span>completed devices</span></div>
-      <div class="ops-stat"><strong>${items.length}</strong><span>${isAdmin ? 'total gradings' : 'your gradings'}</span></div>
+      <div class="ops-stat"><strong>${data.gradedTotal ?? items.length}</strong><span>${isAdmin ? 'total gradings' : 'your gradings'}</span></div>
       <div class="ops-stat"><strong>${avg || '-'}</strong><span>avg. seconds per device</span></div>
     </div>
     <div class="ops-layout">

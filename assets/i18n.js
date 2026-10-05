@@ -6,7 +6,12 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Your session expired. Sign in again; unsynchronized work is kept on this computer.': 'Je sessie is verlopen. Log opnieuw in; nog niet gesynchroniseerd werk blijft op deze computer bewaard.',
+  'This record changed on another computer. Your local changes are preserved; ask a manager to review before saving.': 'Dit gegeven is op een andere computer gewijzigd. Je lokale wijzigingen zijn bewaard; laat een manager dit controleren voordat je opslaat.',
+  'The label was printed and the grading is secured locally. Live synchronization is pending. Retry the connection before continuing.': 'Het label is geprint en de beoordeling is lokaal bewaard. Synchronisatie staat nog open. Probeer de verbinding opnieuw voordat je verdergaat.',
+  'retry connection to resume': 'probeer de verbinding opnieuw om verder te werken',
   'Temporary working database': 'Tijdelijke werkdatabase',
+  'Your password is verified securely by the server.': 'Je wachtwoord wordt veilig door de server gecontroleerd.',
   'Existing accounts are restored. Import the required supplier lists to start working. Previous grading history is awaiting recovery.': 'Bestaande accounts zijn hersteld. Importeer de benodigde leverancierslijsten om te starten. De eerdere beoordelingshistorie wacht nog op herstel.',
   'Download cached accounts only': 'Alleen opgeslagen accounts downloaden',
   'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.': 'Het label is geprint, maar live opslaan en de lokale herstelkopie zijn mislukt. Houd dit tabblad open en neem contact op met je manager voordat je verdergaat.',

@@ -47,6 +47,10 @@ const STATE = {
   sharedSyncPending: false,
   sharedStorageError: null,
   sharedWorkspaceId: '',
+  serverAuth: false,
+  storageFormat: 2,
+  recordRevisions: {},
+  pendingRecordMutation: null,
   localRecoveryAvailable: false,
   localBackupError: false,
   appMessage: null,
@@ -84,8 +88,8 @@ const DEMO_STORAGE_KEYS = {
 const SHARED_DEMO_STATE_URL = '/api/demo-state';
 
 const USERS = [
-  { id: 'tim', naam: 'Tim', rol: 'Manager', initialen: 'T', voorkeur: 'expert', passwordHash: '0aaa2665d28098e82a8b771ab0d48e2afafc93939088a1b9a4be6ae3e393b029' },
-  { id: 'thibault', naam: 'Thibault', rol: 'Grader', initialen: 'TH', voorkeur: 'beginner', passwordHash: '4ec075046bd8fcbe41c06c57c8761c4dcaa7b30dec043a9f10438008d048f36f' },
+  { id: 'tim', naam: 'Tim', rol: 'Manager', initialen: 'T', voorkeur: 'expert', passwordHash: 'preview-only-no-login' },
+  { id: 'thibault', naam: 'Thibault', rol: 'Grader', initialen: 'TH', voorkeur: 'beginner', passwordHash: 'preview-only-no-login' },
 ];
 const DEFAULT_USERS = USERS.map(user => ({ ...user }));
 
@@ -338,6 +342,7 @@ function isLaptopGraded(sticker) {
   // vals-positief gat als de batch-sticker voorloopnullen heeft (0012345) maar
   // het grade-record de gestripte vorm (12345) opsloeg. De server doet dit al.
   return GRADED_STICKERS.has(getCanonicalSticker(sticker))
+    || Boolean(laptop?._completion?.graded)
     || GRADED_STICKERS.has(normalizeStickerCode(getCanonicalSticker(sticker)))
     || (laptop && GRADED_STICKERS.has(String(laptop.sticker || '')))
     || (laptop && GRADED_STICKERS.has(normalizeStickerCode(laptop.sticker)));
@@ -347,6 +352,7 @@ function isLaptopLabelPrinted(sticker) {
   if (!LABEL_PRINTED_STICKERS.size && STATE.labelPrints.length) rebuildLabelPrintIndexes();
   const laptop = getLaptopBySticker(sticker);
   return LABEL_PRINTED_STICKERS.has(getCanonicalSticker(sticker))
+    || Boolean(laptop?._completion?.labelPrinted)
     || LABEL_PRINTED_STICKERS.has(normalizeStickerCode(getCanonicalSticker(sticker)))
     || (laptop && LABEL_PRINTED_STICKERS.has(String(laptop.sticker || '')))
     || (laptop && LABEL_PRINTED_STICKERS.has(normalizeStickerCode(laptop.sticker)));
@@ -691,6 +697,7 @@ function saveSessionUser(user) {
 }
 
 function clearSessionUser() {
+  if (typeof setLiveSessionToken === 'function') setLiveSessionToken('');
   try {
     sessionStorage.removeItem(DEMO_STORAGE_KEYS.session);
     localStorage.removeItem(DEMO_STORAGE_KEYS.session);
@@ -948,7 +955,7 @@ function displayMonitorGrade(value) {
 
 function isMonitorLabelPrinted(sticker) {
   if (!MONITOR_LABEL_PRINTED_STICKERS.size && STATE.monitorLabelPrints.length) rebuildMonitorLabelPrintIndexes();
-  return MONITOR_LABEL_PRINTED_STICKERS.has(getCanonicalMonitorSticker(sticker));
+  return MONITOR_LABEL_PRINTED_STICKERS.has(getCanonicalMonitorSticker(sticker)) || Boolean(getMonitorBySticker(sticker)?._completion?.labelPrinted);
 }
 
 // Meest recente monitor-labelprint voor een barcode (voor de opnieuw-printen
@@ -1923,6 +1930,7 @@ async function encodeSharedDemoStateBody(snapshot) {
 function normalizeSharedLaptop(laptop) {
   if (!laptop || !laptop.sticker) return null;
   return {
+    ...(laptop._completion ? { _completion: laptop._completion } : {}),
     sticker: sanitizeExternalText(laptop.sticker, 64).replace(/[^\w.-]/g, ''),
     merk: sanitizeExternalText(laptop.merk, 80),
     model: sanitizeExternalText(laptop.model, 160),
@@ -2012,6 +2020,7 @@ function normalizeSharedMonitor(monitor) {
     chosenAt: sanitizeExternalText(monitor.identityChoice.chosenAt, 80),
   } : null;
   return enrichMonitorWithPortDatabase({
+    ...(monitor._completion ? { _completion: monitor._completion } : {}),
     sticker: sanitizeExternalText(monitor.sticker, 64).replace(/[^\w.-]/g, ''),
     deviceName,
     merk,
@@ -2062,8 +2071,10 @@ function getSharedDemoSnapshot(options = {}) {
   const restoreDeletedMonitorBatchIds = normalizeDeletedMonitorBatchIds(options.restoreDeletedMonitorBatchIds);
   const restoreDeletedMonitorStickers = normalizeDeletedMonitorStickers(options.restoreDeletedMonitorStickers);
   const now = new Date().toISOString();
-  return {
+  const snapshot = {
     version: 1,
+    ...(STATE.storageFormat === 3 ? { storageFormat: 3, recordRevisions: STATE.recordRevisions,
+      _recordProjectionsComplete: Boolean(STATE.recordProjectionsComplete) } : {}),
     ...(STATE.sharedWorkspaceId ? { workspaceId: STATE.sharedWorkspaceId } : {}),
     ...(includeUsers ? {
       users: USERS.map(serializeUser),
@@ -2087,6 +2098,7 @@ function getSharedDemoSnapshot(options = {}) {
     ...(restoreDeletedMonitorStickers.length ? { restoreDeletedMonitorStickers } : {}),
     updatedAt: now,
   };
+  return STATE.storageFormat === 3 ? JSON.parse(JSON.stringify(snapshot)) : snapshot;
 }
 
 let durableBackup = null;
@@ -2369,6 +2381,7 @@ function chooseSharedDemoState(remoteState, localState) {
   if (!remoteState || typeof remoteState !== 'object') return localState;
   if (!localState || typeof localState !== 'object') return remoteState;
   if ((remoteState.workspaceId || '') !== (localState.workspaceId || '')) return remoteState;
+  if (!localState._clientSyncPending && !STATE.sharedSyncPending && remoteState.storageFormat === 3) return remoteState;
 
   const remoteTime = getSharedDemoStateTimestamp(remoteState);
   const localTime = getSharedDemoStateTimestamp(localState);
@@ -2466,7 +2479,14 @@ function applySharedUsers(state) {
 
 function applySharedDemoState(state) {
   if (!state || typeof state !== 'object') return false;
+  // UI edits must not mutate the immutable acknowledged/pending baselines.
+  if (state.storageFormat === 3) state = JSON.parse(JSON.stringify(state));
   STATE.sharedWorkspaceId = String(state.workspaceId || '');
+  if (state.storageFormat === 3) {
+    STATE.storageFormat = 3;
+    STATE.recordRevisions = { ...(state.recordRevisions || {}) };
+    STATE.recordProjectionsComplete = state._recordProjectionsComplete === true;
+  }
 
   STATE.deletedBatchIds = normalizeDeletedBatchIds(state.deletedBatchIds);
   STATE.deletedLaptopStickers = normalizeDeletedLaptopStickers(state.deletedLaptopStickers);
@@ -2505,6 +2525,10 @@ function applySharedDemoState(state) {
   if (Array.isArray(state.auditLogs)) {
     STATE.auditLogs = state.auditLogs;
   }
+  if(state.storageFormat===3) {
+    if(STATE.currentLaptop)STATE.currentLaptop=getLaptopBySticker(STATE.currentLaptop.sticker) || STATE.currentLaptop;
+    if(STATE.currentMonitor)STATE.currentMonitor=getMonitorBySticker(STATE.currentMonitor.sticker) || STATE.currentMonitor;
+  }
   return true;
 }
 
@@ -2519,8 +2543,9 @@ let lastSharedStateSnapshot = null;
 let sharedSaveQueue = Promise.resolve();
 
 function markSharedStorageFailure(payload) {
-  STATE.sharedStorageError = payload && payload.code === 'STORAGE_QUOTA_EXCEEDED'
-    ? 'STORAGE_QUOTA_EXCEEDED' : 'STORAGE_UNAVAILABLE';
+  STATE.sharedStorageError = payload?.code || 'STORAGE_UNAVAILABLE';
+  if (payload?.code === 'STORAGE_RECORD_CONFLICT' || payload?.code === 'STORAGE_MUTATION_CONFLICT')
+    setAppMessage('This record changed on another computer. Your local changes are preserved; ask a manager to review before saving.', 'warning');
   STATE.localRecoveryAvailable = Boolean(readLocalDemoStateBackup());
   const app = typeof document !== 'undefined' ? document.getElementById('app') : null;
   if (app && typeof app.insertAdjacentHTML === 'function' && typeof renderStorageStatus === 'function' && !document.getElementById('storage-status')) {
@@ -2544,15 +2569,24 @@ function getLocalRecoveryExport() {
 }
 
 async function readStorageFailure(response) {
-  try { markSharedStorageFailure(await response.json()); }
+  try {
+    const payload=await response.json();
+    if(payload?.code==='AUTH_REQUIRED') {
+      STATE.sharedStorageError=null;
+      setAppMessage('Your session expired. Sign in again; unsynchronized work is kept on this computer.', 'warning');
+      return;
+    }
+    markSharedStorageFailure(payload);
+  }
   catch { markSharedStorageFailure(null); }
 }
 
 // Cheap change-check: one tiny request (1 KV command) returning only updatedAt.
 async function fetchSharedStateStamp() {
   if (!canUseSharedDemoState()) return null;
+  if(STATE.serverAuth && !liveSessionToken())return null;
   try {
-    const response = await fetch(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
+    const response = await (typeof appFetch === 'function' ? appFetch : fetch)(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
     if (!response.ok) { await readStorageFailure(response); return null; }
     const meta = await response.json();
     return meta && meta.updatedAt ? String(meta.updatedAt) : null;
@@ -2572,7 +2606,8 @@ async function primeSharedStateStamp() {
 // This prevents every colleague's completed grade from downloading the entire
 // batch/history dataset to every open browser.
 async function syncSharedStateIfChanged(options = {}) {
-  const loadFull = options.loadFull === true;
+  const loadFull = options.loadFull === true || STATE.storageFormat === 3;
+  if (typeof appRetryAfter !== 'undefined' && Date.now() < appRetryAfter) return false;
   if (!canUseSharedDemoState()) return false;
   const stamp = await fetchSharedStateStamp();
   if (stamp === null) return false;
@@ -2679,6 +2714,7 @@ function sharedStateDeltaHasChanges(delta) {
 }
 
 async function loadSharedDemoState() {
+  if (STATE.serverAuth && STATE.storageFormat === 3) return loadRecordState();
   if (!canUseSharedDemoState()) return loadLocalDemoStateBackup();
   await loadDurableBackup();
   const localState = readLocalDemoStateBackup();
@@ -2731,6 +2767,10 @@ function saveSharedDemoState(options = {}) {
 async function performSharedStateSave(options = {}) {
   if (STATE.sharedStorageError) return false;
   const snapshot = getSharedDemoSnapshot(options);
+  if (STATE.storageFormat === 3 && STATE.serverAuth) {
+    try { return await saveRecordState(snapshot, STATE.pendingRecordMutation || createRecordMutation(snapshot, lastSharedStateSnapshot, options), options); }
+    catch (error) { markSharedStorageFailure(null); return false; }
+  }
   const delta = createSharedStateDelta(snapshot, lastSharedStateSnapshot);
   STATE.sharedSyncPending = true;
   await saveLocalDemoStateBackup({ ...snapshot, _clientSyncPending: true });
@@ -2781,9 +2821,10 @@ async function performSharedStateSave(options = {}) {
 async function refreshSharedUsers() {
   if (!canUseSharedDemoState()) return false;
   try {
-    const response = await fetch(`${SHARED_DEMO_STATE_URL}?users=1`, { cache: 'no-store' });
+    const response = await (typeof appFetch === 'function' ? appFetch : fetch)(`${SHARED_DEMO_STATE_URL}?users=1`, { cache: 'no-store' });
     if (!response.ok) { await readStorageFailure(response); return false; }
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
+    if (remoteState.serverAuth) { STATE.serverAuth = true; STATE.storageFormat = remoteState.storageFormat; }
     return applySharedUsers(remoteState);
   } catch (error) {
     markSharedStorageFailure(null);

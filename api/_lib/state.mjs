@@ -5,6 +5,7 @@
 // ~1MB-per-command Upstash REST limit, even as the history grows.
 
 import { Redis } from "@upstash/redis";
+import { storageError, validateSnapshot } from './storage-safety.mjs';
 import {
   isPostgresConfigured,
   pgReadMeta,
@@ -144,17 +145,19 @@ export async function kvReadState() {
   const redis = getRedis();
   const meta = await redis.get(`${STATE_KEY}:meta`);
   if (!meta || typeof meta.chunks !== "number" || meta.chunks < 1) {
-    return emptyState();
+    throw storageError('STORAGE_NOT_INITIALIZED', 'Redis state is missing or unavailable. Explicit initialization is required.');
   }
+  if (!Number.isInteger(meta.chunks) || meta.chunks > 1000) throw storageError('STORAGE_CORRUPT', 'Invalid Redis state metadata.');
   const keys = [];
   for (let i = 0; i < meta.chunks; i++) keys.push(`${STATE_KEY}:${i}`);
   const parts = await redis.mget(...keys);
-  const base64 = parts.map(part => (typeof part === "string" ? part : "")).join("");
-  if (!base64) return emptyState();
+  if (parts.length !== keys.length || parts.some(part => typeof part !== 'string' || !part))
+    throw storageError('STORAGE_CORRUPT', 'One or more Redis state chunks are missing.');
+  const base64 = parts.join('');
   try {
-    return normalizeDemoState(decodeState(base64));
+    return normalizeDemoState(validateSnapshot(decodeState(base64)));
   } catch {
-    return emptyState();
+    throw storageError('STORAGE_CORRUPT', 'Redis state could not be decoded.');
   }
 }
 

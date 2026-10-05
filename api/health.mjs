@@ -2,6 +2,8 @@
 
 import { kvReadHealthSummary, kvReadBackupInfo, isStorageConfigured, storageKind } from "./_lib/state.mjs";
 import { sendStorageError } from './_lib/storage-error.mjs';
+import { recordStorageEnabled, pgRecordStore, pgRateLimit } from './_lib/postgres-state.mjs';
+import { requireSession } from './_lib/session-auth.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
@@ -17,6 +19,10 @@ export default async function handler(request, response) {
   }
 
   try {
+    if(recordStorageEnabled()) {
+      const user=await requireSession(request,pgRecordStore(),process.env.REMARKT_WORKSPACE_ID);
+      await pgRateLimit('api:'+user.id,500);
+    }
     const summary = await kvReadHealthSummary();
     const backup = await kvReadBackupInfo();
     response.status(200).json({

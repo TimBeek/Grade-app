@@ -20,8 +20,8 @@ export function encodeState(state) {
   return zlib.gzipSync(Buffer.from(json, "utf8")).toString("base64");
 }
 
-export function decodeState(base64) {
-  const json = zlib.gunzipSync(Buffer.from(base64, "base64")).toString("utf8");
+export function decodeState(base64, maxOutputLength = 128 * 1024 * 1024) {
+  const json = zlib.gunzipSync(Buffer.from(base64, "base64"), { maxOutputLength }).toString("utf8");
   return JSON.parse(json);
 }
 
@@ -34,7 +34,7 @@ export function toEnvelope(state) {
 
 export function fromBody(body) {
   if (body && typeof body === "object" && typeof body.gzip === "string") {
-    return decodeState(body.gzip);
+    return decodeState(body.gzip, 16 * 1024 * 1024);
   }
   return body;
 }

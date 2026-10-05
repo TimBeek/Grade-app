@@ -3,6 +3,10 @@
 // =============================================================================
 async function initApp() {
   await loadMonitorPortDatabase();
+  await refreshSharedUsers();
+  if (STATE.serverAuth && !liveSessionToken()) {
+    clearSessionUser(); STATE.currentUser = null; STATE.currentScreen = 'login'; render(); return;
+  }
   await loadSharedDemoState();
   // loadSharedDemoState records the stamp of the state it actually read.
   // A second stamp request could acknowledge an unseen colleague's change.
