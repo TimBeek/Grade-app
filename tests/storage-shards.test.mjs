@@ -5,6 +5,21 @@ import { createShardedStore, rowShard, statsRows, COLLECTIONS } from '../api/_li
 import { emptyState, normalizeDemoState, mergeDemoState, computeStats, decodeState } from '../api/_lib/state-core.mjs';
 import { sendStorageError } from '../api/_lib/storage-error.mjs';
 
+test('cutover rejects stale tabs before any database mutation', async () => {
+  const {default:handler} = await import('../api/demo-state.mjs');
+  const old = process.env.REMARKT_WORKSPACE_ID;
+  process.env.REMARKT_WORKSPACE_ID = 'recovery-20261005';
+  const response = {setHeader(){}, status(n){this.code=n;return this;}, json(body){this.body=body;}};
+  try {
+    await handler({method:'POST',body:{history:[{id:'stale'}]}},response);
+    assert.equal(response.code,409);
+    assert.equal(response.body.code,'STORAGE_WORKSPACE_CHANGED');
+  } finally {
+    if (old === undefined) delete process.env.REMARKT_WORKSPACE_ID;
+    else process.env.REMARKT_WORKSPACE_ID=old;
+  }
+});
+
 async function fixture(source) {
   const db = new PGlite();
   const log = [];

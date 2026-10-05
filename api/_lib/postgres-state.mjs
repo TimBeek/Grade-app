@@ -23,7 +23,8 @@ function getStore() {
 }
 
 function databaseUrl() {
-  return String(process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
+  // An explicit recovery override leaves the provider-managed source intact.
+  return String(process.env.REMARKT_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
 }
 
 export function isPostgresConfigured() {

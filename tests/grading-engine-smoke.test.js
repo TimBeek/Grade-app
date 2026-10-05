@@ -874,6 +874,43 @@ test('accountcache is apart te herstellen en wordt nooit een volledige of fictie
   assert.doesNotMatch(app.renderLogin(), /id="loginUser"/);
 });
 
+test('nieuwe werkdatabase vermengt geen nieuwere oude browserkopie', () => {
+  const app = loadAppSandbox();
+  const old = {updatedAt:'2026-10-06T00:00:00Z', history:[{id:'old'}], _clientSyncPending:true};
+  const fresh = {workspaceId:'recovery-20261005', updatedAt:'2026-10-05T00:00:00Z', history:[]};
+  assert.equal(app.chooseSharedDemoState(fresh, old), fresh);
+  vm.runInContext("STATE.sharedWorkspaceId='recovery-20261005';", app);
+  assert.equal(app.getSharedDemoSnapshot().workspaceId, 'recovery-20261005');
+  assert.equal(app.createSharedStateDelta(app.getSharedDemoSnapshot(), {}).workspaceId, 'recovery-20261005');
+});
+
+test('omschakeling archiveert oude kopie en negeert gelijke revisie van andere database', async () => {
+  const {IDBFactory} = require('fake-indexeddb');
+  const app = loadAppSandbox({indexedDB:new IDBFactory(), gzip:true});
+  const old = {version:1, storageRevision:1, updatedAt:'2026-10-06T00:00:00Z', history:[{id:'old',sticker:'OLD'}]};
+  await app.saveLocalDemoStateBackup(old);
+  const calls = [];
+  app.fetch = async url => {
+    calls.push(url);
+    return {ok:true, headers:{get:()=> 'recovery-20261005'}, json:async()=>({
+      version:1, storageRevision:1, users:[], batches:[], monitorBatches:[], history:[],
+      labelPrints:[], monitorLabelPrints:[], auditLogs:[], updatedAt:'2026-10-05T00:00:00Z',
+    })};
+  };
+  assert.equal(await app.loadSharedDemoState(), true);
+  assert.match(calls[0], /since=1/);
+  assert.doesNotMatch(calls[1], /since=/);
+  assert.equal(vm.runInContext('STATE.history.length', app), 0);
+  assert.equal(app.readLocalDemoStateBackup().workspaceId, 'recovery-20261005');
+  const db = await app.openRecoveryDatabase();
+  const archived = await new Promise((resolve, reject) => {
+    const req = db.transaction('backups').objectStore('backups').get('workspace-archive:legacy:2026-10-06T00:00:00Z');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  assert.equal(archived.history[0].id, 'old');
+});
+
 test('grote herstelkopie blijft via IndexedDB bewaard wanneer localStorage vol is', async () => {
   const { IDBFactory } = require('fake-indexeddb');
   const indexedDB = new IDBFactory();

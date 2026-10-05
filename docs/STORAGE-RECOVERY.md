@@ -96,6 +96,43 @@ Bronnen gecontroleerd 5 oktober 2026:
 
 ## Verificatie
 
+### Herstelonderzoek 5 oktober 2026
+
+- Vercel CLI heeft toegang tot het correcte `re-markt/grade-app`-project.
+- Beide oude bronnen weigeren reads wegens quota: Upstash via REST en Neon
+  zowel via HTTP als via de gewone TLS/Postgres-verbinding. Dit is geen bewijs
+  dat records verwijderd zijn. De oude bronnen zijn niet vervangen of gewist.
+- De productie-origin van de gecontroleerde Chrome-profielen bevat alleen een
+  accountcache. De gevonden localhost-batchkopie is van mei, niet van oktober.
+  Chrome-opslag is alleen gekopieerd; oorspronkelijke profielen zijn behouden.
+- Een afzonderlijk **Free** Neon-project `grade-app-recovery-20261005` is gekoppeld
+  aan uitsluitend Development met prefix `RECOVERY_`. Het bevat de 29 accounts
+  uit de accounts-only-export. Namen, rollen en wachtwoordhashes zijn na het
+  schrijven teruggelezen en gecontroleerd. Operationele collecties zijn leeg.
+- Productie is NIET omgeschakeld. Een tijdelijke start met accounts en opnieuw
+  geïmporteerde leverancierslijsten vereist een expliciete keuze van de beheerder:
+  deze herstelt geen oude beoordelingen, labelregistraties of batchstatussen.
+- Er is een afzonderlijk onuitgerold brononderzoekproject
+  `grade-app-source-recovery-20261005`, uitsluitend Development verbonden met de
+  oude Neon-bron. Dit wijzigt de bestaande productieverbinding niet.
+- Private exports, connection-strings en browserkopieën staan onder de genegeerde
+  `data/` en `tmp/` directories; deze mogen nooit in Git of een deployment komen.
+
+De beheerder heeft de tijdelijke accounts-only-werkruimte vervolgens expliciet
+goedgekeurd. Omschakeling gebruikt `REMARKT_DATABASE_URL` (Production Secret)
+en `REMARKT_WORKSPACE_ID=recovery-20261005` (Production Config). De oorspronkelijke
+`DATABASE_URL` en Redis-variabelen blijven intact. Nieuwe deployments kiezen de
+override; bestaande deployments worden hierdoor niet gewijzigd. Terugdraaien
+vereist het verwijderen van de override en een nieuwe deployment, maar alleen
+nadat nieuwe werkrecords zijn veiliggesteld en de bron weer toegankelijk is.
+
+Bij een workspacewissel archiveert de nieuwe browsercode de oude lokale kopie
+onder `workspace-archive:*` in IndexedDB vóór de actieve kopie wordt vervangen.
+Revisienummers van verschillende databases worden niet als dezelfde delta gezien.
+Oude tabbladen zonder het nieuwe workspace-ID krijgen HTTP 409 bij opslaan en
+moeten worden herladen. Automatisch mengen van oude en nieuwe gegevens is verboden;
+later herstel moet gecontroleerd op individuele records gebeuren.
+
 `npm test` omvat de bestaande workflowtests, browsercache/outage-regressies en
 echte PostgreSQL-querytests via PGlite. Tests behandelen migratiebehoud,
 deelupdates, gelijktijdige nieuwe beoordelingen, accounts, delete/restoremarkers,

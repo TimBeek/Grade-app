@@ -15,6 +15,8 @@ import { sendStorageError } from './_lib/storage-error.mjs';
 
 export default async function handler(request, response) {
   response.setHeader("Cache-Control", "no-store");
+  const workspaceId = String(process.env.REMARKT_WORKSPACE_ID || '').trim();
+  if (workspaceId) response.setHeader('X-Remarkt-Workspace', workspaceId);
 
   try {
     if (request.method === "GET") {
@@ -45,6 +47,12 @@ export default async function handler(request, response) {
 
     if (request.method === "POST") {
       const incoming = fromBody(await readJsonBody(request));
+      // Reject pre-cutover tabs instead of importing stale operational records.
+      if (workspaceId && incoming?.workspaceId !== workspaceId) {
+        response.status(409).json({ ok: false, code: 'STORAGE_WORKSPACE_CHANGED',
+          error: 'The working database changed. Reload the app before saving.' });
+        return;
+      }
       const result = await kvMergeState(incoming);
       response.status(200).json({ ok: true, ...result });
       return;

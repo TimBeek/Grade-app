@@ -23,6 +23,7 @@ export default async function handler(request, response) {
       ok: true,
       service: "remarkt-grading",
       storage: storageKind(),
+      workspaceId: String(process.env.REMARKT_WORKSPACE_ID || ''),
       updatedAt: summary && summary.updatedAt ? summary.updatedAt : null,
       counts: summary ? summary.counts : {},
       backup,

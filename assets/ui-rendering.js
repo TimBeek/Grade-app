@@ -257,6 +257,11 @@ function renderLogin() {
 }
 
 function renderStorageStatus() {
+  if (!STATE.sharedStorageError && !STATE.localBackupError && STATE.sharedWorkspaceId.startsWith('recovery-')) {
+    return `<section class="storage-status" role="status"><strong>Temporary working database</strong>
+      <p>Existing accounts are restored. Import the required supplier lists to start working. Previous grading history is awaiting recovery.</p>
+      <button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button></section>`;
+  }
   if (!STATE.sharedStorageError && !STATE.localBackupError) return '';
   const quota = STATE.sharedStorageError === 'STORAGE_QUOTA_EXCEEDED';
   const recovery = getLocalRecoveryExport();

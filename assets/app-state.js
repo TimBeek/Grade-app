@@ -46,6 +46,7 @@ const STATE = {
   accountSearch: '',
   sharedSyncPending: false,
   sharedStorageError: null,
+  sharedWorkspaceId: '',
   localRecoveryAvailable: false,
   localBackupError: false,
   appMessage: null,
@@ -2063,6 +2064,7 @@ function getSharedDemoSnapshot(options = {}) {
   const now = new Date().toISOString();
   return {
     version: 1,
+    ...(STATE.sharedWorkspaceId ? { workspaceId: STATE.sharedWorkspaceId } : {}),
     ...(includeUsers ? {
       users: USERS.map(serializeUser),
       userSync: 'user-management',
@@ -2169,6 +2171,25 @@ function saveLocalDemoStateBackup(snapshot = getSharedDemoSnapshot()) {
     } catch { STATE.localBackupError = !smallCopySaved; return smallCopySaved; }
   });
   return durableBackupWrite;
+}
+
+async function archivePreviousWorkspace(snapshot) {
+  if (!snapshot) return;
+  await durableBackupWrite;
+  const key = `workspace-archive:${snapshot.workspaceId || 'legacy'}:${snapshot.updatedAt || 'unknown'}`;
+  const db = await openRecoveryDatabase();
+  if (!db) {
+    // Failure must stop the cutover, not erase the only old recovery copy.
+    localStorage.setItem(key, JSON.stringify(snapshot));
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('backups', 'readwrite');
+    tx.objectStore('backups').put(snapshot, key);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
 }
 
 function readLocalDemoStateBackup() {
@@ -2347,6 +2368,7 @@ function mergeSharedDemoStateForLoad(primary, secondary, options = {}) {
 function chooseSharedDemoState(remoteState, localState) {
   if (!remoteState || typeof remoteState !== 'object') return localState;
   if (!localState || typeof localState !== 'object') return remoteState;
+  if ((remoteState.workspaceId || '') !== (localState.workspaceId || '')) return remoteState;
 
   const remoteTime = getSharedDemoStateTimestamp(remoteState);
   const localTime = getSharedDemoStateTimestamp(localState);
@@ -2444,6 +2466,7 @@ function applySharedUsers(state) {
 
 function applySharedDemoState(state) {
   if (!state || typeof state !== 'object') return false;
+  STATE.sharedWorkspaceId = String(state.workspaceId || '');
 
   STATE.deletedBatchIds = normalizeDeletedBatchIds(state.deletedBatchIds);
   STATE.deletedLaptopStickers = normalizeDeletedLaptopStickers(state.deletedLaptopStickers);
@@ -2620,6 +2643,7 @@ function createSharedStateDelta(snapshot, previous) {
   const batchKey = batch => sanitizeExternalText(batch && (batch.id || batch.nummer), 100);
   return {
     version: snapshot.version,
+    ...(snapshot.workspaceId ? { workspaceId: snapshot.workspaceId } : {}),
     ...(snapshot.userSync ? {
       users: snapshot.users,
       userSync: snapshot.userSync,
@@ -2663,10 +2687,23 @@ async function loadSharedDemoState() {
     const canDelta = localState && !STATE.sharedSyncPending && Number.isSafeInteger(localState.storageRevision) &&
       localState.storageRevision > 0 && SHARED_DEMO_STATE_SUPPORTS_GZIP;
     const url = canDelta ? `${SHARED_DEMO_STATE_URL}?since=${localState.storageRevision}` : sharedDemoStateGetUrl();
-    const response = await fetch(url, { cache: 'no-store' });
+    let response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) { await readStorageFailure(response); return loadLocalDemoStateBackup(); }
+    const workspaceId = response.headers?.get('X-Remarkt-Workspace') || '';
+    const workspaceChanged = Boolean(localState && (localState.workspaceId || '') !== workspaceId);
+    if (workspaceChanged) {
+      await archivePreviousWorkspace(localState);
+      STATE.sharedSyncPending = false;
+      if (canDelta) {
+        // Revisions from different databases can coincide: request a full state.
+        response = await fetch(sharedDemoStateGetUrl(), { cache: 'no-store' });
+        if (!response.ok) { await readStorageFailure(response); return loadLocalDemoStateBackup(); }
+      }
+    }
     const payload = await response.json();
     const remoteState = payload.shardedDelta ? await applyStorageDeltaToBackup(payload, localState) : await decodeSharedDemoStatePayload(payload);
+    remoteState.workspaceId = workspaceId;
+    STATE.sharedWorkspaceId = workspaceId;
     STATE.sharedStorageError = null;
     lastSharedStateStamp = remoteState.updatedAt || null;
     const state = chooseSharedDemoState(remoteState, localState);

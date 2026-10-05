@@ -6,6 +6,8 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Temporary working database': 'Tijdelijke werkdatabase',
+  'Existing accounts are restored. Import the required supplier lists to start working. Previous grading history is awaiting recovery.': 'Bestaande accounts zijn hersteld. Importeer de benodigde leverancierslijsten om te starten. De eerdere beoordelingshistorie wacht nog op herstel.',
   'Download cached accounts only': 'Alleen opgeslagen accounts downloaden',
   'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.': 'Het label is geprint, maar live opslaan en de lokale herstelkopie zijn mislukt. Houd dit tabblad open en neem contact op met je manager voordat je verdergaat.',
   'Database usage limit reached': 'Databaselimiet bereikt',
