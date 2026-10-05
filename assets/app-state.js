@@ -2505,6 +2505,21 @@ function markSharedStorageFailure(payload) {
   }
 }
 
+function getLocalRecoveryExport() {
+  const backup = readLocalDemoStateBackup();
+  if (backup) return backup;
+  // Accounts were stored separately even when the operational archive did
+  // not fit localStorage. Export only genuinely cached rows, never seed users.
+  try {
+    const saved = JSON.parse(localStorage.getItem(DEMO_STORAGE_KEYS.users) || 'null');
+    if (!Array.isArray(saved)) return null;
+    const users = saved.map(normalizeStoredUser).filter(Boolean).map(serializeUser);
+    if (!users.length) return null;
+    return { _recoveryScope: 'accounts-only', exportedAt: new Date().toISOString(),
+      users, userSync: 'user-management' };
+  } catch { return null; }
+}
+
 async function readStorageFailure(response) {
   try { markSharedStorageFailure(await response.json()); }
   catch { markSharedStorageFailure(null); }

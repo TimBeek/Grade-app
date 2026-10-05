@@ -51,6 +51,10 @@ Geen gemengde oude/nieuwe deployments laten schrijven tijdens de omschakeling.
 2. Open de nieuwste app. Bij databaseproblemen verschijnt een storingsmelding.
 3. Als de melding een lokale kopie meldt, kies **Lokale herstelkopie downloaden**.
    Bewaar het JSON-bestand beveiligd; het bevat bedrijfsgegevens en wachtwoordhashes.
+   Als alleen de aparte accountcache over is, verschijnt **Alleen opgeslagen
+   accounts downloaden**. Dit bestand bevat GEEN batches of beoordelingen en
+   wordt met `_recoveryScope: accounts-only` gemarkeerd. Geen volledige restore
+   uitvoeren met zo'n gedeeltelijk bestand.
 4. Verzamel zo nodig meerdere kopieën. Controleer updatedAt, aantallen en individuele
    record-ID's; de nieuwste datum alleen bewijst geen volledigheid.
 5. Test herstel op een apart leeg doel vóór productie wordt omgeschakeld. Bewaar

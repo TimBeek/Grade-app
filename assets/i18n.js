@@ -6,6 +6,7 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Download cached accounts only': 'Alleen opgeslagen accounts downloaden',
   'The label was printed, but live saving and the local recovery copy failed. Keep this tab open and contact your manager before continuing.': 'Het label is geprint, maar live opslaan en de lokale herstelkopie zijn mislukt. Houd dit tabblad open en neem contact op met je manager voordat je verdergaat.',
   'Database usage limit reached': 'Databaselimiet bereikt',
   'Live database unavailable': 'Live database niet bereikbaar',

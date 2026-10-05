@@ -87,7 +87,7 @@ function render() {
   const app = document.getElementById('app');
   let html = '';
   
-  if (STATE.currentScreen === 'login') {
+  if (STATE.currentScreen === 'login' || (STATE.sharedStorageError && !STATE.localRecoveryAvailable)) {
     html = renderLogin();
   } else {
     if (typeof enforceDeviceAccess === 'function') enforceDeviceAccess();
@@ -221,6 +221,18 @@ function renderImagePreviewModal(preview) {
 }
 
 function renderLogin() {
+  // Built-in fallback users are NOT recovered production accounts. During
+  // an outage without an operational copy, do not present them as real users.
+  if (STATE.sharedStorageError && !STATE.localRecoveryAvailable) {
+    return `<div class="screen">
+      ${renderStorageStatus()}
+      ${renderAppMessage()}
+      <div class="login-card">
+        <div class="login-language-row">${renderOptionalLanguageToggle()}</div>
+        <h1>REMARKT GRADING</h1>
+      </div>
+    </div>`;
+  }
   return `
     <div class="screen">
       ${renderStorageStatus()}
@@ -247,6 +259,7 @@ function renderLogin() {
 function renderStorageStatus() {
   if (!STATE.sharedStorageError && !STATE.localBackupError) return '';
   const quota = STATE.sharedStorageError === 'STORAGE_QUOTA_EXCEEDED';
+  const recovery = getLocalRecoveryExport();
   return `<section id="storage-status" class="storage-status" role="alert" aria-live="polite">
     <strong>${quota ? 'Database usage limit reached' : STATE.sharedStorageError ? 'Live database unavailable' : 'Local recovery copy could not be saved'}</strong>
     <p>${STATE.sharedStorageError
@@ -257,7 +270,7 @@ function renderStorageStatus() {
       : 'No local operational copy is available in this browser. Do not recreate accounts or batches.'}</p>` : ''}
     <div class="storage-status-actions">
       ${STATE.sharedStorageError ? '<button class="btn btn-secondary" data-action="retry_storage" type="button">Retry connection</button>' : ''}
-      ${readLocalDemoStateBackup() ? '<button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button>' : ''}
+      ${recovery ? `<button class="btn btn-secondary" data-action="download_local_backup" type="button">${recovery._recoveryScope === 'accounts-only' ? 'Download cached accounts only' : 'Download local recovery copy'}</button>` : ''}
     </div>
   </section>`;
 }

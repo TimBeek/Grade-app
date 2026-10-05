@@ -848,8 +848,30 @@ test('storing zonder kopie ziet er niet uit als een succesvolle lege database', 
   assert.equal(await app.loadSharedDemoState(), false);
   assert.equal(vm.runInContext('STATE.localRecoveryAvailable', app), false);
   assert.match(app.renderLogin(), /No local operational copy/);
+  assert.doesNotMatch(app.renderLogin(), /id="loginUser"|id="loginPassword"|data-action="login_password"/);
+  vm.runInContext("STATE.currentUser=USERS[0]; STATE.currentScreen='home'; render();", app);
+  assert.doesNotMatch(app.document.getElementById('app').innerHTML, /data-action="scan"/);
   vm.runInContext("STATE.language='nl';", app);
   assert.equal(app.translateCopy('Database usage limit reached'), 'Databaselimiet bereikt');
+});
+
+test('accountcache is apart te herstellen en wordt nooit een volledige of fictieve backup', () => {
+  const app = loadAppSandbox();
+  assert.equal(app.getLocalRecoveryExport(), null);
+  vm.runInContext(`
+    localStorage.setItem(DEMO_STORAGE_KEYS.users, JSON.stringify([
+      {...serializeUser(USERS[0]), id:'cached-worker', naam:'Cached worker'}
+    ]));
+    STATE.sharedStorageError='STORAGE_UNAVAILABLE';
+    globalThis.__accountRecovery = getLocalRecoveryExport();
+  `, app);
+  assert.equal(vm.runInContext('__accountRecovery._recoveryScope', app), 'accounts-only');
+  assert.equal(vm.runInContext('__accountRecovery.users.length', app), 1);
+  assert.equal(vm.runInContext('__accountRecovery.users[0].id', app), 'cached-worker');
+  assert.equal(vm.runInContext('__accountRecovery.batches', app), undefined);
+  assert.equal(vm.runInContext('STATE.localRecoveryAvailable', app), false);
+  assert.match(app.renderLogin(), /Download cached accounts only/);
+  assert.doesNotMatch(app.renderLogin(), /id="loginUser"/);
 });
 
 test('grote herstelkopie blijft via IndexedDB bewaard wanneer localStorage vol is', async () => {

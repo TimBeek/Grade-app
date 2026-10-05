@@ -1038,12 +1038,12 @@ async function handleAction(action, el) {
     return;
   }
   if (action === 'download_local_backup') {
-    const backup = readLocalDemoStateBackup();
+    const backup = getLocalRecoveryExport();
     if (!backup) return;
     const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `remarkt-recovery-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `remarkt-recovery-${backup._recoveryScope === 'accounts-only' ? 'accounts-only-' : ''}${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return;
