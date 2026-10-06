@@ -306,6 +306,18 @@ test('inspection photos remain centered and uncropped in a viewport-fitting comp
   assert.match(css, /\.inspection-photo\s*\{\s*height:\s*auto;\s*aspect-ratio:\s*1\.5/);
 });
 
+test('all nine inspection steps show subtle A/B/C/X choice hints without changing internal D scoring', () => {
+  const app=guidedSandbox();
+  for(let i=0;i<9;i++) {
+    app.visitGuidedComponent(i);
+    const html=app.renderGuidedInspection();
+    const letters=[...html.matchAll(/class="inspection-choice-grade"[^>]*>([A-Z])<\/span>/g)].map(match=>match[1]);
+    assert.deepEqual(letters,['A','B','C','X']);
+    assert.match(html,/data-keuze="D"/);
+    assert.match(html,/aria-label="X · /);
+  }
+});
+
 test('inspection chooses one row only when complete reference photos become larger', () => {
   const app = loadAppSandbox();
   assert.equal(app.chooseInspectionColumns({2:250,4:210}),2);
