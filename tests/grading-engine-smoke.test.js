@@ -313,6 +313,7 @@ test('all nine inspection steps show subtle A/B/C/X choice hints without changin
     const html=app.renderGuidedInspection();
     const letters=[...html.matchAll(/class="inspection-choice-grade"[^>]*>([A-Z])<\/span>/g)].map(match=>match[1]);
     assert.deepEqual(letters,['A','B','C','X']);
+    for (const letter of letters) assert.match(html, new RegExp('class="inspection-choice-grade" data-grade="'+letter+'"'));
     assert.match(html,/data-keuze="D"/);
     assert.match(html,/aria-label="X · /);
   }
