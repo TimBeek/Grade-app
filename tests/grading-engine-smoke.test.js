@@ -190,6 +190,33 @@ test('backup warnings are manager-only and cannot be hidden by dismissing the te
   assert.equal(app.renderRecordProtectionAlerts(),'');
 });
 
+test('Data protection closes persistently per account/workspace, but new incidents reappear',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='recovery-qa';STATE.currentUser=USERS.find(u=>u.id==='tim');STATE.recordProtection={status:'current',mirrorStatus:'not-configured'};",app);
+  assert.match(app.renderRecordProtectionAlerts(),/dismiss_record_protection/);
+  await app.handleAction('dismiss_record_protection',{});
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+  vm.runInContext("STATE.dismissedRecordProtection=null;STATE.recordProtection.revision=99;STATE.recordProtection.createdAt=new Date().toISOString();",app);
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+  vm.runInContext("STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';",app);
+  assert.match(app.renderStorageStatus(),/Database usage limit reached/);
+  vm.runInContext("STATE.sharedWorkspaceId='other';",app);
+  assert.match(app.renderRecordProtectionAlerts(),/dismiss_record_protection/);
+  vm.runInContext("STATE.sharedWorkspaceId='recovery-qa';STATE.currentUser={id:'other-manager',rol:'Manager'};",app);
+  assert.match(app.renderRecordProtectionAlerts(),/dismiss_record_protection/);
+  vm.runInContext("STATE.currentUser=USERS.find(u=>u.id==='tim');STATE.recordProtection.status='stale';",app);
+  assert.match(app.renderRecordProtectionAlerts(),/over two hours old/);
+  await app.handleAction('dismiss_record_protection',{});
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+  vm.runInContext("STATE.recordProtection={status:'current',mirrorStatus:'current'};",app);
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+  vm.runInContext("STATE.recordProtection.status='stale';",app);
+  assert.match(app.renderRecordProtectionAlerts(),/over two hours old/);
+  await app.handleAction('dismiss_record_protection',{});
+  vm.runInContext("STATE.sharedSyncPending=true;",app);
+  assert.match(app.renderRecordProtectionAlerts(),/not yet been saved live/);
+});
+
 test('record reads never acknowledge dirty local fields or advance their revision; projection completeness survives caching',async()=>{
   const app=loadAppSandbox();
   vm.runInContext(`STATE.storageFormat=3;STATE.serverAuth=true;STATE.sharedWorkspaceId='test';
@@ -266,6 +293,15 @@ test('alle negen foto-schermen hebben dezelfde opbouw zonder schadebalk of reken
     assert.doesNotMatch(html, /Functional =|functioneel =|not functional =|minGrade|Grade [ABC]/i);
     assert.ok(vm.runInContext('getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].triggers.every(t => GUIDED_PHOTO_FINDINGS[t.id])', app));
   }
+});
+
+test('inspection photos stay large, centered and uncropped instead of shrinking on short desktops', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
+  assert.match(css, /\.inspection-photo\s*\{[^}]*height:\s*clamp\(240px,\s*30dvh,\s*360px\)/);
+  assert.match(css, /\.inspection-photo img\s*\{[^}]*object-fit:\s*contain;[^}]*object-position:\s*center/);
+  assert.doesNotMatch(css, /calc\(\(100dvh - 590px\) \/ 2\)/);
+  assert.doesNotMatch(css, /\.inspection-choices\s*\{[^}]*grid-template-columns:\s*repeat\(4,/);
+  assert.match(css, /\.inspection-photo\s*\{\s*height:\s*auto;\s*aspect-ratio:\s*1\.5/);
 });
 
 test('haarscheur bij schermrand-foto B gebruikt de bestaande detailregel', async () => {

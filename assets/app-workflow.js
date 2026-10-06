@@ -1036,6 +1036,10 @@ function guardPasswordChangeAction(action) {
 }
 
 async function handleAction(action, el) {
+  if (action === 'dismiss_record_protection') {
+    dismissRecordProtectionNotice();
+    render(); return;
+  }
   if (action === 'dismiss_recovery_notice') {
     STATE.dismissedRecoveryNotice = STATE.sharedWorkspaceId;
     try { localStorage.setItem('remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId, '1'); } catch { /* Memory fallback. */ }

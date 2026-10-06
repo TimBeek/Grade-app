@@ -150,7 +150,11 @@ Controleer werkelijke Neon/Vercel quota en foutpercentages tijdens dagelijks geb
 Managers zien meldingen bij een ontbrekende/verouderde gecontroleerde back-up
 (ouder dan twee uur), nieuwe revisies die nog op de uurtaak wachten, een falende
 tweede kopie en niet live opgeslagen browserwerk. Informatieve status is
-uitklapbaar; urgente fouten blijven zichtbaar. De browser waarschuwt ook bij
+uitklapbaar. Het paneel Data protection is met een kruisje te sluiten; die keuze
+blijft per account en werkdatabase bewaard totdat de meldingen veranderen of
+de app een gezonde status ziet. Nieuwe incidenten verschijnen opnieuw.
+Verbindingsfouten die veilig werken blokkeren blijven afzonderlijk zichtbaar.
+De browser waarschuwt ook bij
 meer dan 120 responses/minuut of 10 MiB/minuut aan beschikbare Content-Length.
 Dat is een beperkte lokale indicatie, geen complete datameting/providerfactuur.
 

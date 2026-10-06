@@ -22,8 +22,8 @@ function rememberRecordProtection(stats) {
   if(STATE.recordInsights && stats.storageRevision!==undefined &&
     Number(STATE.recordInsights.data.revision)!==Number(stats.storageRevision))invalidateRecordInsights();
 }
-function renderRecordProtectionAlerts() {
-  if(STATE.storageFormat!==3 || !STATE.currentUser || !isAdminUser())return '';
+function recordProtectionNotice() {
+  if(STATE.storageFormat!==3 || !STATE.currentUser || !isAdminUser())return null;
   const alerts=[];
   const backup=STATE.recordProtection;
   if(backup) {
@@ -36,10 +36,37 @@ function renderRecordProtectionAlerts() {
   }
   if(STATE.sharedSyncPending)alerts.push('Changes in this browser have not yet been saved live. Do not clear browser data.');
   if(STATE.recordTrafficAlert)alerts.push('Unusually high traffic in this browser. This is not the provider quota measurement.');
-  if(!alerts.length)return '';
+  if(!alerts.length)return null;
   const urgent=STATE.sharedSyncPending || STATE.recordTrafficAlert || backup?.status==='missing' || backup?.status==='stale' ||
     Date.now()-Date.parse(backup?.createdAt||'')>2*60*60*1000 || ['failed','stale'].includes(backup?.mirrorStatus);
-  return `<details class="storage-status storage-protection" role="status" aria-live="polite" ${urgent?'open':''}><summary><strong>Data protection</strong></summary>
+  return {alerts,urgent,signature:JSON.stringify(alerts)};
+}
+function recordProtectionDismissalKey() {
+  return 'remarktProtectionDismissed:'+JSON.stringify([STATE.sharedWorkspaceId,STATE.currentUser?.id]);
+}
+function dismissRecordProtectionNotice() {
+  const notice=recordProtectionNotice();
+  if(!notice)return;
+  const key=recordProtectionDismissalKey();
+  STATE.dismissedRecordProtection={key,signature:notice.signature};
+  try {localStorage.setItem(key,notice.signature);}catch { /* Memory fallback. */ }
+}
+function renderRecordProtectionAlerts() {
+  if(STATE.storageFormat!==3 || !STATE.currentUser || !isAdminUser())return '';
+  const notice=recordProtectionNotice(),key=recordProtectionDismissalKey();
+  let dismissed=STATE.dismissedRecordProtection?.key===key?STATE.dismissedRecordProtection.signature:null;
+  try {dismissed=localStorage.getItem(key) || dismissed;}catch { /* Memory fallback. */ }
+  if(notice && dismissed===notice.signature)return '';
+  // Forget the acknowledgement on recovery or a changed warning, not on every
+  // heartbeat/revision. The same issue can then be raised again after recovery.
+  if(dismissed) {
+    STATE.dismissedRecordProtection=null;
+    try {localStorage.removeItem(key);}catch { /* Memory fallback. */ }
+  }
+  if(!notice)return '';
+  const {alerts,urgent}=notice,backup=STATE.recordProtection;
+  return `<details class="storage-status storage-protection storage-status-dismissible" role="status" aria-live="polite" ${urgent?'open':''}><summary><strong>Data protection</strong>
+    <button class="storage-status-close" data-action="dismiss_record_protection" type="button" aria-label="Close" title="Close">${uiIcon('close')}</button></summary>
     ${alerts.map(message=>`<p>${escapeHtml(message)}</p>`).join('')}
     <p>Last verified backup: ${escapeHtml(backup?.createdAt?new Date(backup.createdAt).toLocaleString('nl-NL'):'—')}</p></details>`;
 }
