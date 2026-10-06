@@ -89,6 +89,7 @@ function installLiveUserSync() {
   setInterval(sync, SYNC_INTERVAL_MS);
 }
 
+installWorkspaceDisplay();
 initApp();
 installSharedStateRefresh();
 installLiveUserSync();

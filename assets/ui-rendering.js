@@ -119,6 +119,7 @@ function render() {
   
   app.innerHTML = html;
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
+  if (typeof fitInspectionViewport === 'function') fitInspectionViewport();
   attachListeners();
   if (typeof focusGuidedDialog === 'function') focusGuidedDialog(app);
   if (STATE.currentScreen === 'grading_beginner' && isGuidedInspection() && !STATE.imagePreview && !getGuidedDialogType()) {
@@ -378,6 +379,7 @@ function renderTopbar() {
         ${renderOptionalLanguageToggle()}
         ${renderThemeToggle()}
         ${renderContrastToggle()}
+        ${renderFullscreenToggle()}
         ${backAction ? `<button class="btn-icon" data-action="${backAction}">← Back</button>` : ''}
         ${backAction && backAction !== 'home' ? '<button class="btn-icon" data-action="home">Home</button>' : ''}
         <button class="btn-icon" data-action="logout">Sign out</button>
@@ -509,6 +511,8 @@ function getScreenTitle() {
 
 function uiIcon(name) {
   const icons = {
+    fullscreen: '<path d="M8 3H3v5M14 3h5v5M19 14v5h-5M8 19H3v-5"/>',
+    fullscreen_exit: '<path d="M3 8h5V3M14 3v5h5M19 14h-5v5M8 19v-5H3"/>',
     part_bovenkap: '<rect x="3" y="4" width="16" height="14" rx="1.5"/><circle cx="11" cy="11" r="1.5"/>',
     part_onderkant: '<rect x="3" y="4" width="16" height="14" rx="1.5"/><path d="M6 7h.01M16 7h.01M6 15h.01M16 15h.01M8 10h6M8 12h6"/>',
     part_randen: '<path d="M8 3H4a1 1 0 0 0-1 1v4M14 3h4a1 1 0 0 1 1 1v4M19 14v4a1 1 0 0 1-1 1h-4M8 19H4a1 1 0 0 1-1-1v-4"/><rect x="7" y="7" width="8" height="8" rx="1"/>',

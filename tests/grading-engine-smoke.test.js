@@ -14,6 +14,7 @@ function loadAppSandbox(options = {}) {
     'analytics-history.js',
     'label-printing.js',
     'i18n.js',
+    'workspace-display.js',
     'ui-rendering.js',
     'app-workflow.js',
     'remarkt-grading.js',
@@ -295,13 +296,48 @@ test('alle negen foto-schermen hebben dezelfde opbouw zonder schadebalk of reken
   }
 });
 
-test('inspection photos stay large, centered and uncropped instead of shrinking on short desktops', () => {
+test('inspection photos remain centered and uncropped in a viewport-fitting comparison', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
   assert.match(css, /\.inspection-photo\s*\{[^}]*height:\s*clamp\(240px,\s*30dvh,\s*360px\)/);
   assert.match(css, /\.inspection-photo img\s*\{[^}]*object-fit:\s*contain;[^}]*object-position:\s*center/);
   assert.doesNotMatch(css, /calc\(\(100dvh - 590px\) \/ 2\)/);
-  assert.doesNotMatch(css, /\.inspection-choices\s*\{[^}]*grid-template-columns:\s*repeat\(4,/);
+  assert.match(css, /\.screen\.inspection-fit\s*\{[^}]*height:\s*var\(--inspection-work-height\)/);
+  assert.match(css, /\.inspection-fit \.inspection-footer\s*\{[^}]*position:\s*static/);
   assert.match(css, /\.inspection-photo\s*\{\s*height:\s*auto;\s*aspect-ratio:\s*1\.5/);
+});
+
+test('inspection chooses one row only when complete reference photos become larger', () => {
+  const app = loadAppSandbox();
+  assert.equal(app.chooseInspectionColumns({2:250,4:210}),2);
+  assert.equal(app.chooseInspectionColumns({2:180,4:230}),4);
+  assert.equal(app.chooseInspectionColumns({2:200,4:208}),2);
+});
+
+test('fullscreen uses the stable document root and does not render or erase manual input', async () => {
+  const app = loadAppSandbox();
+  let renders=0,requests=0,exits=0;
+  app.render=()=>{renders++;};
+  const root={requestFullscreen:async()=>{requests++;app.document.fullscreenElement=root;}};
+  app.document.documentElement=root;
+  app.document.exitFullscreen=async()=>{exits++;app.document.fullscreenElement=null;};
+  await app.handleAction('toggle_fullscreen',{});
+  assert.equal(app.appIsFullscreen(),true);
+  assert.equal(requests,1);
+  assert.equal(renders,0);
+  await app.handleAction('toggle_fullscreen',{});
+  assert.equal(app.appIsFullscreen(),false);
+  assert.equal(exits,1);
+  assert.equal(renders,0);
+});
+
+test('denied fullscreen leaves entered values intact and offers a translated F11 fallback', async () => {
+  const app=loadAppSandbox();let warning='',renders=0;
+  app.document.documentElement={requestFullscreen:async()=>{throw new Error('Denied');}};
+  app.window.alert=message=>{warning=message;};app.render=()=>{renders++;};
+  await app.toggleAppFullscreen();
+  assert.match(warning,/F11/);assert.equal(renders,0);
+  assert.equal(app.appIsFullscreen(),false);
+  assert.match(app.NL_COPY?.Fullscreen || vm.runInContext("NL_COPY.Fullscreen",app),/Volledig scherm/);
 });
 
 test('haarscheur bij schermrand-foto B gebruikt de bestaande detailregel', async () => {
@@ -4740,7 +4776,7 @@ test('alleen het vergrootglas opent afbeelding, de foto zelf blijft keuze', () =
   assert.match(html, /class="inspection-photo"/);
   assert.match(html, /class="inspection-zoom" data-image-preview="true"/);
   assert.doesNotMatch(html, /inspection-photo[^>]+data-image-preview="true"/);
-  assert.match(html, /<\/button>\s*<button type="button" class="inspection-zoom"/);
+  assert.match(html, /<\/button>\s*(?:<div class="inspection-photo-hints"><\/div>\s*)?<button type="button" class="inspection-zoom"/);
 });
 
 test('vergrootglas gebruikt pointer/touch handler voor tablet', () => {

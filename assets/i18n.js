@@ -6,6 +6,9 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Fullscreen': 'Volledig scherm',
+  'Exit fullscreen': 'Volledig scherm verlaten',
+  'Fullscreen could not start. Use F11 in Chrome or Edge. Your input is unchanged.': 'Volledig scherm kon niet starten. Gebruik F11 in Chrome of Edge. Je invoer blijft behouden.',
   'Existing accounts and current batches are available. Previous grading history is awaiting recovery.':'Bestaande accounts en huidige batches zijn beschikbaar. Eerdere beoordelingshistorie wacht nog op herstel.',
   'Data protection':'Gegevensbescherming',
   'No verified external backup is available.':'Er is geen gecontroleerde externe back-up beschikbaar.',

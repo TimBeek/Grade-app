@@ -347,8 +347,8 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .inspection-example.selected { border-color: var(--remarkt-red); }
 .inspection-choice { width: 100%; flex: 1; display: flex; flex-direction: column; text-align: left; background: transparent; color: var(--inspection-ink); padding: 0; border: 0; cursor: pointer; font: inherit; }
 .inspection-choice:hover { background: var(--remarkt-soft); }
-/* Reference photos take priority over fitting the entire inspection into a
-   short viewport. Keep a readable two-by-two comparison and allow scrolling. */
+/* Accessible fallback for phones/extreme zoom. Workstation inspection uses
+   the measured viewport fit below, keeping photos and all controls visible. */
 .inspection-photo { display: block; width: 100%; background: #fff; height: clamp(240px, 30dvh, 360px); flex-shrink: 0; }
 .inspection-photo img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .inspection-choices.has-selection .inspection-example:not(.selected) .inspection-photo { position: relative; }
@@ -365,6 +365,7 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .inspection-choice-copy strong { font-size: 17px; line-height: 1.3; padding-right: 0; }
 .inspection-choice-copy > span { color: var(--inspection-muted); font-size: 13px; line-height: 1.4; }
 .inspection-photo-hints { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+.inspection-photo-hints:empty { padding: 0; }
 .inspection-photo-hint { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 7px 10px; border: 1px solid var(--remarkt-line); background: var(--inspection-surface); color: var(--inspection-ink); border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px; }
 .inspection-photo-hint:hover, .inspection-photo-hint.active { color: var(--inspection-warning); border-color: var(--inspection-warning); background: var(--inspection-warning-bg); }
 .inspection-photo-hint:disabled { opacity: .6; cursor: default; }
@@ -381,6 +382,20 @@ html[data-theme="dark"] .action-info-panel { background: rgba(255,255,255,0.06);
 .inspection-help { font-size: 13px; color: var(--inspection-muted); margin: 10px 0; }
 .inspection-help summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
 .inspection-help p { max-width: 70ch; line-height: 1.6; }
+/* The measured remaining viewport is shared by photos, captions, findings and
+   actions. No overflow:hidden: every choice must actually fit. */
+.screen.inspection-fit { height: var(--inspection-work-height); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr) auto; gap: 8px; padding-block: 8px; }
+.inspection-fit .inspection-header, .inspection-fit .inspection-step-rail, .inspection-fit .inspection-guidance { margin-bottom: 0; }
+.inspection-fit .inspection-choices { min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.inspection-fit .inspection-choices[data-columns="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+.inspection-fit .inspection-example, .inspection-fit .inspection-choice { min-height: 0; }
+.inspection-fit .inspection-photo { height: auto; min-height: 0; flex: 1; aspect-ratio: auto; }
+.inspection-fit .inspection-choice-copy { flex: 0 0 auto; min-height: var(--inspection-copy-height, 0px); padding: 8px 10px; }
+.inspection-fit .inspection-choice-copy strong { font-size: 16px; }
+.inspection-fit .inspection-photo-hints { padding-inline: 10px; min-height: var(--inspection-findings-height, 0px); }
+.inspection-fit .inspection-footer { position: static; margin-top: 0; }
+.fullscreen-toggle { min-width: 44px; min-height: 44px; }
+.fullscreen-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .inspection-detail h2 { font-size: 22px; margin: 0 0 8px; }
 .inspection-detail > p { color: var(--inspection-muted); margin-bottom: 18px; }
 .inspection-detail-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-bottom: 18px; }

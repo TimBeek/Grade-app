@@ -1036,6 +1036,9 @@ function guardPasswordChangeAction(action) {
 }
 
 async function handleAction(action, el) {
+  if (action === 'toggle_fullscreen') {
+    await toggleAppFullscreen(); return;
+  }
   if (action === 'dismiss_record_protection') {
     dismissRecordProtectionNotice();
     render(); return;
