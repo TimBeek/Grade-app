@@ -1,0 +1,131 @@
+{
+  "created": "2026-10-07",
+  "mode": "built-in image_gen",
+  "scope": "Ten regenerated follow-up examples: eight visibly severe X examples, one repairable edge and one safe permanently bent C edge. Primary A/B/C/X comparison photos and grading rules unchanged.",
+  "note": "Generated examples illustrate observations, not a diagnosis of repairability or working condition. Previous photo ledgers remain historical; this ledger supersedes their selected photos only for the choices listed here.",
+  "assets": [
+    {
+      "component": "randen",
+      "choice": "Niet herstelbaar verbogen",
+      "name": "randen-onherstelbaar",
+      "version": "v4",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "previousImage": "assets/dell-grading-fast/randen-onherstelbaar-v3-ai.jpg",
+      "image": "assets/dell-grading-fast/randen-onherstelbaar-v4-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X: severe structural deformation of the BASE side chassis, not the lid. Close-up three-quarter side view of the rear base corner and adjacent port. The base metal rail has a deep localized double crease, rotated corner, and 12mm separation from lower shell over 8cm, with torn attachment flange visible. Metal is sharply folded, not softly dented; ports displaced and the base cannot sit square. Keep the screen lid intact and distinguish its normal separate seam from the damaged BASE opening. Clearly worse than cosmetic C-grade bending.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "randen",
+      "choice": "Scherpe rand",
+      "name": "randen-scherpe-rand",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "previousImage": "assets/dell-grading-fast/randen-scherpe-rand-v2-ai.jpg",
+      "image": "assets/dell-grading-fast/randen-scherpe-rand-v3-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X safety hazard: close-up of BASE side rail corner, below the intact closed lid seam. A 3cm long section of thin rigid silver metal has torn from a structural crack and lifted outward into TWO pointed jagged shards, protruding 8mm, with fresh bright fractured edges and a dark 1cm opening in the base shell. Sharpness unmistakable at small size; no mere scratch or hairline crack. Preserve nearby port to show that this is base side frame, NOT outer screen lid.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "palmrest",
+      "choice": "Veiligheidsrisico",
+      "name": "palmrest-veiligheidsrisico",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "previousImage": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v2-ai.jpg",
+      "image": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v3-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X safety hazard: elevated close-up looking DOWN on the FRONT RIGHT PALMREST surface of open laptop. Include half the touchpad with its physical buttons and a few keyboard keys for identity. Palm-contact corner has a severe 5cm tear through thin rigid metal top panel, an attached triangular jagged flap bent upward 10mm and a dark opening beneath. Fresh thin reflective metal fractured edges project INTO the hand resting area; clear unsafe broken palmrest, NOT outer lid, not cosmetic dent. Keyboard and touchpad intact.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "bezel",
+      "choice": "Scherpe rand",
+      "name": "bezel-scherpe-rand",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "previousImage": "assets/dell-grading-fast/bezel-scherpe-rand-v2-ai.jpg",
+      "image": "assets/dell-grading-fast/bezel-scherpe-rand-v3-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X safety hazard: macro close-up of lower RIGHT black plastic SCREEN BEZEL corner on upright open screen, include intact black screen at left and silver hinge below. The bezel is heavily fractured over 4cm, a 2cm section is missing, two angular attached hard-plastic splinters project outward sharply 8mm, exposed internal display metal edge behind. Break irregular and brittle, not rounded dent or tiny chip. Screen itself uncracked.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "bezel",
+      "choice": "Schermrand los",
+      "name": "bezel-los",
+      "version": "v4",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "previousImage": "assets/dell-grading-fast/bezel-los-v3-ai.jpg",
+      "image": "assets/dell-grading-fast/bezel-los-v4-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X: close-up front three-quarter view of RIGHT vertical black SCREEN BEZEL strip. It has unclipped along its upper 15cm and bows FORWARD 15mm away from display housing. Visible broken snap tabs and dark gap between strip and screen surround; strip remains attached at bottom. Show the entire detached length and corner, 2/3 of intact black screen and a little hinge context. Clearly detached, not a normal fine seam. Screen glass intact; no wires or battery exposed, no floating disconnected strip.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Bovenkap gebroken",
+      "name": "bovenkap-gebroken",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "previousImage": "assets/dell-grading-fast/bovenkap-gebroken-v2-ai.jpg",
+      "image": "assets/dell-grading-fast/bovenkap-gebroken-v3-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X: show the OUTSIDE BACK of the upright SCREEN LID, open roughly 90 degrees, viewed from REAR, grey Dell lid panel with central round logo and hinges at bottom, base only a narrow strip beneath hinges. Close framing on one upper outer-lid corner while most lid panel remains visible. A major 8cm branching through-fracture crosses the grey outer lid from upper corner, a 3cm broken piece missing and attached flap separated 8mm exposes black internal display backing. Clearly broken outer display lid, NOT keyboard deck, base, USB port frame or closed laptop underside. Severe realistic rigid thin metal fracture.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Scherpe rand",
+      "name": "bovenkap-scherpe-rand",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "previousImage": "assets/dell-grading-fast/bovenkap-scherpe-rand-v2-ai.jpg",
+      "image": "assets/dell-grading-fast/bovenkap-scherpe-rand-v3-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X safety hazard on OUTSIDE SCREEN LID: open laptop seen from REAR, upright grey Dell outer lid, part of central circular Dell logo and rear panel visible, hinges at BOTTOM. Close-up of upper right outer-lid edge. A 4cm tear in thin metal BACK COVER creates two attached sharp pointed metal tabs projecting outward 10mm with reflective torn edges and open black display backing underneath. Edge is unmistakably unsafe and shattered, not tiny dent. No keyboard, touchpad, ports, base-frame damage or screen-facing bezel: this is the OUTER grey display lid only.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Sluit niet goed",
+      "name": "bovenkap-sluit-niet",
+      "version": "v4",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "previousImage": "assets/dell-grading-fast/bovenkap-sluit-niet-v3-ai.jpg",
+      "image": "assets/dell-grading-fast/bovenkap-sluit-niet-v4-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: X: heavily WARPED OUTER SCREEN LID, not base. Rear three-quarter elevated view as laptop is almost closed, show grey Dell OUTER display lid with centered circular logo clearly, intact flat base underneath with front and side seam as reference. Outer screen-lid panel has a strong localized diagonal permanent kink and 18mm upward twist at far FRONT corner, opposite corner rests on straight intact base. Display lid visibly cannot lie flush: asymmetric wedge gap at front caused by the outer LID metal deformation, not an opening between keyboard/palmrest and base shell. Substantial folded rigid metal with crisp crease and reflective planes, not clay dent, not bloated battery.",
+      "expectedImpact": "x"
+    },
+    {
+      "component": "randen",
+      "choice": "Open/verbogen herstelbaar",
+      "name": "randen-open-verbogen-herstelbaar",
+      "version": "v4",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "previousImage": "assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg",
+      "image": "assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v4-ai.jpg",
+      "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: Repairable B-after-repair example, NOT X. Tight three-quarter close-up on a 6cm length of side BASE metal rail adjacent an intact USB port. The thin metal lip has a SINGLE shallow smooth bend outward and a localized 2-3mm gap from bottom casing; metal continuous and uncracked, rounded original edge intact. Rest of chassis straight. Show metallic specular highlight along bent thin lip so it visibly could be gently straightened. Closed outer screen lid straight and undamaged, separate normal lid seam. No entire lifted keyboard deck, no ballooning, battery swelling, jagged edge, exposed electronics or deep crush.",
+      "expectedImpact": "b"
+    },
+    {
+      "component": "randen",
+      "choice": "Open/te zwaar verbogen",
+      "name": "randen-open-verbogen-c-detail",
+      "version": "v3",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "previousImage": "assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg",
+      "image": "assets/dell-grading-fast/randen-open-verbogen-c-detail-v3-ai.jpg",
+      "prompt": "Use case: precise-object-edit. Image 1 is edit target: straight-on level inspection photograph of a Dell metal laptop palmrest and front lower casing flange. CHANGE ONLY the localized deformation of the silver LOWER metal flange under the front palmrest. User explicitly requests clearly HEAVIER deformation: over the central-right 8cm length, push the lower flange down/out about 10mm, with a deep permanent dent and two visible sharp geometric CREASE LINES in the metal surface (the rim itself remains BLUNT and rounded, not dangerously sharp). Create a prominent dark irregular 8mm opening between the lower flange and the intact straight upper palmrest rail, fading smoothly to the normal closed seam at both ends. The deformed strip is solid continuous sheet metal, physically plausible stiff metal thickness with brushed metallic highlights, not soft clay, foil or melted material. Damage must be instantly visible at small thumbnail size, materially worse than a shallow 2mm repairable bend, but still C cosmetic permanent bending, NOT an X safety hazard. No broken or missing pieces, no jagged torn edge, no exposed electronics, no cracked palmrest, no swollen battery. Preserve EXACT level camera view, zero camera roll, horizontal undamaged upper edge, unchanged straight touchpad, physical buttons, keyboard, white studio surface, all undamaged laptop geometry, and lighting. Do not distort or tilt the whole laptop. Single landscape 3:2 photorealistic inspection photo. No labels, arrows, UI, hands or watermarks.",
+      "expectedImpact": "c",
+      "editReference": "assets/dell-grading-fast/randen-open-verbogen-c-detail-v2-ai.jpg",
+      "earlierPreviews": [
+        {
+          "image": "assets/dell-grading-fast/randen-open-verbogen-c-detail-v1-ai.jpg",
+          "prompt": "Use case: product-mockup. Asset type: single photographic close-up for laptop inspection training, not a collage. Input image 1 is a reference for the actual Dell laptop design, grey metal finish, construction and white studio background. Generate a NEW photorealistic inspection photo of this same laptop family. Landscape 3:2. Frame the damaged component large, clear enough at thumbnail size, with enough surrounding laptop context to identify it. Neutral realistic softbox illumination, sharp focus on damage, naturally varying metallic reflections, real rigid sheet-metal thickness and grain or textured black plastic as appropriate. No captions, arrows, badges, UI, hands, tools, watermark, stylized rendering, clay, melted metal, soft rubbery edges, impossibly thick material or random extra ports. Primary request: C cosmetic permanent deformation, NOT X or safety hazard. Tight three-quarter close-up of BASE side metal rail beside intact USB port. A 5cm length of rail has a visible permanent broad dent/bend causing a LOCALIZED 5-6mm uneven opening above the bottom shell, and a shallow crease that would leave cosmetic marks after straightening. Solid continuous metal, BLUNT factory-finished edge, no crack, no missing pieces, no sharp shards, no exposed circuit board, port straight and usable. All other chassis aligned and intact. Intact closed grey outer lid above normal lid seam. Damage obviously more than repairable 2mm bend but much less than torn/crushed X rejection; no crushed lid corner or separated whole laptop.",
+          "reason": "User feedback: diagonal view makes the laptop appear crooked."
+        },
+        {
+          "image": "assets/dell-grading-fast/randen-open-verbogen-c-detail-v2-ai.jpg",
+          "prompt": "Use case: precise-object-edit. Input image 1: edit target; depicts a Dell metal laptop base with a bent lower casing flange. Regenerate this inspection photo with a corrected camera viewpoint and physically straight overall chassis. Primary request: the CURRENT DIAGONAL composition misleadingly makes the laptop look crooked; use a LEVEL, STRAIGHT-ON front view, camera facing squarely perpendicular to the laptop front edge, zero camera roll, no diagonal three-quarter view. Wide landscape 3:2 close-up of the front base edge with part of the touchpad and its two physical buttons directly above. Laptop rests FLAT and level on white table. Undamaged metal palmrest upper edge is perfectly HORIZONTAL and straight across the image, base and deck parallel; keyboard in background. Only a LOCAL 5cm length of thin brushed-silver LOWER COVER flange below the palmrest has a permanent angular kink outward about 5mm, leaving a short dark uneven opening; remainder of the seam closed and straight. This is a localized C-grade cosmetic metal deformation, no sharp edge, no crack, no torn or missing pieces, no exposed electronics, not X damage. Preserve real rigid thin metal thickness, factory-rounded BLUNT rim and metallic glancing reflection on small creased area. No entire base bowed, no whole palmrest lifted, no swollen battery, no inflated housing. Close framing gives this ONE damaged area clear prominence without needing an exaggerated crushed corner. Photorealistic real studio inspection photo, modest natural wear, white background, sharp focus. No clay, soft folds, molten metal, CGI, hands, labels, arrows, watermarks or collage.",
+          "reason": "User requested heavier local metal deformation while keeping level camera."
+        }
+      ]
+    }
+  ]
+}

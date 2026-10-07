@@ -7,6 +7,7 @@ const vm = require('node:vm');
 function loadAppSandbox(options = {}) {
   const scriptNames = [
     'grading-engine.js',
+    'grading-example-images.js',
     'guided-inspection.js',
     'app-state.js',
     'record-sync.js',
@@ -5159,7 +5160,7 @@ test('detailkeuze-menu heeft loep zonder score-uitleg in tekst', () => {
 
   assert.match(app.__appElement.innerHTML, /inspection-zoom/);
   assert.match(app.__appElement.innerHTML, /data-image-preview="true"/);
-  assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-v3-ai\.jpg/);
+  assert.match(app.__appElement.innerHTML, /randen-open-verbogen-herstelbaar-v4-ai\.jpg/);
   assert.doesNotMatch(app.__appElement.innerHTML, /telt als/i);
   assert.doesNotMatch(app.__appElement.innerHTML, /blijft C/i);
 });

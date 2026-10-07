@@ -5,6 +5,7 @@ const vm = require('node:vm');
 function loadAppSandbox(options = {}) {
   const scriptNames = [
     'grading-engine.js',
+    'grading-example-images.js',
     'guided-inspection.js',
     'app-state.js',
     'record-sync.js',

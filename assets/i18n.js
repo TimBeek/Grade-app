@@ -6,6 +6,7 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Example only: test the function on the real laptop.': 'Dit is een voorbeeld: test de werking op de echte laptop.',
   'Clean lid first': 'Controleer schone bovenkap',
   'Check touchscreen': 'Controleer touchscreen',
   "No dents or coating damage": "Geen deuken of lakschade",

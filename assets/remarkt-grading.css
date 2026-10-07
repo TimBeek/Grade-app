@@ -607,8 +607,17 @@ html[data-contrast="high"] .result-screen { --inspection-muted: var(--inspection
 .inspection-followup-path { padding: 10px 12px; border-left: 3px solid var(--remarkt-red); background: var(--inspection-surface); font-weight: 650; }
 .inspection-followup-dialog .inspection-photo { height: clamp(180px, 27dvh, 290px); }
 .inspection-followup-dialog .inspection-dialog-footer { border-top: 1px solid var(--remarkt-line); }
+.inspection-functional-example { color: var(--inspection-muted, var(--remarkt-muted)); font-size: 13px; }
+.inspection-followup-dialog .inspection-dialog-body .inspection-functional-example { font-size: 13px; line-height: 1.35; margin-bottom: 12px; }
 @media (min-width: 900px) {
   .inspection-followup-dialog .options-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .inspection-followup-dialog .options-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .inspection-followup-dialog .options-4 .inspection-photo,
+  .inspection-followup-dialog .options-5 .inspection-photo { height: clamp(100px, 18dvh, 190px); }
+  .inspection-followup-dialog .options-4,
+  .inspection-followup-dialog .options-5 { gap: 12px; margin-bottom: 0; }
+  .inspection-followup-dialog .options-4 .inspection-choice-copy,
+  .inspection-followup-dialog .options-5 .inspection-choice-copy { min-height: 0; padding: 8px 10px; }
 }
 @media (max-width: 650px) {
   .result-summary { padding: 18px 16px 12px; gap: 12px; }

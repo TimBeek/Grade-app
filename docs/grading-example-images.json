@@ -1,0 +1,242 @@
+{
+  "created": "2026-10-07",
+  "mode": "built-in image_gen",
+  "purpose": "New photos for previously unillustrated grading reasons. References anchor the existing Dell identity and product-photo style.",
+  "format": "1200 x 800 JPEG, quality 86, whole inspected part, white background",
+  "functionalCaveat": "Functional failure cannot be diagnosed from a still image; live device testing remains required.",
+  "assets": [
+    {
+      "component": "bovenkap",
+      "choice": "Bovenkap gebroken",
+      "image": "assets/dell-grading-fast/bovenkap-gebroken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "prompt": "Use case: precise-object-edit. Create ONE new photorealistic grading example asset for an internal laptop inspection app, matching the Dell laptop in the provided reference image. Reference image is the identity/composition anchor, not a damage example. Show the same gray Dell Latitude-style laptop lid, same Dell logo, same hinges, same lid proportions and centered rear-facing view as the reference. Change only the condition: a clear structural fracture runs diagonally across the upper right quarter of the lid, with a small split in the outer shell, not superficial scratches. This is the 'broken lid cover' example. Keep the rest of the lid undamaged, no missing hinge or other unrelated defect. Full lid entirely visible, very small white margins, landscape 3:2, pure white #ffffff seamless background right to every edge, no gray vignette, soft neutral studio illumination. No arrows, inset, labels, text, grade letters, colored marks, watermarks or scene props. Preserve the product identity and professional neutral documentary product-photo style. Output a single image, not a collage."
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Scherpe rand",
+      "image": "assets/dell-grading-fast/bovenkap-scherpe-rand-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: rear view of the lid. Specific example: The upper right lid edge has a broken outer shell with one clearly exposed sharp jagged protruding edge. Keep the flat lid otherwise intact. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Sluit niet goed",
+      "image": "assets/dell-grading-fast/bovenkap-sluit-niet-v3-ai.jpg",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: precise-object-edit. Create a photorealistic CLOSE-UP inspection photo from this exact gray Dell laptop reference. Crop to the FRONT RIGHT CORNER of the nearly closed laptop, NOT the rear hinge area: show the metal lid rim, base rim and their closing seam prominently. The thin RIGID painted metal lid shell is twisted at this corner so its rim sits 8 mm above the flat base, while the adjacent straight edge progressively closes normally: a clearly uneven wedge-shaped opening, not an evenly half-open laptop. Show a crisp permanent shallow bend in the thin manufactured metal lid edge and a modest scrape revealing solid bright metal at the bend. Preserve regular solid wall thickness, flat base, realistic recess inside closing seam. NO bloated bulge, melted clay, rounded putty, thick rolled edge, torn foil, ripples or added missing pieces. No visible hinge damage or broken glass; the only problem is warped lid alignment preventing closure. Preserve reference finish, color and realistic surface texture. Oblique near-side view with defect in sharp focus, honest softly lit inspection photography, white surroundings if visible. Only this inspected corner in frame, whole laptop not required. No logo, text, markings, arrows, inset, hands, props, fake effects or CGI. Landscape 3:2.",
+      "previousImage": "assets/dell-grading-fast/bovenkap-sluit-niet-v1-ai.jpg",
+      "revision": "Regenerated as a defect-focused photographic close-up; rigid manufactured materials and localized damage.",
+      "framing": "detail close-up"
+    },
+    {
+      "component": "randen",
+      "choice": "Zijkant gebroken",
+      "image": "assets/dell-grading-fast/randen-gebroken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter view of the closed laptop showing the right chassis edge. Specific example: A clear structural break in the right front side corner, with a split edge and a small displaced shell fragment still attached. Lid intact, focus on base side housing. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "randen",
+      "choice": "Scherpe rand",
+      "image": "assets/dell-grading-fast/randen-scherpe-rand-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter view of the closed laptop showing the right chassis edge. Specific example: The right side chassis lip is peeled outward exposing a sharp jagged metal edge near the front corner; not a bent lid. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "randen",
+      "choice": "Niet herstelbaar verbogen",
+      "image": "assets/dell-grading-fast/randen-onherstelbaar-v3-ai.jpg",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: precise-object-edit. Create a photorealistic CLOSE-UP inspection photo derived from this same gray Dell laptop reference, focusing on the right side metal base chassis next to its front corner. The inspected base rail has sustained a localized impact and is sharply kinked inward about 5 mm over a 3 cm section. Two straight RIGID solid metal rail segments meet at a short hard crease; a small split in the gray coating reveals bright solid metal at that impact. Show crisp manufactured edges, fixed metal wall thickness and realistic scuffed coating. The nearby original rectangular ports remain recognizable with straight internal connectors; do not generate a row of weird wavy holes. The lid above stays intact and straight, distinct from the bent BASE FRAME, with its original seam. This is impact-deformed structural metal, not melted plastic, clay, rubber, soft foil, organic ripples or swollen battery. Crop tightly to the damaged side rail, leave enough undamaged straight edge for comparison; no need to show whole laptop or logo. Real documentary close-up product inspection, neutral diffuse light, faithful matte gray reference surface with realistic texture, white surroundings if visible, focused readable defect. No arrows, words, labels, insets, collage, hands, added damage or polished CGI. Single landscape 3:2 photo.",
+      "previousImage": "assets/dell-grading-fast/randen-onherstelbaar-v1-ai.jpg",
+      "revision": "Regenerated as a defect-focused photographic close-up; rigid manufactured materials and localized damage.",
+      "framing": "detail close-up"
+    },
+    {
+      "component": "bezel",
+      "choice": "Schermrand gebroken",
+      "image": "assets/dell-grading-fast/bezel-gebroken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: The black plastic screen bezel has a major break at the upper right corner, a missing 4 cm section exposing the screen frame beneath. Screen glass intact and black; damage exclusively to bezel. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "bezel",
+      "choice": "Schermrand los",
+      "image": "assets/dell-grading-fast/bezel-los-v3-ai.jpg",
+      "previousImage": "assets/dell-grading-fast/bezel-los-v2-ai.jpg",
+      "revision": "Regenerated as a defect-focused photographic close-up; rigid manufactured materials and localized damage.",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Create a photorealistic CLOSE-UP inspection example from the supplied Dell laptop reference, focusing tightly on the right screen bezel around halfway up the screen. Only the inspected detail is in frame; it is acceptable and intended to crop most of the laptop away. Show a small LOCAL 3 mm opening where the slim front screen bezel has unclipped from the rear lid housing. Natural slight bow over about 8 cm, both ends of the region seated normally, intact black LCD remains flat and recessed. View slightly obliquely from the right, enough to see the real seam and small dark clip recess without inventing exposed internals. This bezel is a manufactured matte black plastic trim, NOT a thick metal blade or a hanging long rail. Preserve material thickness and device identity. Focus on the actual seam with documentary workshop-photo texture and soft diffuse light, sharp but not oversharpened, modest natural wear. Neutral white surroundings if visible. No logo or keyboard in the crop, no text, arrows, border, inset, hands, broken glass or unrelated scratches. Single landscape 3:2 close-up, not collage or CGI.",
+      "framing": "detail close-up"
+    },
+    {
+      "component": "bezel",
+      "choice": "Scherpe rand",
+      "image": "assets/dell-grading-fast/bezel-scherpe-rand-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: A snapped lower right bezel edge exposes a pointed sharp jagged plastic lip facing outward. Clear safety hazard around the frame, not screen glass damage. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "lcd",
+      "choice": "Pixel line",
+      "image": "assets/dell-grading-fast/lcd-pixellijn-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: Power on the screen with an otherwise uniform very light gray test background and one thin unmistakable vertical bright magenta pixel line from top to bottom near the right quarter. No cracks, no whitespots, no text on screen. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "lcd",
+      "choice": "Cracked screen",
+      "image": "assets/dell-grading-fast/lcd-gebarsten-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: Screen glass and LCD are structurally cracked: a clear spiderweb fracture near the right lower quadrant with a modest black ink-like damaged LCD area nearby. Bezel and laptop case intact. No unrelated damage. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "lcd",
+      "choice": "Dead pixels",
+      "image": "assets/dell-grading-fast/lcd-dode-pixels-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal close product view of the open laptop with screen taking most of image. Specific example: Power on the screen with a uniform light gray test image. Show a small localized cluster of failed dark pixels near the center-right, approximately 8 by 8 pixels at real display scale; small but visible, not a large black stain. No cracks or other damage, no magnification inset. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "lcd",
+      "choice": "Schermflikkering",
+      "image": "assets/dell-grading-fast/lcd-flikkering-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: Screen is powered on showing an illustrative camera capture of flicker: uneven alternating horizontal light gray and darker gray brightness bands across a plain test background. No cracks, no colored pixel line, no text. This is only an example still; actual flicker requires a live functional test. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "lcd",
+      "choice": "Geen beeld",
+      "image": "assets/dell-grading-fast/lcd-geen-beeld-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of the open laptop. Specific example: Screen is fully black with no picture while the small laptop power indicator light near its power button is illuminated. No visible physical damage and no text. This demonstrates checking a powered-on laptop with no display, not a broken-glass example. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "onderkant",
+      "choice": "Onderkant gebroken",
+      "image": "assets/dell-grading-fast/onderkant-gebroken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: straight overhead view of the entire bottom cover. Specific example: A major structural crack across the bottom cover at the right third; shell pieces visibly separated by a narrow gap but all still present. Four feet, screw layout and ventilation grille otherwise preserved. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "onderkant",
+      "choice": "Onderdeel ontbreekt",
+      "image": "assets/dell-grading-fast/onderkant-onderdeel-ontbreekt-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: straight overhead view of the entire bottom cover. Specific example: A rectangular service access cover is completely missing from the lower right part of the base, exposing a realistic recessed compartment. The rest of the bottom is intact, no cracks. Significant missing panel, not merely a missing tiny screw. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "onderkant",
+      "choice": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/onderkant-veiligheidsrisico-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: straight overhead view of the entire bottom cover. Specific example: The lower left outer corner of the bottom shell is split and peeled upward with a sharp protruding jagged edge and a gap exposing the inner metal chassis. Not battery swelling and no fire imagery. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "keyboard",
+      "choice": "Missing key",
+      "image": "assets/dell-grading-fast/keyboard-een-toets-ontbreekt-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/keyboard-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and palmrest. Specific example: Exactly one black keycap is missing from the G key position, exposing the small pale scissor mechanism beneath. All other keycaps intact, no loose keys or hands in scene. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "keyboard",
+      "choice": "Meerdere toetsen ontbreken",
+      "image": "assets/dell-grading-fast/keyboard-meerdere-toetsen-ontbreken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/keyboard-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and palmrest. Specific example: Four nonadjacent keycaps are missing at R, G, J and N, exposing their small pale scissor mechanisms. All other keys intact, same laptop identity. No hands, no loose keys in scene. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "keyboard",
+      "choice": "Toets werkt niet",
+      "image": "assets/dell-grading-fast/keyboard-toets-test-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/keyboard-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of keyboard and palmrest. Specific example: Create a functional inspection example: one natural adult fingertip pressing the G key to test its response. All keycaps intact and keyboard clean, no cracks or missing keys. No other hands, no colored indicators or invented visible defect. A nonresponding key can only be diagnosed on the real device. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "keyboard",
+      "choice": "Keyboard defect",
+      "image": "assets/dell-grading-fast/keyboard-functionele-test-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: frontal view of open laptop. Specific example: Create a functional keyboard inspection example: laptop intact, screen powered on showing a blank very light gray input area with a thin black text caret and no words. One natural adult hand with two fingertips on keyboard keys testing response. No missing keys or structural damage, no labels. A photo cannot prove electrical failure. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "keyboard",
+      "choice": "Keyboard ontbreekt",
+      "image": "assets/dell-grading-fast/keyboard-ontbreekt-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/keyboard-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and palmrest. Specific example: The entire keyboard module is removed: a clean recessed rectangular keyboard bay showing its dark underlying support tray and small ribbon cable connector, no keycaps anywhere. Preserve the gray palmrest, touchpad, hinges and screen bezel. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "palmrest",
+      "choice": "Palmrest gebroken",
+      "image": "assets/dell-grading-fast/palmrest-gebroken-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and entire palmrest. Specific example: A clear structural break across the right palmrest, from front edge toward the keyboard corner, with a narrow open split. Keyboard and touchpad intact, no other wear. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "palmrest",
+      "choice": "Hoek ontbreekt",
+      "image": "assets/dell-grading-fast/palmrest-hoek-ontbreekt-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and entire palmrest. Specific example: A large triangular piece, roughly 5 cm across, is missing from the front right palmrest corner, exposing the chassis below. No other cracks or missing keys, touchpad intact. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "palmrest",
+      "choice": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of the keyboard and entire palmrest. Specific example: The front left palmrest rim is split and bent upward into a visibly sharp jagged edge in the hand-contact area. Show realistic dangerous edge, not missing keyboard or swollen battery. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "touchpad",
+      "choice": "Touchpad werkt niet",
+      "image": "assets/dell-grading-fast/touchpad-functionele-test-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/touchpad-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of keyboard and touchpad. Specific example: Create a functional touchpad inspection example: one natural adult fingertip touching and sliding on the intact gray touchpad surface. Same physical left/right touchpad buttons, no cracks or scratches. No invented visible damage: response must be checked on the real laptop. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "touchpad",
+      "choice": "Touchpad ontbreekt",
+      "image": "assets/dell-grading-fast/touchpad-ontbreekt-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/touchpad-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of keyboard and touchpad. Specific example: The rectangular touchpad surface module is completely missing, exposing a clean recessed empty rectangular cavity in the palmrest. Two separate front click buttons remain present, keyboard intact. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "touchpad",
+      "choice": "Touchpad gebarsten",
+      "image": "assets/dell-grading-fast/touchpad-gebarsten-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/touchpad-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: above view of keyboard and touchpad. Specific example: The rectangular touchpad surface has a clear diagonal branching crack with a narrow split, confined to touchpad surface. Separate front buttons and all keyboard keys intact; palmrest unbroken. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Scharnier werkt niet",
+      "image": "assets/dell-grading-fast/scharnier-blokkeert-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter rear view of the open laptop showing both hinges. Specific example: The right hinge mechanism is visibly jammed and misaligned, lid stuck partly open at about 50 degrees with asymmetric hinge alignment. Both hinges attached, no detached lid, no missing shell corner. This illustrates an opening/closing problem; function must be checked on real laptop. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Scharnier los",
+      "image": "assets/dell-grading-fast/scharnier-los-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter rear view of the open laptop showing both hinges. Specific example: The right hinge mounting bracket is loose and lifted visibly out of its base seat, leaving a clear gap while the left hinge is normally attached. Lid slightly tilted; hinge still connected to lid and base, no unrelated cracks. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Behuizing verbogen",
+      "image": "assets/dell-grading-fast/scharnier-behuizing-verbogen-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter rear view of the open laptop showing both hinges. Specific example: Gray chassis housing around the right hinge is heavily bent upward and buckled, lifting the hinge seat. Hinge itself attached, screen intact, emphasize deformation around mounting point not ordinary cosmetic scratches. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/scharnier-veiligheidsrisico-v1-ai.jpg",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: product-mockup. Generate ONE new photorealistic internal laptop grading example. Input image is only an identity, angle and studio-style REFERENCE: same gray Dell Latitude-style laptop, same original logo, material, key layout and proportions. Composition: three-quarter rear view of the open laptop showing both hinges. Specific example: The right hinge is exposed through a broken hinge cover, with a sharp protruding metal mounting shard near the back corner. Show realistic pointed safety hazard, no unrelated screen breakage or keyboard damage. Preserve all unrelated parts. Landscape 3:2, pure white #ffffff seamless background right to all edges, no gray vignette, neutral soft studio lighting, centered product with small margins; show the entire inspected part without clipping. Defect easy to recognize but mechanically realistic. No text, grade badges, arrows, overlays, collage, inset, props or watermark. One product photo only."
+    }
+  ]
+}

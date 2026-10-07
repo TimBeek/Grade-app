@@ -502,6 +502,7 @@ function renderAppMessage() {
 }
 
 function renderDecisionModal(decision) {
+  decision = withGradingExampleImages(decision);
   const hasImages = decision.options.some(option => option.image);
   const optionCountClass = hasImages ? `options-${decision.options.length}` : '';
   return `
@@ -509,6 +510,7 @@ function renderDecisionModal(decision) {
       <div class="modal ${decision.type === 'grade-review' ? 'grade-review' : ''} ${hasImages ? 'image-decision' : ''} ${optionCountClass}">
         <h3>${escapeHtml(decision.title)}</h3>
         <p>${escapeHtml(decision.text)}</p>
+        ${decision.options.some(option => option.exampleFunctionalTest) ? '<p class="inspection-functional-example">Example only: test the function on the real laptop.</p>' : ''}
         <div class="decision-options">
           ${decision.options.map((option, index) => `
             <button class="decision-option ${option.image ? 'has-image' : ''}" data-decision-option="${index}" type="button">

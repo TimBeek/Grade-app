@@ -1,0 +1,805 @@
+{
+  "created": "2026-10-07",
+  "mode": "built-in image_gen",
+  "scope": "All 61 follow-up choices reviewed; four primary A/B/C/X images untouched.",
+  "assets": [
+    {
+      "component": "bovenkap",
+      "choice": "Bovenkap gebroken",
+      "name": "bovenkap-gebroken",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. The gray painted METAL lid shell has a clear structural through-fracture crossing its corner, a narrow open split exposing rigid solid metal wall thickness. Focus on 10 cm around the fracture, include straight undamaged lid rim for context. Not a superficial scratch, plastic spiderweb or torn tin foil. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bovenkap-gebroken-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bovenkap-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "bovenkap",
+      "choice": "Scherpe rand",
+      "name": "bovenkap-scherpe-rand",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bovenkap-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of a locally broken gray METAL lid rim with ONE exposed sharp jagged rigid metal edge projecting 3 mm at a corner, coating chipped at that edge, recognizable lid panel and rim. A mechanically plausible safety hazard, no long knife blade, soft clay or random ripped foil. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bovenkap-scherpe-rand-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bovenkap-scherpe-rand-v2-ai.jpg"
+    },
+    {
+      "component": "randen",
+      "choice": "Zijkant gebroken",
+      "name": "randen-gebroken",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of a snapped gray solid METAL base side rail at a corner; a short through-fracture separates the rigid rim by 2 mm, distinct from the intact lid above. Include one unchanged recognizable adjacent rectangular port for scale. Crisp fixed-thickness broken metal edges, not a cracked lid or melted port holes. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/randen-gebroken-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/randen-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "randen",
+      "choice": "Scherpe rand",
+      "name": "randen-scherpe-rand",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/randen-a.jpg",
+      "prompt": "Use case: precise-object-edit. Image 1 is the edit target, this real-looking Dell BASE SIDE RAIL close-up. Keep exact camera framing, gray metal finish, USB port, lid above and hinge unchanged. Change ONLY the fracture in the BASE rim: one short jagged broken gray solid metal lip of the bottom base wall projects outward about 3 mm from the vertical split, visibly sharp in the hand-contact area. The point belongs to the LOWER BASE WALL below the closing seam, NOT the lid. Preserve rigid solid wall thickness with bright metal coating chips, modest mechanically believable damage. LID ABOVE MUST REMAIN SMOOTH AND INTACT; no chipped lid corner, knife blade, soft foil, clay or giant shard. Single photographic 3:2 close-up, neutral diffuse light and white background, no text/arrows/labels/hands. Show a sharp broken BASE edge, not just a crack or lid damage.",
+      "previousImages": [
+        "assets/dell-grading-fast/randen-scherpe-rand-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/randen-scherpe-rand-v2-ai.jpg",
+      "initialPrompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the gray METAL base side rail at the front corner, one locally fractured rim edge bent outward slightly into a small sharp protrusion in the hand-contact area. Solid rigid metal thickness, bright metal visible through chipped coating, adjacent port intact, lid intact. Not a knife, long strip, soft foil or melted plastic. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "editReference": "assets/dell-grading-fast/randen-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "bezel",
+      "choice": "Verkleuring rand",
+      "name": "bezel-verkleuring-detail",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of matte black PLASTIC bezel along the lower right screen corner. A clearly bounded muted gray-brown worn discolored patch across 3 cm of the frame, gently feathered edges, molded texture still present. Intact black screen and straight trim. Color change only: no cracks, white gouges, dirt, loose trim or missing pieces. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bezel-verkleuring-rand-dell-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bezel-verkleuring-detail-v2-ai.jpg"
+    },
+    {
+      "component": "bezel",
+      "choice": "Haarscheurtje bezelrand",
+      "name": "bezel-haarscheur-detail",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Macro inspection crop of the narrow matte black PLASTIC screen bezel corner. ONE fine short 7 mm hairline crack in the outer bezel plastic, dark narrow line with a little visible edge separation under grazing diffuse light. Screen glass intact, trim seated and all material present. Keep normal molded texture. Do not make a large fracture or missing corner. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bezel-haarscheurtje-b-dell-ai.jpg",
+        "assets/dell-grading-fast/bezel-haarscheurtje-c-dell-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bezel-haarscheur-detail-v2-ai.jpg"
+    },
+    {
+      "component": "bezel",
+      "choice": "Cracks / zwaar gebroken",
+      "name": "bezel-zwaar-gebroken-detail",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of matte black PLASTIC screen bezel corner, a substantial fractured trim corner with branching breaks and a locally displaced small section, rough rigid injection-molded fracture faces. LCD glass beneath remains intact and black. More significant than a fine hairline crack. Do not create metal trim, melted edges or screen-glass spiderweb. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bezel-zwaar-gebroken-dell-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bezel-zwaar-gebroken-detail-v2-ai.jpg"
+    },
+    {
+      "component": "bezel",
+      "choice": "Schermrand gebroken",
+      "name": "bezel-gebroken",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the upper right matte black PLASTIC bezel corner, a 3 cm bezel section snapped off, exposing a modest recessed dark screen support underneath. Preserve intact flat LCD glass, thick enough molded trim but not a metal blade. Clearly broken bezel, not cracked LCD, no invented colorful electronics. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bezel-gebroken-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bezel-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "bezel",
+      "choice": "Scherpe rand",
+      "name": "bezel-scherpe-rand",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/bezel-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of a broken lower matte black PLASTIC screen bezel rim with ONE small pointed rigid plastic lip sticking outward a few millimeters. Rough snapped plastic edge and normal molded texture, intact black LCD nearby for context. No metal shard, knife blade, cartoon huge spike or broken screen glass. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/bezel-scherpe-rand-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/bezel-scherpe-rand-v2-ai.jpg"
+    },
+    {
+      "component": "lcd",
+      "choice": "Dead pixels",
+      "name": "lcd-dode-pixels",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/lcd-a-black.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Very close inspection view of a powered LCD panel patch, normal uniform pale gray display with a single tiny cluster of about four black failed pixels, sharp rectangular pixel-grid edges. Show neighboring healthy pixels and subtle actual LCD surface texture. Include a narrow sliver of intact black bezel at the edge to identify screen. No stain, hole, crack, arrow, red circle or oversized black blob. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/lcd-dode-pixels-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/lcd-dode-pixels-v2-ai.jpg"
+    },
+    {
+      "component": "onderkant",
+      "choice": "Onderkant gebroken",
+      "name": "onderkant-gebroken",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of gray painted METAL bottom cover near a screw and ventilation edge, a clear structural through-fracture with a narrow open seam. Intact molded/manufactured vents and screw for context, fixed metal thickness and localized coating chips exposing metal. No clay-like ripples, giant organic crack network, keyboard or hand. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/onderkant-gebroken-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/onderkant-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "onderkant",
+      "choice": "Veiligheidsrisico",
+      "name": "onderkant-veiligheidsrisico",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of bottom cover corner next to one black rubber foot. Gray rigid METAL rim locally split and lifted into a small sharp protruding jagged edge, coating scraped at fracture. Foot remains seated. Focus on the dangerous contact edge, no swollen battery, bloated case, foil, huge knife shard or unnecessary internals. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/onderkant-veiligheidsrisico-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/onderkant-veiligheidsrisico-v2-ai.jpg"
+    },
+    {
+      "component": "keyboard",
+      "choice": "Missing key",
+      "name": "keyboard-een-toets-ontbreekt",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/keyboard-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the central chiclet keyboard of this exact laptop, ONE letter G keycap missing revealing the small white plastic scissor support and rubber dome seated in its square key well. Neighboring F H T Y V B keycaps remain aligned and intact, natural crisp legends exactly as reference if visible. Crop out logo/palmrest. No extra missing keys, random letters, deformed fingers or hands. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/keyboard-een-toets-ontbreekt-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/keyboard-een-toets-ontbreekt-v2-ai.jpg"
+    },
+    {
+      "component": "palmrest",
+      "choice": "Palmrest gebroken",
+      "name": "palmrest-gebroken",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of gray METAL palmrest panel beside its front edge and keyboard corner, a clear structural through-fracture extending from the rim into the flat panel, narrow seam with visible rigid fracture faces and chipped coating. Keep keyboard and touchpad intact, enough panel around it for context. Not a superficial scratch, clay, loose foil or large missing piece. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/palmrest-gebroken-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/palmrest-gebroken-v2-ai.jpg"
+    },
+    {
+      "component": "palmrest",
+      "choice": "Veiligheidsrisico",
+      "name": "palmrest-veiligheidsrisico",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/palmrest-a.jpg",
+      "prompt": "Use case: precise-object-edit. Image 1 is the EDIT TARGET, a gray Dell laptop palmrest corner with a locally fractured metal rim. Crop MUCH TIGHTER to that broken front corner: only about 5 cm of rim and nearby flat palmrest in view. Change only the broken rim: a small rigid solid metal lip is visibly raised 3 mm ABOVE the neighboring flat hand-rest surface, its short rough pointed corner catches the light. Make the SHARP RAISED CONTACT EDGE readable, not just a hairline crack or cosmetic paint chip. Preserve fixed metal wall thickness and realistic gray coating with bright solid metal in the fracture. No long knife, random huge shard, plastic swelling, clay or foil. Rest of palmrest intact, no fingers, text, arrows, overlays or inset. Authentic soft-light inspection close-up, landscape3:2, white surroundings if visible.",
+      "previousImages": [
+        "assets/dell-grading-fast/palmrest-veiligheidsrisico-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v2-ai.jpg",
+      "initialPrompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the gray METAL palmrest front corner in hand-contact area, localized cracked rim with a small rigid sharp bent-up lip, bright metal in scraped coating along crisp fixed-thickness edge. Flat palmrest otherwise intact, no battery swelling, giant metal knife, missing keyboard or hand. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "editReference": "C:/Users/ReMarkt/.codex/generated_images/01a00a3f-eec0-7832-b1bd-08f3b166a619/exec-21be2fec-5d04-4b99-8c79-6ec08738bf3e.png"
+    },
+    {
+      "component": "touchpad",
+      "choice": "Touchpad gebarsten",
+      "name": "touchpad-gebarsten",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/touchpad-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the rectangular dark gray touchpad surface with separate two physical click buttons below as in the reference. ONE clear diagonal structural crack with a small branching split across the touchpad, confined to the touchpad surface. Surrounding gray palmrest and two buttons intact. Preserve rectangular boundaries and actual matte texture, no invented glass reflections, melted surface or unrelated scratches. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/touchpad-gebarsten-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/touchpad-gebarsten-v2-ai.jpg"
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Scharnier werkt niet",
+      "name": "scharnier-blokkeert",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of the rear hinge seat of this exact Dell laptop at a partly open angle, hinge barrel visibly skewed in its seat with a small misaligned rigid metal bracket that catches against its housing. Lid and base remain attached and undamaged elsewhere. Illustrative opening/closing problem only; no claim photo proves a jam. Clear cylindrical hinge hardware, not a giant blade, clay blob or warped entire lid. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/scharnier-blokkeert-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/scharnier-blokkeert-v2-ai.jpg"
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Scharnier los",
+      "name": "scharnier-los",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of ONE rear hinge mounting point. The small rigid silver hinge bracket has lifted about 3 mm out of its base mounting seat, leaving a visible dark gap and one loosened screw slightly raised, while the hinge barrel and lid remain connected. Normal matching gray chassis and surrounding surface intact. No broken casing, deformed lid, dangling rail or invented big hinge. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/scharnier-los-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/scharnier-los-v2-ai.jpg"
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Behuizing verbogen",
+      "name": "scharnier-behuizing-verbogen",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: precise-object-edit. Image 1 is the EDIT TARGET, a photographic Dell hinge mounting close-up. Keep the exact lid, lid corner, cylindrical hinge, nearby ports and gray rigid metal texture unchanged. LID must remain perfectly straight and undamaged. Change only the BASE CHASSIS metal around the exposed hinge bracket: a hard localized angular bend raises the base mounting seat 5 mm, with a crisp crease and chipped coating exposing bright solid metal along the bend. The bracket is bolted FLUSH onto that raised bent base seat: screws now tightened, NOT loose, no screw protruding. Make it clear the deformation is in the lower BASE housing BELOW the hinge and lid, not the lid shell. Include undamaged straight base edge for comparison. Fixed solid metal wall thickness, no melted clay, soft rounded swelling, detached giant hinge, torn foil or new lid fracture. Single natural documentary 3:2 close-up, diffuse inspection light and white surroundings. No annotations, text, arrows, inset, hands.",
+      "previousImages": [
+        "assets/dell-grading-fast/scharnier-behuizing-verbogen-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/scharnier-behuizing-verbogen-v2-ai.jpg",
+      "initialPrompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of gray METAL base housing directly around a rear hinge mount. The rigid chassis lip has a localized hard angular kink lifting the hinge seat several millimeters, with scuffed coating and bright metal at crease. Hinge hardware intact, lid panel straight. Distinguish chassis deformation from loose screws. No smooth clay swelling, melted edges, rubbery waves or torn foil. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "editReference": "assets/dell-grading-fast/scharnier-los-v2-ai.jpg"
+    },
+    {
+      "component": "scharnieren",
+      "choice": "Veiligheidsrisico",
+      "name": "scharnier-veiligheidsrisico",
+      "version": "v2",
+      "reference": "assets/dell-grading-fast/scharnieren-a.jpg",
+      "prompt": "Use case: precise-object-edit. Asset type: close-up photographic example for a laptop grading FOLLOW-UP choice. Image 1 is a device/material reference, not a damage example. Generate a new photorealistic inspection detail of the same Dell laptop and gray/black finish. Close-up of rear hinge corner with a broken gray rigid hinge housing lip exposing ONE small pointed solid metal mounting edge protruding a few millimeters into contact area. Hinge barrel recognizable and attached, neighboring lid and base largely intact. Mechanically credible sharp edge, not a huge knife, hanging plate, clay or complicated fantasy internals. Tight oblique/overhead crop as appropriate, inspected problem prominently visible even in a small choice card, retain enough neighboring undamaged geometry to locate it; whole laptop NOT needed. Real documentary inspection photo, soft neutral diffuse/grazing light, authentic fine surface texture and modest wear, white surroundings if visible. Keep all unrelated parts unchanged. No logo in crop, annotations, arrows, labels, grade letters, watermark, inset, collage, hands, polished CGI or exaggerated unrelated damage. Single landscape 3:2.",
+      "previousImages": [
+        "assets/dell-grading-fast/scharnier-veiligheidsrisico-v1-ai.jpg"
+      ],
+      "image": "assets/dell-grading-fast/scharnier-veiligheidsrisico-v2-ai.jpg"
+    }
+  ],
+  "review": [
+    {
+      "component": "bovenkap",
+      "grade": "B",
+      "label": "Minimale gebruikssporen",
+      "image": "assets/dell-grading-fast/bovenkap-minimale-krassen-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-minimale-krassen-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "B",
+      "label": "Meerdere krassen",
+      "image": "assets/dell-grading-fast/bovenkap-meerdere-krassen-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-meerdere-krassen-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "B",
+      "label": "Lichte lakschade",
+      "image": "assets/dell-grading-fast/bovenkap-lichte-lakschade-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-lichte-lakschade-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "C",
+      "label": "Grote diepe krassen",
+      "image": "assets/dell-grading-fast/bovenkap-grote-diepe-krassen-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-grote-diepe-krassen-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "C",
+      "label": "Hevige lakschade",
+      "image": "assets/dell-grading-fast/bovenkap-hevige-lakschade-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-hevige-lakschade-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "C",
+      "label": "Deuken + diepe krassen",
+      "image": "assets/dell-grading-fast/bovenkap-deuken-diepe-krassen-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-deuken-diepe-krassen-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "D",
+      "label": "Bovenkap gebroken",
+      "image": "assets/dell-grading-fast/bovenkap-gebroken-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-gebroken-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "D",
+      "label": "Scherpe rand",
+      "image": "assets/dell-grading-fast/bovenkap-scherpe-rand-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-scherpe-rand-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bovenkap",
+      "grade": "D",
+      "label": "Sluit niet goed",
+      "image": "assets/dell-grading-fast/bovenkap-sluit-niet-v3-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bovenkap-sluit-niet-v3-ai.jpg",
+      "reason": "Already replaced with an inspected detail close-up."
+    },
+    {
+      "component": "randen",
+      "grade": "C",
+      "label": "Open/verbogen herstelbaar",
+      "image": "assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg",
+      "reason": "Already replaced with an inspected detail close-up."
+    },
+    {
+      "component": "randen",
+      "grade": "C",
+      "label": "Open/te zwaar verbogen",
+      "image": "assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "randen",
+      "grade": "D",
+      "label": "Zijkant gebroken",
+      "image": "assets/dell-grading-fast/randen-gebroken-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/randen-gebroken-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "randen",
+      "grade": "D",
+      "label": "Scherpe rand",
+      "image": "assets/dell-grading-fast/randen-scherpe-rand-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/randen-scherpe-rand-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "randen",
+      "grade": "D",
+      "label": "Niet herstelbaar verbogen",
+      "image": "assets/dell-grading-fast/randen-onherstelbaar-v3-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/randen-onherstelbaar-v3-ai.jpg",
+      "reason": "Already replaced with an inspected detail close-up."
+    },
+    {
+      "component": "bezel",
+      "grade": "B",
+      "label": "Verkleuring rand",
+      "image": "assets/dell-grading-fast/bezel-verkleuring-rand-dell-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-verkleuring-detail-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bezel",
+      "grade": "B",
+      "label": "Haarscheurtje bezelrand",
+      "image": "assets/dell-grading-fast/bezel-haarscheurtje-b-dell-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-haarscheur-detail-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bezel",
+      "grade": "C",
+      "label": "Haarscheurtje bezelrand",
+      "image": "assets/dell-grading-fast/bezel-haarscheurtje-c-dell-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-haarscheur-detail-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bezel",
+      "grade": "C",
+      "label": "Cracks / zwaar gebroken",
+      "image": "assets/dell-grading-fast/bezel-zwaar-gebroken-dell-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-zwaar-gebroken-detail-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bezel",
+      "grade": "D",
+      "label": "Schermrand gebroken",
+      "image": "assets/dell-grading-fast/bezel-gebroken-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-gebroken-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "bezel",
+      "grade": "D",
+      "label": "Schermrand los",
+      "image": "assets/dell-grading-fast/bezel-los-v3-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/bezel-los-v3-ai.jpg",
+      "reason": "Already replaced with an inspected detail close-up."
+    },
+    {
+      "component": "bezel",
+      "grade": "D",
+      "label": "Scherpe rand",
+      "image": "assets/dell-grading-fast/bezel-scherpe-rand-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/bezel-scherpe-rand-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "Toetsafdrukken",
+      "image": "assets/dell-grading-fast/lcd-keyinprint-b.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-keyinprint-b.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "0-5 cm",
+      "image": "assets/dell-grading-fast/lcd-keyinprint-0-5cm.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-keyinprint-0-5cm.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "5-10 cm",
+      "image": "assets/dell-grading-fast/lcd-keyinprint-5-10cm.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-keyinprint-5-10cm.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "10+ cm",
+      "image": "assets/dell-grading-fast/lcd-keyinprint-10-plus-cm.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-keyinprint-10-plus-cm.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "Whitespot",
+      "image": "assets/dell-grading-fast/lcd-whitespot-b.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-whitespot-b.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "B",
+      "label": "Combinatie",
+      "image": "assets/dell-grading-fast/lcd-mixed-b.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-mixed-b.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "C",
+      "label": "Key Marks C",
+      "image": "assets/dell-grading-fast/lcd-keyinprint-c.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-keyinprint-c.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "C",
+      "label": "Whitespot C",
+      "image": "assets/dell-grading-fast/lcd-whitespot-c-balanced.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-whitespot-c-balanced.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "C",
+      "label": "Mixed C",
+      "image": "assets/dell-grading-fast/lcd-mixed-c.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-mixed-c.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "D",
+      "label": "Pixel line",
+      "image": "assets/dell-grading-fast/lcd-pixellijn-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-pixellijn-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "D",
+      "label": "Cracked screen",
+      "image": "assets/dell-grading-fast/lcd-gebarsten-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-gebarsten-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "lcd",
+      "grade": "D",
+      "label": "Dead pixels",
+      "image": "assets/dell-grading-fast/lcd-dode-pixels-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/lcd-dode-pixels-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "lcd",
+      "grade": "D",
+      "label": "Schermflikkering",
+      "image": "assets/dell-grading-fast/lcd-flikkering-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-flikkering-v1-ai.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "lcd",
+      "grade": "D",
+      "label": "Geen beeld",
+      "image": "assets/dell-grading-fast/lcd-geen-beeld-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/lcd-geen-beeld-v1-ai.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "onderkant",
+      "grade": "C",
+      "label": "Heavy wear",
+      "image": "assets/dell-grading-fast/onderkant-gebruikssporen.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/onderkant-gebruikssporen.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "onderkant",
+      "grade": "C",
+      "label": "Cracked / broken",
+      "image": "assets/dell-grading-fast/onderkant-barsten-breuken.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/onderkant-barsten-breuken.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "onderkant",
+      "grade": "D",
+      "label": "Onderkant gebroken",
+      "image": "assets/dell-grading-fast/onderkant-gebroken-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/onderkant-gebroken-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "onderkant",
+      "grade": "D",
+      "label": "Onderdeel ontbreekt",
+      "image": "assets/dell-grading-fast/onderkant-onderdeel-ontbreekt-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/onderkant-onderdeel-ontbreekt-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "onderkant",
+      "grade": "D",
+      "label": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/onderkant-veiligheidsrisico-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/onderkant-veiligheidsrisico-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Toetsen ontbreken",
+      "image": "assets/dell-grading-fast/keyboard-many-missing-keys-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-many-missing-keys-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Missing key",
+      "image": "assets/dell-grading-fast/keyboard-een-toets-ontbreekt-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/keyboard-een-toets-ontbreekt-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Meerdere toetsen ontbreken",
+      "image": "assets/dell-grading-fast/keyboard-meerdere-toetsen-ontbreken-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-meerdere-toetsen-ontbreken-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Keyboard ontbreekt / defect",
+      "image": "assets/dell-grading-fast/keyboard-defect.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-defect.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Toets werkt niet",
+      "image": "assets/dell-grading-fast/keyboard-toets-test-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-toets-test-v1-ai.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Keyboard defect",
+      "image": "assets/dell-grading-fast/keyboard-functionele-test-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-functionele-test-v1-ai.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "keyboard",
+      "grade": "D",
+      "label": "Keyboard ontbreekt",
+      "image": "assets/dell-grading-fast/keyboard-ontbreekt-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/keyboard-ontbreekt-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "palmrest",
+      "grade": "D",
+      "label": "Palmrest gebroken",
+      "image": "assets/dell-grading-fast/palmrest-gebroken-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/palmrest-gebroken-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "palmrest",
+      "grade": "D",
+      "label": "Hoek ontbreekt",
+      "image": "assets/dell-grading-fast/palmrest-hoek-ontbreekt-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/palmrest-hoek-ontbreekt-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "palmrest",
+      "grade": "D",
+      "label": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/palmrest-veiligheidsrisico-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "touchpad",
+      "grade": "C",
+      "label": "Heavy wear",
+      "image": "assets/dell-grading-fast/touchpad-gebruikssporen.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/touchpad-gebruikssporen.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "touchpad",
+      "grade": "C",
+      "label": "Touchpad Cracked",
+      "image": "assets/dell-grading-fast/touchpad-cracked-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/touchpad-cracked-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "touchpad",
+      "grade": "D",
+      "label": "Touchpad werkt niet",
+      "image": "assets/dell-grading-fast/touchpad-functionele-test-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/touchpad-functionele-test-v1-ai.jpg",
+      "reason": "Function requires checking the real device; retain the illustrative test example."
+    },
+    {
+      "component": "touchpad",
+      "grade": "D",
+      "label": "Touchpad ontbreekt",
+      "image": "assets/dell-grading-fast/touchpad-ontbreekt-v1-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/touchpad-ontbreekt-v1-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "touchpad",
+      "grade": "D",
+      "label": "Touchpad gebarsten",
+      "image": "assets/dell-grading-fast/touchpad-gebarsten-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/touchpad-gebarsten-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Functioneel",
+      "image": "assets/dell-grading-fast/scharnier-functioneel.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/scharnier-functioneel.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Niet functioneel",
+      "image": "assets/dell-grading-fast/scharnier-loshangend-ai.jpg",
+      "action": "keep",
+      "selectedImage": "assets/dell-grading-fast/scharnier-loshangend-ai.jpg",
+      "reason": "Existing framing already shows the relevant condition and its extent."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Scharnier werkt niet",
+      "image": "assets/dell-grading-fast/scharnier-blokkeert-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/scharnier-blokkeert-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Scharnier los",
+      "image": "assets/dell-grading-fast/scharnier-los-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/scharnier-los-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Behuizing verbogen",
+      "image": "assets/dell-grading-fast/scharnier-behuizing-verbogen-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/scharnier-behuizing-verbogen-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    },
+    {
+      "component": "scharnieren",
+      "grade": "D",
+      "label": "Veiligheidsrisico",
+      "image": "assets/dell-grading-fast/scharnier-veiligheidsrisico-v1-ai.jpg",
+      "action": "regenerate-close-up",
+      "selectedImage": "assets/dell-grading-fast/scharnier-veiligheidsrisico-v2-ai.jpg",
+      "reason": "Defect too small or material/geometry unclear in the full-device photo."
+    }
+  ]
+}

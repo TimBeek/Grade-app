@@ -794,6 +794,7 @@ function renderGuidedInspection() {
 }
 
 function renderGuidedDecision(decision) {
+  decision = withGradingExampleImages(decision);
   const isReview = decision.type === 'grade-review';
   const g = STATE.currentGrading;
   const component = getGradingOnderdelen().find(c => c.id === decision.componentId);
@@ -802,6 +803,7 @@ function renderGuidedDecision(decision) {
     <header class="inspection-dialog-header"><span class="inspection-dialog-icon">${uiIcon(component ? `part_${component.id}` : 'inspectParts')}</span><div><p class="inspection-followup-context"><span>Follow-up question</span>${component ? ` · ${escapeHtml(translateCopy(component.naam))} · <span>Step</span> ${getGradingOnderdelen().indexOf(component)+1} / 9` : ''}</p><h2 id="inspection-dialog-title" tabindex="-1" data-inspection-default-focus>${isReview ? 'Check the overall condition' : 'Which detail do you see?'}</h2></div><button type="button" class="inspection-dialog-dismiss" data-action="cancel_decision" aria-label="Back to main choices">${uiIcon('close')}</button></header>
     <div class="inspection-dialog-body">${path.length ? `<p class="inspection-followup-path">${escapeHtml(path.join(' · '))}</p>` : ''}
     <p>${isReview ? 'Look at the laptop as a whole. Are the marks minor or is the wear clearly visible?' : 'Choose the actual damage. Use the examples to compare.'}</p>
+    ${decision.options.some(option => option.exampleFunctionalTest) ? '<p class="inspection-functional-example">Example only: test the function on the real laptop.</p>' : ''}
     <div class="inspection-detail-options options-${decision.options.length}">${decision.options.map((option, index) => `<article class="inspection-example"><button type="button" class="inspection-choice" data-decision-option="${index}" data-decision-title="${escapeHtml(decision.title)}">
       ${option.image ? `<span class="inspection-photo"><img src="${escapeHtml(option.image)}" alt="${escapeHtml(guidedDecisionLabel(option.label))}" width="640" height="426" decoding="async"></span>` : ''}
       <span class="inspection-choice-copy"><strong>${isReview ? option.finalGrade === 'A' ? 'Minor marks only' : 'Clearly visible wear' : escapeHtml(guidedDecisionLabel(option.label))}</strong>${!isReview ? `<span>${escapeHtml(guidedDecisionDetail(option.detail || ''))}</span>` : ''}</span></button>
