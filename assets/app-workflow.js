@@ -1572,6 +1572,7 @@ async function handleAction(action, el) {
       break;
     case 'prev_q':
       if (isGuidedInspection() && getGuidedDialogType()) return;
+      if (isGuidedInspection() && getGuidedRequiredCheck()) { openGuidedDialog(getGuidedRequiredCheck()); return; }
       STATE.supplierNotice = null;
       STATE.currentGrading.huidigeIndex = Math.max(0, STATE.currentGrading.huidigeIndex - 1);
       updateSupplierNoticeForCurrentStep();
@@ -1611,6 +1612,7 @@ async function handleAction(action, el) {
     case 'next_q':
       if (isGuidedInspection()) {
         if (getGuidedDialogType()) return;
+        if (getGuidedRequiredCheck()) { openGuidedDialog(getGuidedRequiredCheck()); return; }
         const component = getGradingOnderdelen()[STATE.currentGrading.huidigeIndex];
         if (getGuidedComponentStatus(component.id) !== 'done') {
           setAppMessage('Choose an observation or mark this part as uncertain.');
@@ -2627,7 +2629,8 @@ function accountAccessError(access) {
 function readTemporaryAccountPassword(passwordId, confirmId, personal = false) {
   const input=document.getElementById(passwordId),confirmation=document.getElementById(confirmId);
   // The legacy, local-only workflow keeps its existing fallback. Production
-  // accounts always require an explicit manager-chosen temporary password.
+  // Password edits require an explicit manager choice; new accounts use the
+  // standard password directly and do not call this field-validation helper.
   if(!input && !STATE.serverAuth && !personal)return FIRST_LOGIN_PASSWORD;
   const password=String(input?.value || '');
   if(password.length<8 || password.length>256) {
@@ -2694,13 +2697,12 @@ async function createUserFromForm() {
     render();
     return;
   }
-  const password=readTemporaryAccountPassword('newUserPassword','confirmNewUserPassword');
-  if(password===null){render();return;}
+  const password=FIRST_LOGIN_PASSWORD;
   if(STATE.serverAuth) {
-    if(await saveManagedAccount('create_user',{id,naam:sanitizeExternalText(naam,80),...access},password)) {
+    if(await saveManagedAccount('create_user',{id,naam:sanitizeExternalText(naam,80),...access})) {
       STATE.accountCreateOpen=false;
       STATE.accountCreateDraft=null;
-      setAppMessage('Account created. Share the temporary password securely; the employee must choose a personal password at first sign-in.', 'success');
+      setAppMessage('Account created. Use the standard ReMarkt password for the first sign-in; the employee must choose a personal password.', 'success');
     }
     render();return;
   }
@@ -2723,7 +2725,7 @@ async function createUserFromForm() {
   if(canUseSharedDemoState() && !saved){render();return;}
   STATE.accountCreateOpen = false;
   STATE.accountCreateDraft=null;
-  setAppMessage('Account created. Share the temporary password securely; the employee must choose a personal password at first sign-in.', 'success');
+  setAppMessage('Account created. Use the standard ReMarkt password for the first sign-in; the employee must choose a personal password.', 'success');
   render();
 }
 

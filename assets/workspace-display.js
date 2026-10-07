@@ -43,10 +43,13 @@ async function toggleAppFullscreen() {
   }
 }
 
-function chooseInspectionColumns(scores) {
-  // Prefer the familiar 2x2 arrangement unless one row gives materially larger
-  // complete photos. Scores measure the visible 3:2 image, not white letterbox.
-  return scores[4] > scores[2] * 1.08 ? 4 : 2;
+function getInspectionRowPhotoHeights(cards) {
+  // Align photos within each pair, using the largest REAL caption + controls
+  // in that row. Do not add unrelated maxima or reserve buttons in empty cards.
+  return cards.map((card, index) => {
+    const row = cards.slice(index - index % 2, index - index % 2 + 2);
+    return Math.max(0, Math.floor(Math.min(...row.map(item => item.height - item.copy - item.findings))));
+  });
 }
 
 function fitInspectionViewport() {
@@ -56,33 +59,32 @@ function fitInspectionViewport() {
   const viewport = window.visualViewport;
   const height = viewport ? viewport.height : window.innerHeight;
   const width = viewport ? viewport.width : window.innerWidth;
-  screen.classList.remove('inspection-fit');
-  screen.style.removeProperty('--inspection-work-height');
   const choices = screen.querySelector('.inspection-choices');
   if (!choices) return;
-  delete choices.dataset.columns;
-  // Preserve readable reflow at extreme zoom/phone sizes rather than silently
-  // clipping content. Workstation/tablet grading fits without page scrolling.
-  const available = height - (screen.getBoundingClientRect().top + window.scrollY) - 4;
-  if (width < 700 || height < 600 || available < 430) return;
-  screen.style.setProperty('--inspection-work-height', `${Math.floor(available)}px`);
-  screen.classList.add('inspection-fit');
-  const scores = {};
-  for (const columns of [2, 4]) {
-    choices.dataset.columns = String(columns);
-    // Each caption and findings strip keeps its natural content height. An
-    // empty strip must not reserve the space used by another card's buttons.
-    scores[columns] = Math.min(...Array.from(choices.querySelectorAll('.inspection-photo')).map(photo => {
-      const box = photo.getBoundingClientRect();
-      return Math.min(box.height, box.width / 1.5);
-    }));
-  }
-  choices.dataset.columns = String(chooseInspectionColumns(scores));
-  // Never hide long text, damage controls or the footer to claim a false fit.
-  if (screen.scrollHeight > screen.clientHeight + 2 || Array.from(choices.querySelectorAll('.inspection-example')).some(card => card.scrollHeight > card.clientHeight + 2)) {
+  const cards = Array.from(choices.querySelectorAll('.inspection-example'));
+  const resetFit = () => {
     screen.classList.remove('inspection-fit');
     screen.style.removeProperty('--inspection-work-height');
     delete choices.dataset.columns;
+    cards.forEach(card => card.style.removeProperty('--inspection-photo-height'));
+  };
+  resetFit();
+  // Preserve readable reflow at extreme zoom/phone sizes rather than silently
+  // clipping content. Workstation/tablet grading fits without page scrolling.
+  const available = height - (screen.getBoundingClientRect().top + window.scrollY) - 4;
+  if (width < 700 || height < 600 || available < 430 || cards.length !== 4) return;
+  screen.style.setProperty('--inspection-work-height', `${Math.floor(available)}px`);
+  screen.classList.add('inspection-fit');
+  choices.dataset.columns = '2';
+  const photoHeights = getInspectionRowPhotoHeights(cards.map(card => ({
+    height: card.clientHeight,
+    copy: card.querySelector('.inspection-choice-copy').getBoundingClientRect().height,
+    findings: card.querySelector('.inspection-photo-hints').getBoundingClientRect().height,
+  })));
+  cards.forEach((card, index) => card.style.setProperty('--inspection-photo-height', `${photoHeights[index]}px`));
+  // Never hide long text, damage controls or the footer to claim a false fit.
+  if (photoHeights.some(height => height <= 0) || screen.scrollHeight > screen.clientHeight + 2 || cards.some(card => card.scrollHeight > card.clientHeight + 2)) {
+    resetFit();
   } else if (window.scrollY) {
     window.scrollTo(0, 0);
   }

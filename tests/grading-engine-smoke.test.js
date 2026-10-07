@@ -281,26 +281,26 @@ test('wrong passwords, connection failures, rate limits and expired sessions hav
   assert.doesNotMatch(vm.runInContext('STATE.appMessage.text',app),/Incorrect account/);
 });
 
-test('manager temporary-password fields are masked; confirmed server writes never cache plaintext or reset other work',async()=>{
+test('new accounts automatically use the standard password without input fields or cached plaintext',async()=>{
   const app=loadAppSandbox({gzip:true});let sent;
   vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';STATE.accountCreateOpen=true;lastSharedStateSnapshot=getSharedDemoSnapshot({includeUsers:true});",app);
   let html=app.renderAccounts();
-  assert.match(html,/type="password"[^>]*id="newUserPassword"/);assert.match(html,/confirmNewUserPassword/);
+  assert.doesNotMatch(html,/newUserPassword|confirmNewUserPassword/);
+  assert.match(html,/Start password/);assert.match(html,/assigned automatically/);
   assert.match(html,/Standard reset password/);
   assert.match(html,/<strong data-i18n-skip>ReMarkt2026!<\/strong>/);
-  const fields={newUserName:{value:'New Employee'},newUserId:{value:'newemployee'},
-    newUserPassword:{value:'UniqueTemporary123!'},confirmNewUserPassword:{value:'UniqueTemporary123!'}};
+  const fields={newUserName:{value:'New Employee'},newUserId:{value:'newemployee'}};
   app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
   app.fetch=async(url,options)=>{assert.equal(url,'/api/session');sent=JSON.parse(options.body);
     return new Response(JSON.stringify({user:{id:'newemployee',naam:'New Employee',rol:'Grader',passwordHash:'server-managed',mustChangePassword:true},
       recordRevisions:{'["users","newemployee"]':2}}));};
   await app.createUserFromForm();
-  assert.equal(sent.password,'UniqueTemporary123!');assert.equal(sent.action,'create_user');
+  assert.equal(Object.hasOwn(sent,'password'),false);assert.equal(sent.action,'create_user');
   assert.equal(vm.runInContext('USERS.find(u=>u.id===\'newemployee\').mustChangePassword',app),true);
   assert.equal(vm.runInContext('STATE.recordRevisions[\'["users","newemployee"]\']',app),2);
   assert.match(vm.runInContext('STATE.appMessage.text',app),/Account created/);
-  assert.doesNotMatch(vm.runInContext('JSON.stringify(getSharedDemoSnapshot({includeUsers:true}))',app),/UniqueTemporary123!/);
-  assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)',app),/UniqueTemporary123!/);
+  assert.doesNotMatch(vm.runInContext('JSON.stringify(getSharedDemoSnapshot({includeUsers:true}))',app),/ReMarkt2026!/);
+  assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)',app),/ReMarkt2026!/);
   vm.runInContext("STATE.accountEditId='newemployee';",app);html=app.renderAccounts();
   assert.match(html,/resetUserPassword-newemployee/);assert.match(html,/Saving access rights does not change the password/);
 });
@@ -343,16 +343,19 @@ test('anonymous background refresh never produces a spurious session-expired mes
   assert.equal(requests,0);assert.equal(vm.runInContext('STATE.appMessage',app),null);
 });
 
-test('temporary-password validation does not send empty, short or mismatching passwords to the server',async()=>{
+test('personal-password validation does not send empty, short or mismatching passwords to the server',async()=>{
   const app=loadAppSandbox();let requests=0;
-  vm.runInContext("STATE.serverAuth=true;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';",app);
-  const fields={newUserName:{value:'Test'},newUserId:{value:'test-new'},newUserPassword:{value:'short'},confirmNewUserPassword:{value:'short'}};
+  vm.runInContext("STATE.serverAuth=true;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';USERS.push({id:'employee',naam:'Employee',rol:'Grader',passwordHash:'server-managed'});",app);
+  const fields={'resetUserPassword-employee':{value:''},'confirmResetUserPassword-employee':{value:''}};
   app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
   app.fetch=async()=>{requests++;throw new Error('Must not be requested');};
-  await app.createUserFromForm();assert.equal(requests,0);
+  await app.resetUserPassword('employee','personal');assert.equal(requests,0);
   assert.match(vm.runInContext('STATE.appMessage.text',app),/8 and 256/);
-  fields.newUserPassword.value='ValidPassword123!';fields.confirmNewUserPassword.value='different';
-  await app.createUserFromForm();assert.equal(requests,0);
+  fields['resetUserPassword-employee'].value='short';fields['confirmResetUserPassword-employee'].value='short';
+  await app.resetUserPassword('employee','personal');assert.equal(requests,0);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/8 and 256/);
+  fields['resetUserPassword-employee'].value='ValidPassword123!';fields['confirmResetUserPassword-employee'].value='different';
+  await app.resetUserPassword('employee','personal');assert.equal(requests,0);
   assert.match(vm.runInContext('STATE.appMessage.text',app),/not the same/);
 });
 
@@ -506,15 +509,17 @@ test('expired server sessions show sign-in rather than a false database outage a
   assert.match(app.renderLogin(),/id="loginPassword"/);
 });
 
-test('schoonmaak opent meteen en is niet te omzeilen via sluiten, navigatie of sneltoets', () => {
+test('schoonmaak kan sluiten zonder de beoordeling te verlaten of de controle te bevestigen', () => {
   const app = guidedSandbox({entryUnchecked: true});
   assert.equal(app.getGuidedDialogType(), 'cleaning');
   app.closeGuidedDialog();
   app.visitGuidedComponent(2);
   app.applyGradingShortcut('A');
-  assert.equal(app.getGuidedDialogType(), 'cleaning');
+  assert.equal(app.getGuidedRequiredCheck(), 'cleaning');
   assert.equal(vm.runInContext('STATE.currentGrading.huidigeIndex', app), 0);
   assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
+  assert.equal(app.getGuidedDialogType(), null);
+  assert.match(app.renderGuidedInspection(), /Controleer schone bovenkap|Clean lid first/);
   app.setCoverCleaning(true);
   assert.equal(app.getGuidedDialogType(), null);
   assert.equal(vm.runInContext('STATE.currentGrading.keuzes.bovenkap', app), undefined);
@@ -592,26 +597,35 @@ test('all nine guided steps describe A/B/C/X with two concise accessible icon bu
   }
 });
 
-test('inspection chooses one row only when complete reference photos become larger', () => {
+test('inspection aligns photos per pair using actual combined captions and damage controls', () => {
   const app = loadAppSandbox();
-  assert.equal(app.chooseInspectionColumns({2:250,4:210}),2);
-  assert.equal(app.chooseInspectionColumns({2:180,4:230}),4);
-  assert.equal(app.chooseInspectionColumns({2:200,4:208}),2);
+  const metrics = [{height:250,copy:80,findings:0},{height:250,copy:80,findings:0},
+    {height:250,copy:80,findings:52},{height:250,copy:100,findings:0}];
+  assert.deepEqual(Array.from(app.getInspectionRowPhotoHeights(metrics)),[170,170,118,118]);
+  // A taller translated caption changes only its own pair, not every photo.
+  metrics[0].copy=104.6;
+  assert.deepEqual(Array.from(app.getInspectionRowPhotoHeights(metrics)),[145,145,118,118]);
+  metrics[2].copy=300;
+  assert.deepEqual(Array.from(app.getInspectionRowPhotoHeights(metrics)),[145,145,0,0]);
 });
 
 test('compact inspection gives spare height to photos, never empty caption or findings spacers', () => {
   const app = loadAppSandbox();
   const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
   assert.match(css, /\.inspection-choices \.inspection-choice-copy\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*0/);
-  assert.match(css, /\.inspection-choices \.inspection-photo\s*\{[^}]*flex-grow:\s*1/);
+  assert.match(css, /\.inspection-fit \.inspection-photo\s*\{[^}]*height:\s*var\(--inspection-photo-height, 0px\)/);
+  assert.doesNotMatch(css, /data-columns="4"/);
   assert.match(css, /\.inspection-photo-hints:empty\s*\{\s*padding:\s*0/);
   assert.doesNotMatch(css, /--inspection-(copy|findings)-height/);
   const properties = new Map(), classes = new Set();
-  const cards = [{clientHeight: 340, scrollHeight: 340}];
+  const cards = Array.from({length:4}, (_, index) => ({clientHeight:340,scrollHeight:340,
+    properties:new Map(), copyHeight:80, findingsHeight:index===2?52:0,
+    style:{setProperty(name,value){cards[index].properties.set(name,value);},removeProperty(name){cards[index].properties.delete(name);}},
+    querySelector(selector) { return {getBoundingClientRect:()=>({height:selector==='.inspection-choice-copy'?this.copyHeight:this.findingsHeight})}; },
+  }));
   const choices = {
     dataset: {},
     querySelectorAll(selector) {
-      if (selector === '.inspection-photo') return [{getBoundingClientRect: () => ({height: this.dataset.columns === '2' ? 245 : 180, width: this.dataset.columns === '2' ? 600 : 300})}];
       if (selector === '.inspection-example') return cards;
       throw new Error('Unexpected global caption/finding measurement: ' + selector);
     },
@@ -629,14 +643,68 @@ test('compact inspection gives spare height to photos, never empty caption or fi
   assert.equal(choices.dataset.columns, '2');
   assert.equal(classes.has('inspection-fit'), true);
   assert.deepEqual([...properties], [['--inspection-work-height', '776px']]);
+  assert.deepEqual(cards.map(card=>card.properties.get('--inspection-photo-height')),['260px','260px','208px','208px']);
+  for (const [width,height] of [[1920,1080],[2560,1440],[1280,720]]) {
+    Object.assign(app.window,{innerWidth:width,innerHeight:height});
+    app.fitInspectionViewport();
+    assert.equal(choices.dataset.columns,'2','Workplaces must never switch to four choices in one row');
+  }
   cards[0].scrollHeight = 400;
   app.fitInspectionViewport();
   assert.equal(classes.has('inspection-fit'), false, 'Overflow must still reflow, never be clipped');
   assert.equal(properties.size, 0);
   assert.equal(choices.dataset.columns, undefined);
+  assert.ok(cards.every(card=>card.properties.size===0));
   app.window.innerWidth = 500;
   app.fitInspectionViewport();
   assert.equal(classes.has('inspection-fit'), false, 'Phone layout must remain accessible');
+});
+
+test('cleaning and touch close buttons and Escape retain this laptop and reopen the pending check', async () => {
+  for (const type of ['cleaning','touch']) {
+    const app=guidedSandbox({entryUnchecked:true});
+    if(type==='touch') {
+      app.setCoverCleaning(true);
+      app.visitGuidedComponent(5);
+      app.toggleGuidedTouchSelection();
+    }
+    vm.runInContext("STATE.currentGrading.keuzes.randen='B';",app);
+    const grading=vm.runInContext('STATE.currentGrading',app),laptop=vm.runInContext('STATE.currentLaptop',app);
+    const index=grading.huidigeIndex, touch=app.getGuidedTouchSelection();
+    const html=app.renderGuidedInspection();
+    assert.match(html,/class="inspection-dialog-dismiss" data-action="inspection_dialog_close" aria-label="Close"/);
+    await app.handleAction('inspection_dialog_close',{});
+    assert.equal(app.getGuidedDialogType(),null);
+    assert.equal(app.getGuidedRequiredCheck(),type);
+    assert.equal(vm.runInContext('STATE.currentScreen',app),'grading_beginner');
+    assert.equal(vm.runInContext('STATE.currentGrading',app),grading);
+    assert.equal(vm.runInContext('STATE.currentLaptop',app),laptop);
+    assert.equal(grading.huidigeIndex,index);
+    assert.equal(grading.keuzes.randen,'B');
+    assert.equal(app.getGuidedTouchSelection(),touch);
+    assert.equal(Boolean(grading.touchChecked),false);
+    if(type==='cleaning')assert.notEqual(grading.coverCleaning,'cleaned');
+    assert.match(app.renderGuidedInspection(),/class="inspection-choice"[^>]* disabled /);
+    await app.handleAction('inspection_checks',{});
+    assert.equal(app.getGuidedDialogType(),type);
+    let prevented=false;
+    app.handleGuidedDialogKeydown({key:'Escape',preventDefault(){prevented=true;}});
+    assert.equal(prevented,true);
+    assert.equal(app.getGuidedDialogType(),null);
+    assert.equal(grading.huidigeIndex,index);
+    assert.ok(app.getGuidedMissingChecks(grading).some(part=>part.id===(type==='cleaning'?'bovenkap':'lcd')));
+    await app.handleAction('prev_q',{});
+    assert.equal(app.getGuidedDialogType(),type,'An unfinished check must not reset or exit the laptop through Back');
+    assert.equal(grading.huidigeIndex,index);
+    app.closeGuidedDialog();
+    await app.handleAction('next_q',{});
+    assert.equal(app.getGuidedDialogType(),type,'Continue must request confirmation, not silently accept dismissal');
+    assert.equal(grading.huidigeIndex,index);
+    if(type==='cleaning')app.setCoverCleaning(true);
+    else await app.confirmGuidedTouch(touch);
+    assert.equal(app.getGuidedRequiredCheck(),null);
+    assert.equal(app.getGuidedDialogType(),null);
+  }
 });
 
 test('fullscreen uses the stable document root and does not render or erase manual input', async () => {
@@ -2162,7 +2230,7 @@ test('nieuwe gebruiker krijgt startwachtwoord en moet dit bij eerste login wijzi
   assert.equal(created.naam, 'Nieuwe Grader');
   assert.equal(created.passwordHash, startHash);
   assert.equal(created.mustChangePassword, true);
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Share the temporary password securely/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Use the standard ReMarkt password/);
   assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /mustChangePassword/);
 });
 

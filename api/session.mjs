@@ -59,7 +59,9 @@ export default async function handler(request, response) {
         throw storageError('REQUEST_INVALID', 'Invalid password reset mode.', 400);
       if (body.action === 'set_user_password' && body.password === 'ReMarkt2026!')
         throw storageError('REQUEST_INVALID', 'Use the standard reset option for the standard password.', 400);
-      updated.passwordHash = passwordHash(standardReset ? 'ReMarkt2026!' : body.password);
+      // New accounts always start with the standard password, including requests
+      // from an older browser tab that still sends a chosen temporary password.
+      updated.passwordHash = passwordHash(body.action === 'create_user' || standardReset ? 'ReMarkt2026!' : body.password);
       updated.mustChangePassword = body.action !== 'set_user_password';
       updated.passwordUpdatedAt = new Date().toISOString();
       const auditId = randomUUID();

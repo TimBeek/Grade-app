@@ -6,6 +6,8 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Clean lid first': 'Controleer schone bovenkap',
+  'Check touchscreen': 'Controleer touchscreen',
   "No dents or coating damage": "Geen deuken of lakschade",
   "Clean surface; no stickers": "Schoon oppervlak; geen stickers",
   "Light coating wear or small dents": "Lichte lakslijtage of kleine deukjes",
@@ -121,6 +123,9 @@ const NL_COPY = {
   'Set by manager':'Ingesteld door manager',
   'The employee chooses a personal password at first sign-in':'De medewerker kiest bij de eerste aanmelding een eigen wachtwoord',
   'Choose a temporary password. The employee must choose a personal password at first sign-in.':'Kies een tijdelijk wachtwoord. De medewerker moet bij de eerste aanmelding een eigen wachtwoord kiezen.',
+  'The standard ReMarkt password is assigned automatically. The employee must choose a personal password at first sign-in.':'Het standaard ReMarkt-wachtwoord wordt automatisch ingesteld. De medewerker moet bij de eerste aanmelding een eigen wachtwoord kiezen.',
+  'Start password':'Startwachtwoord',
+  'Account created. Use the standard ReMarkt password for the first sign-in; the employee must choose a personal password.':'Account aangemaakt. Gebruik bij de eerste aanmelding het standaard ReMarkt-wachtwoord; de medewerker moet een eigen wachtwoord kiezen.',
   'Fill both password fields only when resetting the password. Saving access rights does not change the password.':'Vul beide wachtwoordvelden alleen in om het wachtwoord te resetten. Het opslaan van rechten verandert het wachtwoord niet.',
   'Use between 8 and 256 characters for the temporary password.':'Gebruik tussen 8 en 256 tekens voor het tijdelijke wachtwoord.',
   'Account details or password are invalid. Check the fields and try again.':'De accountgegevens of het wachtwoord zijn ongeldig. Controleer de velden en probeer opnieuw.',

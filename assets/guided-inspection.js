@@ -40,7 +40,7 @@ const GUIDED_PHOTO_FINDINGS = {
 };
 
 async function selectGuidedPhotoFinding(triggerId, componentId) {
-  if (!isGuidedInspection() || getGuidedDialogType() || STATE.pendingDecision) return;
+  if (!isGuidedInspection() || getGuidedDialogType() || STATE.pendingDecision || getGuidedRequiredCheck()) return;
   const g = STATE.currentGrading;
   const component = getGradingOnderdelen()[g.huidigeIndex];
   if (component.id !== componentId || !(component.triggers || []).some(t => t.id === triggerId)) return;
@@ -304,14 +304,22 @@ function isGuidedInspection() {
   return Boolean(STATE.currentGrading && STATE.currentGrading.modus === 'beginner' && STATE.currentGrading.inspectionVersion);
 }
 
+function getGuidedRequiredCheck() {
+  if (!isGuidedInspection()) return null;
+  const g = STATE.currentGrading;
+  const id = getGradingOnderdelen()[g.huidigeIndex].id;
+  if (id === 'bovenkap' && g.coverCleaning !== 'cleaned') return 'cleaning';
+  if (id === 'lcd' && !g.touchChecked && !g.touchUncertain) return 'touch';
+  return null;
+}
+
 function getGuidedDialogType() {
   if (!isGuidedInspection() || STATE.currentScreen !== 'grading_beginner' || STATE.imagePreview) return null;
   if (STATE.pendingDecision) return 'followup';
   const g = STATE.currentGrading;
   if (['cleaning', 'touch', 'damage', 'checks', 'review', 'supplier'].includes(g.inspectionDialog)) return g.inspectionDialog;
-  const id = getGradingOnderdelen()[g.huidigeIndex].id;
-  if (id === 'bovenkap' && g.coverCleaning !== 'cleaned') return 'cleaning';
-  if (id === 'lcd' && !g.touchChecked && !g.touchUncertain) return 'touch';
+  const required = getGuidedRequiredCheck();
+  if (required) return g.dismissedInspectionChecks?.[required] ? null : required;
   if (STATE.supplierNotice) return 'checks';
   return null;
 }
@@ -339,7 +347,11 @@ function closeGuidedDialog() {
   const g = STATE.currentGrading;
   const type = getGuidedDialogType();
   if (type === 'followup') { cancelPendingDecision(); render(); return; }
-  if (type === 'review' || (type === 'cleaning' && g.coverCleaning !== 'cleaned') || (type === 'touch' && !g.touchChecked)) return;
+  if (type === 'review') return;
+  if (type === 'cleaning' || type === 'touch') {
+    // Dismissal is not a physical confirmation or an exit from this laptop.
+    g.dismissedInspectionChecks = { ...g.dismissedInspectionChecks, [type]: true };
+  }
   if ((type === 'checks' || type === 'supplier') && STATE.supplierNotice) confirmSupplierNotice();
   g.inspectionDialog = null;
   render();
@@ -554,7 +566,7 @@ function markGuidedDoubt() {
 }
 
 function visitGuidedComponent(index) {
-  if (!isGuidedInspection() || STATE.pendingDecision || getGuidedDialogType()) return;
+  if (!isGuidedInspection() || STATE.pendingDecision || getGuidedDialogType() || getGuidedRequiredCheck()) return;
   const components = getGradingOnderdelen();
   if (!Number.isInteger(index) || index < 0 || index >= components.length) return;
   STATE.currentGrading.huidigeIndex = index;
@@ -564,7 +576,7 @@ function visitGuidedComponent(index) {
 }
 
 function toggleGuidedTrigger(triggerId) {
-  if (!isGuidedInspection() || STATE.pendingDecision) return;
+  if (!isGuidedInspection() || STATE.pendingDecision || getGuidedRequiredCheck()) return;
   const g = STATE.currentGrading;
   const component = getGradingOnderdelen()[g.huidigeIndex];
   const trigger = (component.triggers || []).find(item => item.id === triggerId);
@@ -712,7 +724,7 @@ function renderGuidedPopup(type, component) {
       <details><summary>All supplier notes</summary><ul data-i18n-skip>${splitSupplierIssues(STATE.currentLaptop).map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul></details>`;
     footer = '<button type="button" class="btn btn-primary" data-action="inspection_dialog_close">Read, continue</button><button type="button" class="btn btn-secondary" data-action="inspection_restart">Restart inspection</button>';
   }
-  const pauses = type === 'review' || (type === 'cleaning' && g.coverCleaning !== 'cleaned') || (type === 'touch' && !g.touchChecked);
+  const pauses = type === 'review';
   return `<div class="inspection-dialog-overlay"><section class="inspection-dialog" id="inspection-dialog" role="dialog" aria-modal="true" aria-labelledby="inspection-dialog-title" tabindex="-1">
     <header class="inspection-dialog-header"><span class="inspection-dialog-icon">${uiIcon(icon)}</span><h2 id="inspection-dialog-title" tabindex="-1" data-inspection-default-focus>${title}</h2><button type="button" class="inspection-dialog-dismiss" data-action="${pauses ? 'back_scan' : 'inspection_dialog_close'}" aria-label="${pauses ? 'Pause inspection' : 'Close'}" ${busy}>${uiIcon('close')}</button></header>
     <div class="inspection-dialog-body">${body}${type !== 'damage' ? renderGuidedRecordedRepairs(component) : ''}</div><footer class="inspection-dialog-footer">${footer}</footer></section></div>`;
@@ -727,6 +739,9 @@ function renderGuidedInspection() {
   const doubts = getGuidedUncertainParts();
   const dialogType = getGuidedDialogType();
   const blocked = Boolean(dialogType || pending);
+  const required = getGuidedRequiredCheck();
+  const choicesBlocked = blocked || Boolean(required);
+  const checksLabel = required === 'cleaning' ? 'Clean lid first' : required === 'touch' ? 'Check touchscreen' : 'Checkpoints';
   const images = VISUAL_ASSETS[component.id] || {};
   const captions = {
     bezel: { B: ['Marks or a small hairline crack', 'Choose the exact damage next'], C: ['Clear cracks or heavy coating damage', 'Choose the exact damage next'] },
@@ -748,7 +763,7 @@ function renderGuidedInspection() {
       </nav></div>
       <div class="inspection-guidance"><section class="inspection-look" aria-label="What to inspect"><span class="inspection-look-icon" aria-hidden="true">${uiIcon(`part_${component.id}`)}</span><p>${guide.instruction}</p></section>
       <div class="inspection-toolbar">
-        <button type="button" class="btn btn-secondary ${getGuidedSupplierIssues(component.id).length ? 'has-supplier-note' : ''}" data-action="inspection_checks" ${blocked ? 'disabled' : ''} aria-label="Checkpoints" title="Checkpoints">${uiIcon(getGuidedSupplierIssues(component.id).length ? 'info' : 'inspectParts')}<span class="inspection-control-label">Checkpoints</span>${component.id === 'lcd' && g.touchChecked ? `<small>${isTouchscreenLaptop() ? 'Touch: yes' : 'Touch: no'}</small>` : ''}</button>
+        <button type="button" class="btn btn-secondary ${getGuidedSupplierIssues(component.id).length ? 'has-supplier-note' : ''}" data-action="inspection_checks" ${blocked ? 'disabled' : ''} aria-label="${escapeHtml(translateCopy(checksLabel))}" title="${escapeHtml(translateCopy(checksLabel))}">${uiIcon(required === 'cleaning' ? 'clean' : required === 'touch' ? 'touch' : getGuidedSupplierIssues(component.id).length ? 'info' : 'inspectParts')}<span class="${required ? '' : 'inspection-control-label'}">${checksLabel}</span>${component.id === 'lcd' && g.touchChecked ? `<small>${isTouchscreenLaptop() ? 'Touch: yes' : 'Touch: no'}</small>` : ''}</button>
         ${doubts.length ? `<button type="button" class="btn btn-secondary inspection-review-status" data-action="inspection_review" ${blocked ? 'disabled' : ''}>${uiIcon('question')}<span>Uncertain parts</span><b>${doubts.length}</b></button>` : ''}
       </div></div>
       ${`
@@ -760,11 +775,11 @@ function renderGuidedInspection() {
             const supplierAdvice = getGuidedSupplierPhotoAdvice(component.id, choice.letter);
             const importantAdvice = supplierAdvice.some(note => isGuidedSupplierImportant(component.id, note));
             return `<article class="inspection-example ${g.keuzes[component.id] === choice.letter ? 'selected' : ''}">
-              <button type="button" class="inspection-choice" data-keuze="${choice.letter}" data-inspection-component="${component.id}" data-auto-advance="true" ${blocked ? 'disabled' : ''} aria-label="${displayGrade(choice.letter)} · ${escapeHtml(translateCopy(title))}" aria-describedby="inspection-points-${component.id}-${choice.letter}">
+              <button type="button" class="inspection-choice" data-keuze="${choice.letter}" data-inspection-component="${component.id}" data-auto-advance="true" ${choicesBlocked ? 'disabled' : ''} aria-label="${displayGrade(choice.letter)} · ${escapeHtml(translateCopy(title))}" aria-describedby="inspection-points-${component.id}-${choice.letter}">
                 ${images[choice.letter] ? `<span class="inspection-photo"><img src="${images[choice.letter]}" alt="${escapeHtml(title)}" width="640" height="426" decoding="async"></span>` : ''}
                 <span class="inspection-choice-copy"><span class="inspection-choice-heading"><span class="inspection-choice-grade" data-grade="${displayGrade(choice.letter)}" aria-hidden="true" data-i18n-skip>${displayGrade(choice.letter)}</span><strong>${escapeHtml(title)}</strong></span>${renderGuidedChoicePoints(component.id, choice.letter)}</span>
               </button>
-              <div class="inspection-photo-hints">${photoFindings.map(t => { const finding = GUIDED_PHOTO_FINDINGS[t.id]; return `<button type="button" class="inspection-photo-hint ${g.triggers[t.id] ? 'active' : ''}" data-inspection-finding="${t.id}" data-inspection-component="${component.id}" aria-pressed="${Boolean(g.triggers[t.id])}" ${blocked ? 'disabled' : ''}>${uiIcon(finding.icon)}<span>${finding.label}</span></button>`; }).join('')}</div>
+              <div class="inspection-photo-hints">${photoFindings.map(t => { const finding = GUIDED_PHOTO_FINDINGS[t.id]; return `<button type="button" class="inspection-photo-hint ${g.triggers[t.id] ? 'active' : ''}" data-inspection-finding="${t.id}" data-inspection-component="${component.id}" aria-pressed="${Boolean(g.triggers[t.id])}" ${choicesBlocked ? 'disabled' : ''}>${uiIcon(finding.icon)}<span>${finding.label}</span></button>`; }).join('')}</div>
               ${supplierAdvice.length ? `<button type="button" class="inspection-supplier-info ${importantAdvice ? 'important' : 'minor'}" data-inspection-supplier="${choice.letter}" data-inspection-component="${component.id}" aria-label="${importantAdvice ? 'Important supplier observation' : 'Minor supplier observation'}" title="${importantAdvice ? 'Important supplier observation' : 'Minor supplier observation'}" ${blocked ? 'disabled' : ''}>${uiIcon('info')}</button>` : ''}
               ${images[choice.letter] ? `<button type="button" class="inspection-zoom" data-image-preview="true" data-preview-src="${images[choice.letter]}" data-preview-label="${escapeHtml(title)}" aria-label="Zoom image">${uiIcon('inspectParts')}<span>Zoom</span></button>` : ''}
             </article>`;

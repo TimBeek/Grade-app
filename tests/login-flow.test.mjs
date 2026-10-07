@@ -83,18 +83,34 @@ test('employee login and manager password administration remain reliable on a sh
       assert.equal((await request({id:'staff-1',password:'SyntheticPassword123!'})).statusCode,200);
       assert.equal((await request({id:'staff-0',password:'SyntheticPassword123!'},'','another-office')).statusCode,200);
     });
-    await t.test('manager creates a new employee with a private temporary password and correct access',async()=>{
+    await t.test('manager creates a new employee with the automatic standard password and mandatory first-login change',async()=>{
       const created=await request({action:'create_user',id:'new-employee',naam:'New Employee',rol:'Stickeraar',
-        laptopAccess:'label',monitorAccess:'grade',voorkeur:'beginner',password:'ChosenTemporary123!'},managerToken);
+        laptopAccess:'label',monitorAccess:'grade',voorkeur:'beginner'},managerToken);
       assert.equal(created.statusCode,200);assert.equal(created.data.user.mustChangePassword,true);
       assert.ok(created.data.recordRevisions['["users","new-employee"]']);
-      assert.doesNotMatch(JSON.stringify(created.data),/ChosenTemporary|scrypt\$/);
-      const login=await request({id:'new-employee',password:'ChosenTemporary123!'},'','other-workstation');
+      assert.doesNotMatch(JSON.stringify(created.data),/ReMarkt2026|scrypt\$/);
+      const stored=(await store.detail('users','new-employee')).payload;
+      assert.ok(passwordMatches('ReMarkt2026!',stored.passwordHash));
+      assert.doesNotMatch(JSON.stringify(stored),/ReMarkt2026/);
+      const login=await request({id:'new-employee',password:'ReMarkt2026!'},'','other-workstation');
       assert.equal(login.statusCode,200);assert.equal(login.data.user.laptopAccess,'label');
+      assert.equal(login.data.user.mustChangePassword,true);
+      assert.equal((await request({action:'password',password:'ReMarkt2026!'},login.data.token)).statusCode,400);
+      assert.equal((await request({action:'create_user',id:'blocked-by-first-login'},login.data.token)).statusCode,403);
       const changed=await request({action:'password',password:'NewPersonalPassword123!'},login.data.token);
       assert.equal(changed.statusCode,200);assert.equal(changed.data.user.mustChangePassword,false);
-      assert.equal((await request({id:'new-employee',password:'ChosenTemporary123!'})).statusCode,401);
+      assert.equal((await request({id:'new-employee',password:'ReMarkt2026!'})).statusCode,401);
       assert.equal((await request({id:'new-employee',password:'NewPersonalPassword123!'},'','workstation-3')).statusCode,200);
+    });
+    await t.test('old create forms cannot override the standard password and staff cannot create accounts',async()=>{
+      const profile={action:'create_user',id:'old-tab-new',naam:'Old Tab Employee',rol:'Grader',
+        laptopAccess:'grade',monitorAccess:'none',voorkeur:'beginner',password:'ChosenTemporary123!'};
+      assert.equal((await request(profile,issueSession(staff[8],'login-qa'))).statusCode,403);
+      assert.equal(await store.detail('users',profile.id),null);
+      const created=await request(profile,managerToken);
+      assert.equal(created.statusCode,200);assert.equal(created.data.user.mustChangePassword,true);
+      assert.equal((await request({id:profile.id,password:profile.password})).statusCode,401);
+      assert.equal((await request({id:profile.id,password:'ReMarkt2026!'},'','fresh-workstation')).statusCode,200);
     });
     await t.test('reset revokes old sessions, preserves employee access and requires a different personal password',async()=>{
       const old=await request({id:'staff-2',password:'SyntheticPassword123!'});
@@ -222,6 +238,15 @@ test('employee login and manager password administration remain reliable on a sh
       assert.match(app.__appElement.innerHTML,/Personal password saved/);
       assert.match(app.renderAccounts(),/Set personal password/);
       assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users) || ""',app),/NewPersonalFromUi/);
+      fields.newUserName={value:'Created From UI'};fields.newUserId={value:'created-from-ui'};
+      vm.runInContext('STATE.accountCreateOpen=true;',app);
+      assert.doesNotMatch(app.renderAccounts(),/newUserPassword|confirmNewUserPassword/);
+      await app.createUserFromForm();
+      assert.equal(vm.runInContext('STATE.accountCreateOpen',app),false);
+      assert.ok(passwordMatches('ReMarkt2026!',(await store.detail('users','created-from-ui')).payload.passwordHash));
+      const firstLogin=await request({id:'created-from-ui',password:'ReMarkt2026!'},'','new-employee-pc');
+      assert.equal(firstLogin.statusCode,200);assert.equal(firstLogin.data.user.mustChangePassword,true);
+      assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users) || ""',app),/ReMarkt2026!/);
     });
     await t.test('actual employee client: fresh login, database outage, local work, reload and idempotent recovery',async()=>{
       await store.merge({mutationId:randomUUID(),operations:[

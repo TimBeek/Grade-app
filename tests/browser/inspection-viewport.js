@@ -11,6 +11,12 @@
       const screen=document.querySelector('.inspection-screen'),footer=screen.querySelector('.inspection-footer');
       const photos=[...screen.querySelectorAll('.inspection-photo')].map(p=>({height:p.clientHeight,width:p.clientWidth,fit:getComputedStyle(p.querySelector('img')).objectFit}));
       if (photos.length!==4 || photos.some(p=>p.fit!=='contain'||p.height<90)) throw new Error('Incomplete or unreadable photos, step '+(i+1));
+      if (screen.querySelector('.inspection-choices').dataset.columns!=='2') throw new Error('Expected stable 2x2 layout, step '+(i+1));
+      for (const first of [0,2]) {
+        if (Math.abs(photos[first].height-photos[first+1].height)>1) throw new Error('Unequal photo heights within a row, step '+(i+1));
+        const captions=[...screen.querySelectorAll('.inspection-choices .inspection-choice-copy')];
+        if(Math.abs(captions[first].getBoundingClientRect().top-captions[first+1].getBoundingClientRect().top)>1)throw new Error('Unaligned captions, step '+(i+1));
+      }
       for (const strip of screen.querySelectorAll('.inspection-photo-hints:empty')) {
         if (strip.getBoundingClientRect().height > 1) throw new Error('Empty damage controls reserve space, step '+(i+1));
       }

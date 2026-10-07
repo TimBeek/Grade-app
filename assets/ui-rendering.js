@@ -2334,7 +2334,8 @@ function renderAccounts() {
         <div class="acc-panel acc-create">
           <div class="acc-panel-head">
             <h3>New user</h3>
-            <p>Choose a temporary password. The employee must choose a personal password at first sign-in.</p>
+            <p>The standard ReMarkt password is assigned automatically. The employee must choose a personal password at first sign-in.</p>
+            <p><strong>Start password</strong>: <span data-i18n-skip>${escapeHtml(FIRST_LOGIN_PASSWORD)}</span></p>
           </div>
           <div class="acc-create-inputs">
             <div class="form-group">
@@ -2344,16 +2345,6 @@ function renderAccounts() {
             <div class="form-group">
               <label class="form-label" for="newUserId">Login ID</label>
               <input class="form-input" id="newUserId" value="${escapeHtml(STATE.accountCreateDraft?.id || '')}" placeholder="e.g. first name" autocomplete="off" maxlength="80">
-            </div>
-          </div>
-          <div class="acc-create-inputs">
-            <div class="form-group">
-              <label class="form-label" for="newUserPassword">Temporary password</label>
-              <input type="password" class="form-input" id="newUserPassword" minlength="8" maxlength="256" autocomplete="new-password" placeholder="At least 8 characters" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="confirmNewUserPassword">Repeat temporary password</label>
-              <input type="password" class="form-input" id="confirmNewUserPassword" minlength="8" maxlength="256" autocomplete="new-password" required>
             </div>
           </div>
           ${accessFields('new', STATE.accountCreateDraft?.access || { rol: 'Grader', laptopAccess: 'grade', monitorAccess: 'grade', voorkeur: 'beginner' })}
