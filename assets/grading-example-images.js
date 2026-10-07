@@ -129,7 +129,9 @@ const GRADING_REASON_IMAGE_REVISIONS = new Map([
   ["assets/dell-grading-fast/bezel-los-v3-ai.jpg", "assets/dell-grading-fast/bezel-los-v4-ai.jpg"],
   ["assets/dell-grading-fast/bovenkap-sluit-niet-v3-ai.jpg", "assets/dell-grading-fast/bovenkap-sluit-niet-v4-ai.jpg"],
   ["assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v3-ai.jpg", "assets/dell-grading-fast/randen-open-verbogen-herstelbaar-v4-ai.jpg"],
-  ["assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg", "assets/dell-grading-fast/randen-open-verbogen-c-detail-v3-ai.jpg"]
+  ["assets/dell-grading-fast/randen-open-verbogen-niet-herstelbaar-dell-ai.jpg", "assets/dell-grading-fast/randen-open-verbogen-c-detail-v3-ai.jpg"],
+  ["assets/dell-grading-fast/onderkant-gebruikssporen.jpg", "assets/dell-grading-fast/onderkant-gebruikssporen-detail-v2-ai.jpg"],
+  ["assets/dell-grading-fast/onderkant-barsten-breuken.jpg", "assets/dell-grading-fast/onderkant-barsten-breuken-detail-v2-ai.jpg"]
 ]);
 
 function withGradingExampleImages(decision) {

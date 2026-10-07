@@ -1,0 +1,29 @@
+{
+  "created": "2026-10-07",
+  "mode": "built-in image_gen",
+  "scope": "Two new close-up bottom-cover follow-up examples; distinguish wear without fracture (B impact) from a genuine local fracture/missing corner (C impact). All scoring, labels and four primary comparison photos unchanged.",
+  "assets": [
+    {
+      "component": "onderkant",
+      "choice": "Heavy wear",
+      "expectedImpact": "b",
+      "name": "onderkant-gebruikssporen-detail",
+      "version": "v2",
+      "previousImage": "assets/dell-grading-fast/onderkant-gebruikssporen.jpg",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: product-mockup. Asset type: ONE photographic detail example for laptop grading follow-up choice. Image 1 is a CLEAN DEVICE AND MATERIAL REFERENCE, not a damage example. Generate a NEW photorealistic inspection photo of this same grey Dell laptop UNDERSIDE, laptop turned upside down on a clean white studio table. Landscape3:2, straight level camera, near-overhead slightly oblique angle, tight framing on LOWER RIGHT half of underside. Show the entire lower right corner and round black rubber foot plus a second rubber foot toward left, screw holes, and a little of recognizable ventilation grille at top for context. All viewed structures belong to BOTTOM cover, not screen lid or keyboard. Damage region large and readable at small card size, no excessive empty background. Authentic grey coated rigid metal housing, realistic grain, shadows, abrasion and fresh material edges, no CGI, clay, rubbery/melted metal. No labels, arrows, text, painted black lines, drawn-on marks, extra objects, hands, tools, watermark or collage. Primary request: HEAVY COSMETIC WEAR, but NO crack, NO break, NO missing corner. Show dozens of realistic irregular fine and medium grooves across 60 percent of visible grey panel, 3 longer scuff tracks, broad rubbed lighter coating wear around corner and round rubber foot. Mix fine surface scratches and abrasion with natural direction, not a perfectly drawn white web. Worn coating reveals modest silver substrate in small rubbed areas. The corner shape, metal shell, all screws and feet remain intact, straight, snugly attached, not dirty/sticker-covered, no open gap or deep bending. This is a B-impact follow-up observation despite its heavy cosmetic wear label, not structurally broken C or X. Exactly ONE laptop underside photo.",
+      "image": "assets/dell-grading-fast/onderkant-gebruikssporen-detail-v2-ai.jpg"
+    },
+    {
+      "component": "onderkant",
+      "choice": "Cracked / broken",
+      "expectedImpact": "c",
+      "name": "onderkant-barsten-breuken-detail",
+      "version": "v2",
+      "previousImage": "assets/dell-grading-fast/onderkant-barsten-breuken.jpg",
+      "reference": "assets/dell-grading-fast/onderkant-a.jpg",
+      "prompt": "Use case: product-mockup. Asset type: ONE photographic detail example for laptop grading follow-up choice. Image 1 is a CLEAN DEVICE AND MATERIAL REFERENCE, not a damage example. Generate a NEW photorealistic inspection photo of this same grey Dell laptop UNDERSIDE, laptop turned upside down on a clean white studio table. Landscape3:2, straight level camera, near-overhead slightly oblique angle, tight framing on LOWER RIGHT half of underside. Show the entire lower right corner and round black rubber foot plus a second rubber foot toward left, screw holes, and a little of recognizable ventilation grille at top for context. All viewed structures belong to BOTTOM cover, not screen lid or keyboard. Damage region large and readable at small card size, no excessive empty background. Authentic grey coated rigid metal housing, realistic grain, shadows, abrasion and fresh material edges, no CGI, clay, rubbery/melted metal. No labels, arrows, text, painted black lines, drawn-on marks, extra objects, hands, tools, watermark or collage. Primary request: a TRUE LOCAL BREAK in the LOWER RIGHT UNDERSIDE corner, unmistakably different from scratches. The grey thin rigid BOTTOM cover corner has a 3cm genuine through-fracture running inward from outer perimeter, parting edges 1.5mm apart with actual material thickness and recessed dark shadow. A 1.5cm small corner chip is MISSING OUTSIDE the intact round rubber foot, exposing dark inner backing locally and irregular lighter raw metal fracture edge. Crack must be a mechanically plausible broken shell with separated solid edges, NOT a black line painted on an unbroken surface. Some moderate scratches nearby, but fracture is main focal point. Rubber foot and screw point still in place, the rest of panel intact and flat. LOCAL C-type broken/missing small corner, NOT catastrophic X: no protruding dangerous shards, no opened whole chassis, no exposed electronics or swollen battery, no 15cm ripped metal. Clean crisp physical breakup, avoid soft clay or artificial perfectly triangular damage. Exactly ONE laptop underside photo.",
+      "image": "assets/dell-grading-fast/onderkant-barsten-breuken-detail-v2-ai.jpg"
+    }
+  ]
+}

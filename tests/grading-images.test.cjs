@@ -113,7 +113,7 @@ test('all follow-up choices have a reviewed image and close-up revisions stay UI
   assert.equal(ledger.assets.length, 20);
   const latest = JSON.parse(fs.readFileSync(path.join(root, 'docs/grading-x-image-revisions.json'), 'utf8'));
   const superseded = new Map(latest.assets.map(entry => [entry.previousImage, entry.image]));
-  assert.equal(revisions.size, 26);
+  assert.equal(revisions.size, 28);
   for (const entry of ledger.assets) {
     assert.ok(entry.prompt.includes('close-up') && fs.existsSync(path.join(root, entry.reference)));
     assert.ok(fs.existsSync(path.join(root, entry.image)), entry.image);
@@ -124,7 +124,7 @@ test('all follow-up choices have a reviewed image and close-up revisions stay UI
     }
   }
   for (const row of ledger.review) {
-    assert.equal(superseded.get(row.selectedImage) || row.selectedImage, revisions.get(row.image) || row.image);
+    assert.equal(superseded.get(row.selectedImage) || revisions.get(row.selectedImage) || row.selectedImage, revisions.get(row.image) || row.image);
   }
   const unrelated = {componentId:'bezel',options:[{label:'Unrelated',image:'unchanged.jpg',impact:'b-minus'}]};
   assert.equal(app.withGradingExampleImages(unrelated).options[0], unrelated.options[0]);
@@ -150,6 +150,26 @@ test('ten severity corrections use new photos but preserve B-after-repair, C and
     assert.ok(fs.statSync(path.join(root, entry.image)).size < 250000);
     assert.ok(entry.prompt && fs.existsSync(path.join(root, entry.reference)));
   }
+});
+
+test('bottom cover wear and actual fracture use separate regenerated photos without score changes', () => {
+  const app = loadAppSandbox();
+  const ledger = JSON.parse(fs.readFileSync(path.join(root, 'docs/grading-bottom-image-revisions.json'), 'utf8'));
+  const original = vm.runInContext('CHOICE_DECISIONS.onderkant.C', app);
+  const selected = app.withGradingExampleImages({...original, componentId:'onderkant'});
+  assert.equal(ledger.assets.length, 2);
+  assert.notEqual(selected.options[0].image, selected.options[1].image);
+  assert.deepEqual(Array.from(selected.options, option => option.impact), ['b', 'c']);
+  for (const entry of ledger.assets) {
+    const option = selected.options.find(row => row.label === entry.choice);
+    assert.equal(option.image, entry.image);
+    assert.equal(option.impact, entry.expectedImpact);
+    assert.ok(fs.existsSync(path.join(root, entry.previousImage)), 'Keep previous asset for rollback');
+    assert.ok(fs.existsSync(path.join(root, entry.reference)) && entry.prompt);
+    assert.ok(fs.statSync(path.join(root, entry.image)).size < 250000);
+  }
+  assert.equal(original.options[0].image, ledger.assets[0].previousImage);
+  assert.equal(original.options[1].image, ledger.assets[1].previousImage);
 });
 
 test('photo loading stays bounded to the active question with compact markup and cacheable files', () => {
