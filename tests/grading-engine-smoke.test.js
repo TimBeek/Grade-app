@@ -17,6 +17,7 @@ function loadAppSandbox(options = {}) {
     'i18n.js',
     'workspace-display.js',
     'ui-rendering.js',
+    'ui-feedback.js',
     'app-workflow.js',
     'remarkt-grading.js',
   ];

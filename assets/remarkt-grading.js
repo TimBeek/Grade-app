@@ -2,8 +2,9 @@
 // REMARKT GRADING APP - BOOTSTRAP
 // =============================================================================
 async function initApp() {
-  await loadMonitorPortDatabase();
-  await refreshSharedUsers();
+  // Independent reads start together; the static model database is versioned
+  // and browser-cached, while the account directory retains live auth checks.
+  await Promise.all([loadMonitorPortDatabase(), refreshSharedUsers()]);
   if(STATE.sharedStorageError) {
     await loadDurableBackup();
     const backup=readLocalDemoStateBackup();

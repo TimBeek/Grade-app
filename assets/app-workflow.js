@@ -38,15 +38,15 @@ function attachListeners() {
 
 function bindClick(selector, handler) {
   document.querySelectorAll(selector).forEach(element => {
-    element.onclick = event => {
+    element.onclick = async event => {
       if (element.disabled) return;
       event.preventDefault();
       event.stopPropagation();
-      Promise.resolve(handler(element, event)).catch(error => {
+      try { await runUiAction(element, () => handler(element, event)); } catch (error) {
         reportAppError('Action failed', error);
         setAppMessage('Action failed. Try again.');
         render();
-      });
+      }
     };
   });
 }
@@ -85,7 +85,7 @@ function bindRenderedControlHandlers() {
 
   bindClick('[data-history-toggle]', async button => {
     const id = button.dataset.historyToggle;
-    if(STATE.storageFormat===3) await loadAssessmentDetail(id);
+    if(STATE.storageFormat===3 && STATE.historyOpenId!==id) await loadAssessmentDetail(id);
     STATE.historyOpenId = STATE.historyOpenId === id ? null : id;
     render();
   });
@@ -101,7 +101,7 @@ function bindRenderedControlHandlers() {
   });
 
   bindClick('[data-monitor-select]', button => {
-    selectMonitorForLabel(button.dataset.monitorSelect);
+    return selectMonitorForLabel(button.dataset.monitorSelect);
   });
 
   bindClick('[data-monitor-identity-choice]', button => {
@@ -171,7 +171,11 @@ function handleDelegatedPointerDown(e) {
   openImagePreviewFromElement(imagePreviewTarget);
 }
 
-async function handleDelegatedClick(e) {
+function handleDelegatedClick(e) {
+  const control = e.target.closest('button, [role="button"]');
+  return runUiAction(control, () => performDelegatedClick(e));
+}
+async function performDelegatedClick(e) {
   const inspectionSupplier = e.target.closest('[data-inspection-supplier]');
   if (inspectionSupplier) { openGuidedSupplierAdvice(inspectionSupplier.dataset.inspectionComponent, inspectionSupplier.dataset.inspectionSupplier); return; }
   const inspectionFinding = e.target.closest('[data-inspection-finding]');
@@ -224,7 +228,7 @@ async function handleDelegatedClick(e) {
   const historyButton = e.target.closest('[data-history-toggle]');
   if (historyButton) {
     const id = historyButton.dataset.historyToggle;
-    if (STATE.storageFormat === 3 && typeof loadAssessmentDetail === 'function') await loadAssessmentDetail(id);
+    if (STATE.storageFormat === 3 && STATE.historyOpenId!==id && typeof loadAssessmentDetail === 'function') await loadAssessmentDetail(id);
     STATE.historyOpenId = STATE.historyOpenId === id ? null : id;
     render();
     return;
@@ -256,7 +260,7 @@ async function handleDelegatedClick(e) {
 
   const monitorSelectButton = e.target.closest('[data-monitor-select]');
   if (monitorSelectButton) {
-    selectMonitorForLabel(monitorSelectButton.dataset.monitorSelect);
+    await selectMonitorForLabel(monitorSelectButton.dataset.monitorSelect);
     return;
   }
 
@@ -360,7 +364,10 @@ function setMonitorManualPortCount(button) {
   }
 }
 
-async function handleDelegatedChange(e) {
+function handleDelegatedChange(e) {
+  return runUiAction(e.target, () => performDelegatedChange(e), {label:e.target.id==='batchImportInput'?'Importing...':'Loading...'});
+}
+async function performDelegatedChange(e) {
   if (STATE.currentScreen === 'monitor_manual' && e.target && String(e.target.id || '').startsWith('mm_')) {
     startMonitorManualTiming();
   }
@@ -676,15 +683,15 @@ function handleDelegatedKeydown(e) {
       const sticker = e.target.value.trim();
       e.target.value = '';
       if (STATE.currentScreen === 'monitor_label_scan') {
-        selectMonitorForLabel(sticker);
+        runUiAction(e.target, () => selectMonitorForLabel(sticker));
       } else if (STATE.currentScreen === 'sticker_scan') {
-        Promise.resolve(scanAndPrintStickerLabel(sticker, { source: 'scan' })).catch(error => {
+        Promise.resolve(runUiAction(e.target, () => scanAndPrintStickerLabel(sticker, { source: 'scan' }), {label:'Printing and saving...'})).catch(error => {
           reportAppError('Label print failed', error);
           setAppMessage('Label print failed. Try again.');
           render();
         });
       } else {
-        Promise.resolve(selectLaptop(sticker)).catch(error => {
+        Promise.resolve(runUiAction(e.target, () => selectLaptop(sticker))).catch(error => {
           reportAppError('Scan failed', error);
           setAppMessage('Scan failed. Try again.');
           render();
@@ -693,7 +700,7 @@ function handleDelegatedKeydown(e) {
       return;
     }
     if (e.target.id === 'loginPassword') {
-      handleAction('login_password', e.target);
+      runUiAction(document.querySelector?.('[data-action="login_password"]') || e.target, () => handleAction('login_password', e.target));
       return;
     }
   }
@@ -706,7 +713,7 @@ function handleDelegatedKeydown(e) {
   if (STATE.currentScreen === 'monitor_label_scan' && STATE.currentMonitor && !STATE.monitorPrintInProgress && !monitorNeedsIdentityChoice(STATE.currentMonitor) && ['a', 'b', 'c', 'd', 'x'].includes(key)) {
     e.preventDefault();
     const grade = key === 'x' ? 'D' : key.toUpperCase();
-    Promise.resolve(scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, grade, { source: 'keyboard' })).catch(error => {
+    Promise.resolve(runUiAction(document.querySelector?.(`[data-monitor-print-grade="${grade}"]`), () => scanAndPrintMonitorLabel(STATE.currentMonitor.sticker, grade, { source: 'keyboard' }), {label:'Printing and saving...'})).catch(error => {
       reportAppError('Monitor label print failed', error);
       setAppMessage('Monitor label print failed. Try again.');
       render();
@@ -718,7 +725,7 @@ function handleDelegatedKeydown(e) {
     if (!canGradeUser()) return;
     const letter = key === 'x' ? 'D' : key.toUpperCase();
     e.preventDefault();
-    Promise.resolve(confirmExpertFinalGrade(letter)).catch(error => {
+    Promise.resolve(runUiAction(document.querySelector?.(`[data-expert-final-grade="${letter}"]`), () => confirmExpertFinalGrade(letter), {label:'Printing and saving...'})).catch(error => {
       reportAppError('Expert grade failed', error);
       setAppMessage('Expert grade failed. Try again.');
       render();
@@ -738,7 +745,7 @@ function handleDelegatedKeydown(e) {
     const missing = getMissingGradingOnderdelen(STATE.currentGrading);
     if (!missing.length) {
       e.preventDefault();
-      Promise.resolve(finishGradingAndMaybeConfirm()).catch(error => {
+      Promise.resolve(runUiAction(document.querySelector?.('[data-action="confirm_expert"]'), () => finishGradingAndMaybeConfirm(), {label:'Printing and saving...'})).catch(error => {
         reportAppError('Confirm grade failed', error);
         setAppMessage('Confirm grade failed. Try again.');
         render();
@@ -776,6 +783,7 @@ function scheduleScanSearch(value) {
   clearTimeout(scanSearchTimer);
   scanSearchTimer = setTimeout(() => {
     STATE.scanSearch = value;
+    STATE.inventoryPages = {};
     render();
     const input = document.getElementById('scanSearch');
     if (input) {
@@ -790,6 +798,7 @@ function scheduleMonitorScanSearch(value) {
   clearTimeout(monitorScanSearchTimer);
   monitorScanSearchTimer = setTimeout(() => {
     STATE.monitorScanSearch = value;
+    STATE.inventoryPages = {};
     render();
     const input = document.getElementById('monitorScanSearch');
     if (input) {
@@ -1085,7 +1094,7 @@ async function handleAction(action, el) {
     if(!isAdminUser() || !canWorkLocally())return;
     if(STATE.sharedSyncPending){setAppMessage('Download and synchronize pending local work before restoring another backup.','warning');render();return;}
     const input=document.createElement('input');input.type='file';input.accept='.json,application/json';
-    input.onchange=async()=>{
+    input.onchange=()=>runUiAction(el, async()=>{
       const previousBackup=readLocalDemoStateBackup();
       try {
         const state=JSON.parse(await input.files[0].text());
@@ -1100,7 +1109,7 @@ async function handleAction(action, el) {
         setAppMessage('Work lists restored locally. No server records were replaced.','success');
       }catch{setAppMessage('Use a complete work backup from the same workspace without pending changes. Nothing was replaced.','warning');}
       render();
-    };input.click();return;
+    }, {key:'restore-work-backup',label:'Importing...'});input.click();return;
   }
   if (action === 'download_local_backup') {
     const backup = getLocalRecoveryExport();
@@ -1319,6 +1328,7 @@ async function handleAction(action, el) {
       STATE.pendingDecision = null;
       break;
     case 'scan':
+      STATE.inventoryPages = {};
       STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
       STATE.currentMonitor = null;
       STATE.manualError = '';
@@ -1448,7 +1458,7 @@ async function handleAction(action, el) {
       if (confirm(`Delete device ${el.dataset.removeSticker} from the active list?`)) {
         if (removeLaptopFromBatches(el.dataset.removeSticker)) {
           logAudit('remove_laptop', 'laptop', el.dataset.removeSticker);
-          saveSharedDemoState();
+          await saveSharedDemoState();
           setAppMessage(`Device ${el.dataset.removeSticker} deleted from the active list.`, 'success');
         }
       }
@@ -1458,7 +1468,7 @@ async function handleAction(action, el) {
       if (confirm('Delete this full batch from the active list?')) {
         if (removeBatch(el.dataset.removeBatch)) {
           logAudit('remove_batch', 'batch', el.dataset.removeBatch);
-          saveSharedDemoState();
+          await saveSharedDemoState();
           setAppMessage('Batch deleted from the active list.', 'success');
         }
       }
@@ -1468,7 +1478,7 @@ async function handleAction(action, el) {
       if (confirm(`Delete monitor ${el.dataset.removeMonitor} from the active monitor list?`)) {
         if (removeMonitorFromBatches(el.dataset.removeMonitor)) {
           logAudit('remove_monitor', 'monitor', el.dataset.removeMonitor);
-          saveSharedDemoState();
+          await saveSharedDemoState();
           setAppMessage(`Monitor ${el.dataset.removeMonitor} deleted from the active list.`, 'success');
         }
       }
@@ -1478,7 +1488,7 @@ async function handleAction(action, el) {
       if (confirm('Delete this full monitor batch from the active list?')) {
         if (removeMonitorBatch(el.dataset.removeMonitorBatch)) {
           logAudit('remove_monitor_batch', 'monitor_batch', el.dataset.removeMonitorBatch);
-          saveSharedDemoState();
+          await saveSharedDemoState();
           setAppMessage('Monitor batch deleted from the active list.', 'success');
         }
       }
@@ -1576,6 +1586,9 @@ async function handleAction(action, el) {
       STATE.supplierNotice = null;
       STATE.currentGrading.huidigeIndex = Math.max(0, STATE.currentGrading.huidigeIndex - 1);
       updateSupplierNoticeForCurrentStep();
+      break;
+    case 'inventory_page':
+      STATE.inventoryPages = {...STATE.inventoryPages, [el.dataset.inventoryScope]: Math.max(1,Number(el.dataset.inventoryPage)||1)};
       break;
     case 'inspection_doubt':
       markGuidedDoubt();

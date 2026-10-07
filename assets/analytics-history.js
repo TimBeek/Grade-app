@@ -2172,7 +2172,7 @@ function renderAnalytics() {
   if(v3 && !remote) {
     if(!STATE.sharedStorageError && !STATE.recordInsightsLoading) {
       STATE.recordInsightsLoading=true;
-      loadRecordInsights().then(()=>{STATE.recordInsightsLoading=false;if(STATE.currentScreen==='analytics')render();});
+      runUiAction(null, () => loadRecordInsights(), {key:'insights:'+recordInsightsKey(),label:'Loading...'}).then(()=>{STATE.recordInsightsLoading=false;if(STATE.currentScreen==='analytics')render();});
     }
     return `<div class="screen analytics-screen">${renderDashboardTabs('analytics')}
       ${renderAnalyticsSidebar(activeTab,filters.productType)}

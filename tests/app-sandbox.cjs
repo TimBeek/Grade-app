@@ -14,6 +14,7 @@ function loadAppSandbox(options = {}) {
     'label-printing.js',
     'i18n.js',
     'workspace-display.js',
+    'ui-feedback.js',
     'ui-rendering.js',
     'app-workflow.js',
     'remarkt-grading.js',

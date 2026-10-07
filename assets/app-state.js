@@ -80,7 +80,8 @@ function reportAppError(...args) {
 
 const DEMO_AUTH_SALT = 'remarkt-demo:';
 const FIRST_LOGIN_PASSWORD = 'ReMarkt2026!';
-const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20260520-monitor-db';
+// Bump this version whenever the static model database changes.
+const MONITOR_PORT_DATABASE_URL = 'assets/monitor-port-database.json?v=20261007-static-cache-v1';
 const MONITOR_TIMING_IDLE_MINUTES = 20;
 const MONITOR_TIMING_IDLE_MS = MONITOR_TIMING_IDLE_MINUTES * 60 * 1000;
 const DEMO_STORAGE_KEYS = {
@@ -378,6 +379,18 @@ function isLaptopCompletionVerified(sticker) {
   });
 }
 
+function getVerifiedLaptopCompletionCodes() {
+  const codes = new Set();
+  for (const batch of BATCHES) {
+    const review = getBatchCompletionReview(batch);
+    for (const value of review?.verifiedStickers || []) {
+      const code = normalizeStickerCode(value);
+      if (code) codes.add(code);
+    }
+  }
+  return codes;
+}
+
 function isLaptopWorkflowComplete(sticker) {
   return isLaptopGraded(sticker) || isLaptopLabelPrinted(sticker) || isLaptopCompletionVerified(sticker);
 }
@@ -392,12 +405,25 @@ function getLaptopPrintAttempts(sticker) {
   ));
 }
 
-function getBatchCompletionAudit(batch) {
+function getBatchCompletionAudit(batch, options = {}) {
   const laptops = Array.isArray(batch && batch.laptops) ? batch.laptops : [];
   const digitalGaps = laptops.filter(laptop => !isLaptopGraded(laptop.sticker) && !isLaptopLabelPrinted(laptop.sticker));
-  const verifiedGaps = digitalGaps.filter(laptop => isLaptopCompletionVerified(laptop.sticker));
-  const unresolvedGaps = digitalGaps.filter(laptop => !isLaptopCompletionVerified(laptop.sticker));
-  const printAttemptGaps = digitalGaps.filter(laptop => getLaptopPrintAttempts(laptop.sticker).length > 0);
+  const verifiedCodes = getVerifiedLaptopCompletionCodes(), verifiedGaps = [], unresolvedGaps = [];
+  for (const laptop of digitalGaps) {
+    (verifiedCodes.has(normalizeStickerCode(getCanonicalSticker(laptop.sticker))) ? verifiedGaps : unresolvedGaps).push(laptop);
+  }
+  // Attempt details are needed only in the expanded audit, not every dashboard
+  // repaint (which otherwise scans the audit archive once per missing device).
+  const attemptCodes = new Set();
+  if (options.includePrintAttempts !== false && digitalGaps.length) {
+    for (const item of STATE.auditLogs || []) {
+      if (item?.entityType === 'laptop' && ['print_label','print_label_failed','print_label_attempt','print_label_fallback_opened'].includes(item.action)) {
+        const code = normalizeStickerCode(item.entityId);
+        if (code) attemptCodes.add(code);
+      }
+    }
+  }
+  const printAttemptGaps = digitalGaps.filter(laptop => attemptCodes.has(normalizeStickerCode(getCanonicalSticker(laptop.sticker))));
   return {
     total: laptops.length,
     digitalDone: Math.max(laptops.length - digitalGaps.length, 0),
@@ -421,12 +447,13 @@ function isKnownMonitorSticker(sticker) {
   return Boolean(getMonitorBySticker(value)) || isMonitorLabelPrinted(value);
 }
 
-function openLaptopCount(batch) {
-  return batch.laptops.filter(l => !isLaptopWorkflowComplete(l.sticker)).length;
+function openLaptopCount(batch, verifiedCodes = getVerifiedLaptopCompletionCodes()) {
+  return batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker)
+    && !verifiedCodes.has(normalizeStickerCode(getCanonicalSticker(l.sticker)))).length;
 }
 
 function stickerOpenLaptopCount(batch) {
-  return batch.laptops.filter(l => !isLaptopWorkflowComplete(l.sticker)).length;
+  return openLaptopCount(batch);
 }
 
 // Een batch is voltooid zodra élk apparaat gescand en gegradeerd/gelabeld is.
@@ -1254,7 +1281,7 @@ async function loadMonitorPortDatabase() {
   if (monitorPortDatabaseLoadPromise) return monitorPortDatabaseLoadPromise;
   if (typeof fetch !== 'function') return false;
 
-  monitorPortDatabaseLoadPromise = fetch(MONITOR_PORT_DATABASE_URL, { cache: 'no-store' })
+  monitorPortDatabaseLoadPromise = fetch(MONITOR_PORT_DATABASE_URL, { cache: 'force-cache' })
     .then(response => {
       if (!response.ok) throw new Error(`Monitor database returned ${response.status}`);
       return response.json();

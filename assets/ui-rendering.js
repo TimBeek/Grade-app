@@ -122,6 +122,7 @@ function render() {
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
   if (typeof fitInspectionViewport === 'function') fitInspectionViewport();
   attachListeners();
+  if (typeof refreshUiActionFeedback === 'function') refreshUiActionFeedback();
   if (STATE.laptopReprintPrompt) {
     const modal = document.getElementById('laptop-repeat-dialog');
     if (modal && typeof modal.focus === 'function') modal.focus();
@@ -1089,7 +1090,9 @@ function getMonitorPortImage(key) {
   return images[key] || images.hdmi;
 }
 
-function getDashboardData() {
+function getDashboardData(scope = 'all') {
+  const laptopView = scope === 'all' || scope === 'workflow';
+  const monitorView = scope === 'all' || scope === 'monitor';
   const isAdmin = isAdminUser();
   const items = isAdmin ? STATE.history : STATE.history.filter(h => h.user_id === STATE.currentUser.id);
   const counts = { A: 0, B: 0, C: 0, D: 0 };
@@ -1106,13 +1109,18 @@ function getDashboardData() {
     const timed=groups.reduce((sum,g)=>sum+Number(g.timedCount),0);
     avg=timed ? Math.round(groups.reduce((sum,g)=>sum+Number(g.timeTotal||0),0)/timed) : 0;
   }
-  const allLaptops = getAllLaptops();
-  const openCount = getOpenLaptops().length;
+  const allLaptops = laptopView ? getAllLaptops() : [];
+  // Per-render counts only: never retain stale completion after a colleague
+  // saves, a batch reopens or a device is graded locally.
+  const verifiedCodes = laptopView ? getVerifiedLaptopCompletionCodes() : new Set();
+  const batchOpenCounts = new Map(laptopView ? BATCHES.map(batch => [batch,openLaptopCount(batch,verifiedCodes)]) : []);
+  const openCount = [...batchOpenCounts.values()].reduce((sum,count)=>sum+count,0);
   const completedCount = Math.max(allLaptops.length - openCount, 0);
-  const stickerOpenCount = getStickerOpenLaptops().length;
+  const stickerOpenCount = openCount;
   const stickerCompletedCount = Math.max(allLaptops.length - stickerOpenCount, 0);
-  const allMonitors = getAllMonitors();
-  const monitorOpenCount = getOpenMonitors().length;
+  const allMonitors = monitorView ? getAllMonitors() : [];
+  const monitorOpenCounts = new Map(monitorView ? MONITOR_BATCHES.map(batch => [batch,batch.monitors.filter(m=>!isMonitorLabelPrinted(m.sticker)).length]) : []);
+  const monitorOpenCount = [...monitorOpenCounts.values()].reduce((sum,count)=>sum+count,0);
   const monitorCompletedCount = Math.max(allMonitors.length - monitorOpenCount, 0);
   const monitorItems = isAdmin ? STATE.monitorLabelPrints : STATE.monitorLabelPrints.filter(item => item.user_id === STATE.currentUser.id);
   const monitorCounts = { A: 0, B: 0, C: 0, D: 0 };
@@ -1128,22 +1136,22 @@ function getDashboardData() {
   const monitorLatest = monitorItems[monitorItems.length - 1];
   const maxGradeCount = Math.max(counts.A, counts.B, counts.C, counts.D, 1);
   const monitorMaxGradeCount = Math.max(monitorCounts.A, monitorCounts.B, monitorCounts.C, monitorCounts.D, 1);
-  const batchRepairStats = typeof getBatchRepairStats === 'function' ? getBatchRepairStats() : {};
+  const batchRepairStats = laptopView && !isStickerUser() && typeof getBatchRepairStats === 'function' ? getBatchRepairStats() : {};
   // Voltooide batches staan niet meer tussen de actieve batches, maar in een
   // inklapbare lijst eronder (voor controle, intrekken of verwijderen).
-  const isLaptopBatchDone = batch => typeof isBatchComplete === 'function' && isBatchComplete(batch);
-  const activeBatches = BATCHES.filter(batch => !isLaptopBatchDone(batch));
-  const completedBatches = BATCHES.filter(isLaptopBatchDone);
+  const isLaptopBatchDone = batch => batch.laptops.length > 0 && batchOpenCounts.get(batch) === 0;
+  const activeBatches = laptopView ? BATCHES.filter(batch => !isLaptopBatchDone(batch)) : [];
+  const completedBatches = laptopView ? BATCHES.filter(isLaptopBatchDone) : [];
   const renderLaptopBatchCard = batch => {
-    const completionAudit = getBatchCompletionAudit(batch);
-    const open = openLaptopCount(batch);
+    const auditExpanded = STATE.expandedBatchAudit === batch.id;
+    const completionAudit = getBatchCompletionAudit(batch,{includePrintAttempts:auditExpanded});
+    const open = batchOpenCounts.get(batch);
     const total = batch.laptops.length;
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
     const rp = typeof getBatchRepairStatsFor === 'function' ? getBatchRepairStatsFor(batch, batchRepairStats) : { repair: 0, production: 0, reject: 0 };
     const expanded = STATE.expandedBatchStats === batch.id;
-    const auditExpanded = STATE.expandedBatchAudit === batch.id;
-    const complete = typeof isBatchComplete === 'function' && isBatchComplete(batch);
+    const complete = isLaptopBatchDone(batch);
     const fresh = typeof isBatchNew === 'function' && isBatchNew(batch);
     return `
       <div class="batch-card${complete ? ' is-complete' : ''}">
@@ -1174,10 +1182,10 @@ function getDashboardData() {
       </div>
     `;
   };
-  const batchRows = activeBatches.map(renderLaptopBatchCard).join('');
-  const completedBatchRows = completedBatches.map(renderLaptopBatchCard).join('');
-  const stickerBatchRows = activeBatches.map(batch => {
-    const open = stickerOpenLaptopCount(batch);
+  const batchRows = laptopView && !isStickerUser() ? activeBatches.map(renderLaptopBatchCard).join('') : '';
+  const completedBatchRows = laptopView && !isStickerUser() && (scope==='all' || STATE.showCompletedBatches) ? completedBatches.map(renderLaptopBatchCard).join('') : '';
+  const stickerBatchRows = scope==='all' || (laptopView && isStickerUser()) ? activeBatches.map(batch => {
+    const open = batchOpenCounts.get(batch);
     const total = batch.laptops.length;
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
@@ -1192,9 +1200,9 @@ function getDashboardData() {
         <div class="batch-progress-track"><div class="batch-progress-fill" style="width: ${progress}%;"></div></div>
       </div>
     `;
-  }).join('');
-  const monitorBatchRows = MONITOR_BATCHES.map(batch => {
-    const open = batch.monitors.filter(monitor => !isMonitorLabelPrinted(monitor.sticker)).length;
+  }).join('') : '';
+  const monitorBatchRows = monitorView ? MONITOR_BATCHES.map(batch => {
+    const open = monitorOpenCounts.get(batch);
     const total = batch.monitors.length;
     const done = Math.max(total - open, 0);
     const progress = total ? Math.round((done / total) * 100) : 0;
@@ -1209,7 +1217,7 @@ function getDashboardData() {
         <div class="batch-progress-track"><div class="batch-progress-fill" style="width: ${progress}%;"></div></div>
       </div>
     `;
-  }).join('');
+  }).join('') : '';
   return { isAdmin, items, gradedTotal, counts, avg, allLaptops, openCount, completedCount, stickerOpenCount, stickerCompletedCount, allMonitors, monitorOpenCount, monitorCompletedCount, monitorItems, monitorCounts, monitorLatest, monitorMaxGradeCount, latest, maxGradeCount, batchRows, completedBatchRows, activeBatchCount: activeBatches.length, completedBatchCount: completedBatches.length, stickerBatchRows, monitorBatchRows };
 }
 
@@ -1263,6 +1271,8 @@ function renderGradeMix(counts) {
 }
 
 function renderBatchCompletionAuditPanel(batch, audit, isAdmin) {
+  const page = getInventoryPage(audit.digitalGaps,`audit:${batch.id}`,'');
+  const attemptedDevices = new Set(audit.printAttemptGaps), verifiedDevices = new Set(audit.verifiedGaps);
   const reviewed = Boolean(audit.review);
   const verifiedAt = reviewed && audit.review.verifiedAt ? new Date(audit.review.verifiedAt) : null;
   const verifiedLabel = verifiedAt && !Number.isNaN(verifiedAt.getTime())
@@ -1288,10 +1298,11 @@ function renderBatchCompletionAuditPanel(batch, audit, isAdmin) {
           <span><b>${audit.printAttemptGaps.length}</b> known print attempts</span>
           <span><b>${audit.unresolvedGaps.length}</b> physically unresolved</span>
         </div>
+        ${renderInventoryPager(page)}
         <div class="batch-audit-devices">
-          ${audit.digitalGaps.map(laptop => {
-            const attempted = getLaptopPrintAttempts(laptop.sticker).length > 0;
-            const verified = isLaptopCompletionVerified(laptop.sticker);
+          ${page.items.map(laptop => {
+            const attempted = attemptedDevices.has(laptop);
+            const verified = verifiedDevices.has(laptop);
             return `
               <div class="batch-audit-device ${attempted ? 'has-attempt' : ''} ${verified ? 'is-verified' : ''}">
                 <strong>${escapeHtml(laptop.sticker)}</strong>
@@ -1301,6 +1312,7 @@ function renderBatchCompletionAuditPanel(batch, audit, isAdmin) {
             `;
           }).join('')}
         </div>
+        ${renderInventoryPager(page)}
         ${isAdmin ? `
           <div class="batch-audit-actions">
             ${reviewed
@@ -1346,8 +1358,8 @@ function renderDashboardTabs(active) {
 }
 
 function renderHome() {
-  const data = getDashboardData();
   const activeTab = STATE.homeTab === 'support' ? 'support' : STATE.homeTab === 'monitor' ? 'monitor' : 'workflow';
+  const data = activeTab === 'support' ? {isAdmin:isAdminUser()} : getDashboardData(activeTab);
   const isSupport = activeTab === 'support';
   const isMonitor = activeTab === 'monitor';
   return `
@@ -1740,12 +1752,36 @@ function renderExplain() {
   `;
 }
 
+function getLaptopScanInventory() {
+  const allLaptops = getAllLaptops(), availableLaptops = [], completedLaptops = [];
+  const verifiedCodes = getVerifiedLaptopCompletionCodes();
+  for (const laptop of allLaptops) {
+    const complete = isLaptopGraded(laptop.sticker) || isLaptopLabelPrinted(laptop.sticker)
+      || verifiedCodes.has(normalizeStickerCode(getCanonicalSticker(laptop.sticker)));
+    (complete ? completedLaptops : availableLaptops).push(laptop);
+  }
+  return {allLaptops, availableLaptops, completedLaptops};
+}
+function getInventoryPage(items, scope, query) {
+  const size = 50;
+  const key = JSON.stringify([scope, query]);
+  const pages = Math.max(1,Math.ceil(items.length / size));
+  const page = Math.min(pages,Math.max(1,Number(STATE.inventoryPages?.[key]) || 1));
+  return {key, page, pages, total:items.length, items:items.slice((page-1)*size,page*size)};
+}
+function renderInventoryPager(page) {
+  if (page.pages <= 1) return '';
+  return `<nav class="inventory-pager" aria-label="Device list pages">
+    <button type="button" class="btn btn-secondary" data-action="inventory_page" data-inventory-scope="${escapeHtml(page.key)}" data-inventory-page="${page.page-1}" ${page.page===1?'disabled':''}>Previous</button>
+    <span><span>Page</span> ${page.page} / ${page.pages} · ${page.total} <span>matching devices</span></span>
+    <button type="button" class="btn btn-secondary" data-action="inventory_page" data-inventory-scope="${escapeHtml(page.key)}" data-inventory-page="${page.page+1}" ${page.page===page.pages?'disabled':''}>Next</button>
+  </nav>`;
+}
 function renderStickerScan() {
-  const allLaptops = getAllLaptops();
-  const availableLaptops = getStickerOpenLaptops();
-  const completedLaptops = getCompletedLaptops();
+  const {allLaptops, availableLaptops, completedLaptops} = getLaptopScanInventory();
   const query = STATE.scanSearch || '';
   const filteredLaptops = availableLaptops.filter(l => laptopMatchesScanQuery(l, query));
+  const page = getInventoryPage(filteredLaptops,'sticker',query), visible = new Set(page.items), matching = new Set(filteredLaptops);
   const filteredCompleted = completedLaptops.filter(l => laptopMatchesScanQuery(l, query)).slice(0, 30);
   const completedCount = Math.max(allLaptops.length - availableLaptops.length, 0);
   const isAdmin = isAdminUser();
@@ -1763,14 +1799,15 @@ function renderStickerScan() {
 
       <div class="card">
         <h3>To Label</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">${filteredLaptops.length} shown of ${availableLaptops.length} waiting${completedCount ? ` · ${completedCount} printed or graded` : ''}</p>
+        <p class="card-sub" style="margin-bottom: 14px;">${page.items.length} shown of ${availableLaptops.length} waiting${completedCount ? ` · ${completedCount} printed or graded` : ''}</p>
+        ${renderInventoryPager(page)}
         ${availableLaptops.length ? BATCHES.map(batch => {
-          const batchLaptops = batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker) && laptopMatchesScanQuery(l, query));
+          const batchLaptops = batch.laptops.filter(l => visible.has(l));
           if (!batchLaptops.length) return '';
           return `
             <div class="batch-group">
               <div class="batch-header-row">
-                <div class="batch-group-title">Batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batchLaptops.length} to label</div>
+                <div class="batch-group-title">Batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batch.laptops.filter(l=>matching.has(l)).length} to label</div>
                 ${isAdmin ? `<button class="batch-remove" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}">Delete batch</button>` : ''}
               </div>
               <div class="batch-list">
@@ -1790,6 +1827,7 @@ function renderStickerScan() {
             </div>
           `;
         }).join('') || `<div class="scan-empty">No devices match this search.</div>` : `<p class="card-sub">All devices in these batches are labeled or already graded.</p>`}
+        ${renderInventoryPager(page)}
       </div>
 
       <div class="card">
@@ -1823,6 +1861,7 @@ function renderMonitorLabelScan() {
   const availableMonitors = getOpenMonitors();
   const query = STATE.monitorScanSearch || '';
   const filteredMonitors = availableMonitors.filter(monitor => monitorMatchesScanQuery(monitor, query));
+  const page = getInventoryPage(filteredMonitors,'monitor',query), visible = new Set(page.items), matching = new Set(filteredMonitors);
   const completedCount = Math.max(allMonitors.length - availableMonitors.length, 0);
   const selectedMonitor = STATE.currentMonitor;
   const isAdmin = isAdminUser();
@@ -1844,14 +1883,15 @@ function renderMonitorLabelScan() {
 
       <div class="card">
         <h3>Monitors to Label</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">${filteredMonitors.length} shown of ${availableMonitors.length} waiting${completedCount ? ` · ${completedCount} printed` : ''}</p>
+        <p class="card-sub" style="margin-bottom: 14px;">${page.items.length} shown of ${availableMonitors.length} waiting${completedCount ? ` · ${completedCount} printed` : ''}</p>
+        ${renderInventoryPager(page)}
         ${availableMonitors.length ? MONITOR_BATCHES.map(batch => {
-          const batchMonitors = batch.monitors.filter(monitor => !isMonitorLabelPrinted(monitor.sticker) && monitorMatchesScanQuery(monitor, query));
+          const batchMonitors = batch.monitors.filter(monitor => visible.has(monitor));
           if (!batchMonitors.length) return '';
           return `
             <div class="batch-group">
               <div class="batch-header-row">
-                <div class="batch-group-title">Monitor batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batchMonitors.length} to label</div>
+                <div class="batch-group-title">Monitor batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batch.monitors.filter(m=>matching.has(m)).length} to label</div>
                 ${isAdmin ? `<button class="batch-remove" data-action="remove_monitor_batch" data-remove-monitor-batch="${escapeHtml(batch.id)}">Delete batch</button>` : ''}
               </div>
               <div class="batch-list">
@@ -1871,17 +1911,17 @@ function renderMonitorLabelScan() {
             </div>
           `;
         }).join('') || `<div class="scan-empty">No monitors match this search.</div>` : `<p class="card-sub">No active monitor batches yet. Upload a supplier list with monitor rows from Batch Import.</p>`}
+        ${renderInventoryPager(page)}
       </div>
     </div>
   `;
 }
 
 function renderScan() {
-  const allLaptops = getAllLaptops();
-  const availableLaptops = getOpenLaptops();
-  const completedLaptops = getCompletedLaptops();
+  const {allLaptops, availableLaptops, completedLaptops} = getLaptopScanInventory();
   const query = STATE.scanSearch || '';
   const filteredLaptops = availableLaptops.filter(l => laptopMatchesScanQuery(l, query));
+  const page = getInventoryPage(filteredLaptops,'grading',query), visible = new Set(page.items), matching = new Set(filteredLaptops);
   const filteredCompleted = completedLaptops.filter(l => laptopMatchesScanQuery(l, query)).slice(0, 30);
   const gradedCount = allLaptops.length - availableLaptops.length;
   const isAdmin = isAdminUser();
@@ -1900,14 +1940,15 @@ function renderScan() {
       
       <div class="card">
         <h3>Select from Active Batches</h3>
-        <p class="card-sub" style="margin-bottom: 14px;">${filteredLaptops.length} shown of ${availableLaptops.length} available${gradedCount ? ` · ${gradedCount} already graded` : ''}</p>
+        <p class="card-sub" style="margin-bottom: 14px;">${page.items.length} shown of ${availableLaptops.length} available${gradedCount ? ` · ${gradedCount} already graded` : ''}</p>
+        ${renderInventoryPager(page)}
         ${availableLaptops.length ? BATCHES.map(batch => {
-          const batchLaptops = batch.laptops.filter(l => !isLaptopGraded(l.sticker) && !isLaptopLabelPrinted(l.sticker) && laptopMatchesScanQuery(l, query));
+          const batchLaptops = batch.laptops.filter(l => visible.has(l));
           if (!batchLaptops.length) return '';
           return `
             <div class="batch-group">
               <div class="batch-header-row">
-                <div class="batch-group-title">Batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batchLaptops.length} open</div>
+                <div class="batch-group-title">Batch ${escapeHtml(batch.nummer)} · ${escapeHtml(batch.leverancier)} · ${batch.laptops.filter(l=>matching.has(l)).length} open</div>
                 ${isAdmin ? `<button class="batch-remove" data-action="remove_batch" data-remove-batch="${escapeHtml(batch.id)}">Delete batch</button>` : ''}
               </div>
               <div class="batch-list">
@@ -1927,6 +1968,7 @@ function renderScan() {
             </div>
           `;
         }).join('') || `<div class="scan-empty">No open devices match this search.</div>` : `<p class="card-sub">All devices in these batches are graded or labeled in this session.</p>`}
+        ${renderInventoryPager(page)}
       </div>
 
       <div class="card">
