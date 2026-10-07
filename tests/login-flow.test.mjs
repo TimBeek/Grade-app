@@ -104,6 +104,41 @@ test('employee login and manager password administration remain reliable on a sh
       assert.equal((await request({action:'password',password:'PersonalAfterReset123!'},login.data.token)).statusCode,200);
       assert.equal((await request({id:'staff-2',password:'PersonalAfterReset123!'})).statusCode,200);
     });
+    await t.test('standard reset is server controlled and a manager can also set a permanent personal password',async()=>{
+      const old=await request({id:'staff-7',password:'SyntheticPassword123!'});
+      const reset=await request({action:'reset_user_password',resetMode:'standard',id:'staff-7',password:'IgnoredClientValue123!'},managerToken);
+      assert.equal(reset.statusCode,200);
+      assert.equal(reset.data.user.mustChangePassword,true);
+      assert.ok(reset.data.user.passwordUpdatedAt);
+      assert.equal((await request({id:'staff-7',password:'IgnoredClientValue123!'})).statusCode,401);
+      const login=await request({id:'staff-7',password:'ReMarkt2026!'},'','standard-reset-pc');
+      assert.equal(login.statusCode,200);
+      assert.equal((await request({action:'password',password:'AnotherPersonal123!'},old.data.token)).statusCode,401);
+      const personal=await request({action:'set_user_password',id:'staff-7',password:'ManagerChosenPersonal123!'},managerToken);
+      assert.equal(personal.statusCode,200);
+      assert.equal(personal.data.user.mustChangePassword,false);
+      assert.equal(personal.data.user.laptopAccess,'grade');
+      assert.equal((await request({id:'staff-7',password:'ReMarkt2026!'})).statusCode,401);
+      assert.equal((await request({action:'password',password:'AnotherPersonal123!'},login.data.token)).statusCode,401);
+      const signedIn=await request({id:'staff-7',password:'ManagerChosenPersonal123!'},'','personal-set-pc');
+      assert.equal(signedIn.statusCode,200);
+      assert.equal(signedIn.data.user.mustChangePassword,false);
+      assert.doesNotMatch(JSON.stringify(personal.data),/ManagerChosenPersonal|scrypt\$/);
+      const audit=await store.page({collection:'auditLogs'});
+      assert.doesNotMatch(JSON.stringify(audit),/ManagerChosenPersonal|ReMarkt2026|scrypt\$/);
+    });
+    await t.test('both manager password options reject staff, self changes, invalid modes and invalid personal passwords',async()=>{
+      const staffToken=issueSession(staff[8],'login-qa');
+      for(const action of ['reset_user_password','set_user_password']) {
+        assert.equal((await request({action,id:'staff-9',resetMode:action==='reset_user_password'?'standard':undefined,password:'ValidPersonal123!'},staffToken)).statusCode,403);
+        assert.equal((await request({action,id:'manager',password:'ValidPersonal123!'},managerToken)).statusCode,400);
+      }
+      for(const password of ['short','x'.repeat(257),'ReMarkt2026!',undefined])
+        assert.equal((await request({action:'set_user_password',id:'staff-9',password},managerToken)).statusCode,400);
+      assert.equal((await request({action:'reset_user_password',id:'staff-9',resetMode:'unknown',password:'ValidPersonal123!'},managerToken)).statusCode,400);
+      assert.equal((await request({action:'set_user_password',id:'staff-9',resetMode:'standard',password:'ValidPersonal123!'},managerToken)).statusCode,400);
+      assert.ok(passwordMatches('SyntheticPassword123!',(await store.detail('users','staff-9')).payload.passwordHash));
+    });
     await t.test('password changes use their own account quota, not the failed-login network quota',async()=>{
       const token=issueSession(staff[0],'login-qa');
       assert.equal((await request({action:'password',password:'ChangedAfterFailures123!'},token)).statusCode,200);
@@ -153,7 +188,36 @@ test('employee login and manager password administration remain reliable on a sh
     await t.test('rotating IP addresses cannot bypass the account-wide failed-password limit',async()=>{
       for(let i=0;i<50;i++)assert.equal((await request({id:'staff-6',password:'wrong'},'',`isolated-network-${i}`)).statusCode,401);
       assert.equal((await request({id:'staff-6',password:'SyntheticPassword123!'},'','another-new-network')).statusCode,429);
-      assert.equal((await request({id:'staff-7',password:'SyntheticPassword123!'},'','another-new-network')).statusCode,200);
+      assert.equal((await request({id:'staff-11',password:'SyntheticPassword123!'},'','another-new-network')).statusCode,200);
+    });
+    await t.test('actual manager client buttons reach the real session handler, SQL and workstation sign-in',async()=>{
+      const app=loadAppSandbox({gzip:true,indexedDB:new IDBFactory()});
+      app.URLSearchParams=URLSearchParams;
+      app.fixtureManager={...manager,passwordHash:'server-managed'};
+      app.fixtureEmployee={...staff[12],passwordHash:'server-managed'};
+      vm.runInContext(`USERS.splice(0,USERS.length,fixtureManager,fixtureEmployee);
+        BATCHES.length=0;MONITOR_BATCHES.length=0;STATE.history=[];STATE.labelPrints=[];STATE.monitorLabelPrints=[];STATE.auditLogs=[];
+        STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedWorkspaceId='login-qa';STATE.currentUser=fixtureManager;
+        STATE.currentScreen='accounts';STATE.accountEditId='staff-12';lastSharedStateSnapshot=getSharedDemoSnapshot({includeUsers:true});`,app);
+      app.setLiveSessionToken(managerToken);
+      const fields={'resetUserPassword-staff-12':{value:'NewPersonalFromUi123!'},'confirmResetUserPassword-staff-12':{value:'NewPersonalFromUi123!'}};
+      app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+      app.fetch=async(url,options)=>{
+        assert.equal(url,'/api/session');
+        const token=options.headers.Authorization.replace(/^Bearer /,'');
+        const result=await request(JSON.parse(options.body),token,'manager-client');
+        return new Response(JSON.stringify(result.data),{status:result.statusCode,headers:result.headers});
+      };
+      await app.handleAction('reset_user_password',{dataset:{userId:'staff-12',resetMode:'standard'}});
+      assert.equal((await request({id:'staff-12',password:'ReMarkt2026!'},'','fresh-pc')).statusCode,200);
+      assert.equal(vm.runInContext('USERS.find(u=>u.id==="staff-12").mustChangePassword',app),true);
+      await app.handleAction('set_user_password',{dataset:{userId:'staff-12'}});
+      const signedIn=await request({id:'staff-12',password:'NewPersonalFromUi123!'},'','fresh-pc');
+      assert.equal(signedIn.statusCode,200);assert.equal(signedIn.data.user.mustChangePassword,false);
+      assert.equal((await request({id:'staff-12',password:'ReMarkt2026!'},'','fresh-pc')).statusCode,401);
+      assert.match(app.__appElement.innerHTML,/Personal password saved/);
+      assert.match(app.renderAccounts(),/Set personal password/);
+      assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users) || ""',app),/NewPersonalFromUi/);
     });
     await t.test('actual employee client: fresh login, database outage, local work, reload and idempotent recovery',async()=>{
       await store.merge({mutationId:randomUUID(),operations:[

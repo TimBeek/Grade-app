@@ -97,6 +97,7 @@ function render() {
     if (STATE.pendingDecision && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderDecisionModal(STATE.pendingDecision);
     if (STATE.supplierNotice && !(STATE.currentScreen === 'grading_beginner' && isGuidedInspection())) html += renderSupplierNoticeModal(STATE.supplierNotice);
     if (STATE.monitorReprintPrompt) html += renderMonitorReprintModal(STATE.monitorReprintPrompt);
+    if (STATE.laptopReprintPrompt) html += renderLaptopReprintModal(STATE.laptopReprintPrompt);
     if (STATE.imagePreview) html += renderImagePreviewModal(STATE.imagePreview);
     if (STATE.currentScreen === 'password_change') html += renderPasswordChange();
     else if (STATE.currentScreen === 'home') html += renderHome();
@@ -121,6 +122,10 @@ function render() {
   if (typeof translateRenderedApp === 'function') translateRenderedApp(app);
   if (typeof fitInspectionViewport === 'function') fitInspectionViewport();
   attachListeners();
+  if (STATE.laptopReprintPrompt) {
+    const modal = document.getElementById('laptop-repeat-dialog');
+    if (modal && typeof modal.focus === 'function') modal.focus();
+  }
   if (typeof focusGuidedDialog === 'function') focusGuidedDialog(app);
   if (STATE.currentScreen === 'grading_beginner' && isGuidedInspection() && !STATE.imagePreview && !getGuidedDialogType()) {
     const focusKey = `${STATE.currentGrading.huidigeIndex}:${STATE.pendingDecision ? STATE.pendingDecision.title : ''}`;
@@ -160,6 +165,33 @@ function renderSupplierNoticeModal(notice) {
       </div>
     </div>
   `;
+}
+
+function renderLaptopReprintModal(prompt) {
+  const history = getLatestHistoryForSticker(prompt.sticker);
+  const label = getLatestLabelPrintForSticker(prompt.sticker);
+  const laptop = buildLaptopFromHistoryOrBatch(prompt.sticker, history || label);
+  const grade = history && (history.result?.eindgrade || history.grade);
+  const busy = STATE.laptopReprintBusy;
+  return `<div class="supplier-notice-overlay" role="dialog" aria-modal="true" aria-labelledby="laptop-repeat-title" id="laptop-repeat-dialog" tabindex="-1">
+    <div class="supplier-notice-modal">
+      <div class="supplier-notice-kicker">Note — already scanned</div>
+      <h3 id="laptop-repeat-title">This laptop has already been processed</h3>
+      <p>${history ? 'Attention: this laptop has already been graded. Choose what you want to do next.' : 'Attention: a label has already been printed for this laptop. Choose what you want to do next.'}</p>
+      <div class="supplier-notice-box"><ul>
+        <li><strong>Device:</strong> <span data-i18n-skip>${escapeHtml(`${laptop.merk || ''} ${laptop.model || ''}`.trim())}</span></li>
+        <li><strong>Barcode:</strong> <span data-i18n-skip>${escapeHtml(prompt.sticker)}</span></li>
+        ${grade ? `<li><strong>Previous grade:</strong> ${escapeHtml(displayGrade(grade))}</li>` : ''}
+      </ul></div>
+      ${STATE.appMessage ? `<p class="laptop-repeat-error" role="alert">${escapeHtml(STATE.appMessage.text)}</p>` : ''}
+      <div class="modal-actions">
+        <button class="btn btn-primary" data-action="laptop_reprint_confirm" type="button" ${busy ? 'disabled' : ''}>${busy ? 'Printing...' : 'Print previous label'}</button>
+        <button class="btn btn-secondary" data-action="laptop_regrade" type="button" ${busy || !canGradeUser() ? 'disabled' : ''}>Grade again</button>
+        <button class="btn btn-secondary" data-action="laptop_reprint_cancel" type="button" ${busy ? 'disabled' : ''}>Back to scanning</button>
+      </div>
+      ${!canGradeUser() ? '<p class="field-help">Your account can print labels, but cannot grade laptops.</p>' : ''}
+    </div>
+  </div>`;
 }
 
 function renderMonitorReprintModal(prompt) {
@@ -2353,19 +2385,25 @@ function renderAccounts() {
               ${editing ? `
                 <div class="acc-row-editor">
                   ${accessFields(u.id, u)}
-                  ${!isSelf ? `<div class="acc-create-inputs">
+                  ${!isSelf ? `<fieldset class="acc-password-tools"><legend>Password</legend>
+                    <div class="acc-password-reset">
+                      <button class="btn btn-secondary" data-action="reset_user_password" data-reset-mode="standard" data-user-id="${escapeHtml(u.id)}" type="button">Reset to standard password</button>
+                      <p class="field-help">A standard reset requires the employee to choose a personal password at next sign-in.</p>
+                    </div>
+                    <div class="acc-create-inputs">
                     <div class="form-group">
-                      <label class="form-label" for="resetUserPassword-${escapeHtml(u.id)}">New temporary password</label>
+                      <label class="form-label" for="resetUserPassword-${escapeHtml(u.id)}">New personal password</label>
                       <input type="password" class="form-input" id="resetUserPassword-${escapeHtml(u.id)}" minlength="8" maxlength="256" autocomplete="new-password" placeholder="At least 8 characters">
                     </div>
                     <div class="form-group">
-                      <label class="form-label" for="confirmResetUserPassword-${escapeHtml(u.id)}">Repeat temporary password</label>
+                      <label class="form-label" for="confirmResetUserPassword-${escapeHtml(u.id)}">Repeat personal password</label>
                       <input type="password" class="form-input" id="confirmResetUserPassword-${escapeHtml(u.id)}" minlength="8" maxlength="256" autocomplete="new-password">
                     </div>
-                  </div><p class="field-help">Fill both password fields only when resetting the password. Saving access rights does not change the password.</p>` : ''}
+                  </div><p class="field-help">Fill both fields to set a personal password, or reset to the standard ReMarkt password without filling them. Saving access rights does not change the password.</p>
+                    <button class="btn btn-secondary" data-action="set_user_password" data-user-id="${escapeHtml(u.id)}" type="button">Set personal password</button>
+                  </fieldset>` : ''}
                   <div class="acc-panel-actions">
                     <div class="acc-secondary-actions">
-                      ${!isSelf ? `<button class="acc-link-btn" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}" type="button">Reset password</button>` : ''}
                       <button class="acc-link-btn is-danger" data-action="delete_user" data-user-id="${escapeHtml(u.id)}" type="button" ${isSelf ? 'disabled' : ''}>Delete user</button>
                     </div>
                     <button class="btn btn-secondary" data-action="toggle_account_edit" data-user-id="${escapeHtml(u.id)}" type="button">Cancel</button>

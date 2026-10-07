@@ -34,6 +34,9 @@ const STATE = {
   monitorManualStartedAt: null,
   monitorTimingStarts: {},
   monitorReprintPrompt: null,
+  laptopReprintPrompt: null,
+  laptopScanBusy: false,
+  laptopReprintBusy: false,
   monitorRegradeSticker: null,
   analyticsTab: 'overview',
   contrast: 'normal',
@@ -699,6 +702,8 @@ function saveSessionUser(user) {
 }
 
 function clearSessionUser() {
+  STATE.laptopReprintPrompt = null;
+  STATE.monitorReprintPrompt = null;
   if (typeof setLiveSessionToken === 'function') setLiveSessionToken('');
   try {
     sessionStorage.removeItem(DEMO_STORAGE_KEYS.session);
@@ -2470,6 +2475,8 @@ function applySharedUsers(state) {
       STATE.currentUser = refreshedUser;
       saveSessionUser(refreshedUser);
       if (refreshedUser.mustChangePassword === true) {
+        STATE.laptopReprintPrompt = null;
+        STATE.monitorReprintPrompt = null;
         STATE.currentScreen = 'password_change';
         STATE.currentLaptop = null;
         STATE.currentMonitor = null;

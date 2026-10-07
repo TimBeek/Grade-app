@@ -29,7 +29,7 @@ export default async function handler(request, response) {
         expectedRevision: Number(existing.revision), payload: updated }] });
       return response.status(200).json({ user: publicUser(updated), workspaceId:workspace, token: issueSession(updated, workspace) });
     }
-    if (['create_user', 'reset_user_password'].includes(body.action)) {
+    if (['create_user', 'reset_user_password', 'set_user_password'].includes(body.action)) {
       const manager = await requireSession(request, store, workspace);
       if (!/^(manager|admin)$/i.test(manager.rol) || manager.mustChangePassword)
         throw storageError('AUTH_FORBIDDEN', 'Manager access required.', 403);
@@ -54,14 +54,19 @@ export default async function handler(request, response) {
         if (id === manager.id) throw storageError('REQUEST_INVALID', 'Use your personal password screen.', 400);
         updated = { ...existing.payload };
       }
-      updated.passwordHash = passwordHash(body.password);
-      updated.mustChangePassword = true;
+      const standardReset = body.action === 'reset_user_password' && body.resetMode === 'standard';
+      if (body.resetMode && (!standardReset || body.action !== 'reset_user_password'))
+        throw storageError('REQUEST_INVALID', 'Invalid password reset mode.', 400);
+      if (body.action === 'set_user_password' && body.password === 'ReMarkt2026!')
+        throw storageError('REQUEST_INVALID', 'Use the standard reset option for the standard password.', 400);
+      updated.passwordHash = passwordHash(standardReset ? 'ReMarkt2026!' : body.password);
+      updated.mustChangePassword = body.action !== 'set_user_password';
       updated.passwordUpdatedAt = new Date().toISOString();
       const auditId = randomUUID();
       const result = await store.merge({ mutationId: randomUUID(), operations: [
         { collection: 'users', id, expectedRevision: Number(existing?.revision || 0), payload: updated },
         { collection: 'auditLogs', id: auditId, expectedRevision: 0, payload: { id: auditId,
-          action: body.action, entityType: 'user', entityId: id, userId: manager.id,
+          action: body.action, ...(standardReset ? { resetMode: 'standard' } : {}), entityType: 'user', entityId: id, userId: manager.id,
           userName: manager.naam, timestamp: new Date().toISOString() } },
       ] });
       return response.status(200).json({ ok: true, user: publicUser(updated), recordRevisions: result.recordRevisions });

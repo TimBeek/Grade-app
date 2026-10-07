@@ -6,6 +6,24 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'New personal password':'Nieuw persoonlijk wachtwoord',
+  'Repeat personal password':'Herhaal persoonlijk wachtwoord',
+  'Set personal password':'Persoonlijk wachtwoord instellen',
+  'Reset to standard password':'Reset naar standaardwachtwoord',
+  'Fill both fields to set a personal password, or reset to the standard ReMarkt password without filling them. Saving access rights does not change the password.':'Vul beide velden in om een persoonlijk wachtwoord in te stellen, of reset zonder invoer naar het standaard ReMarkt-wachtwoord. Toegangsrechten opslaan verandert het wachtwoord niet.',
+  'A standard reset requires the employee to choose a personal password at next sign-in.':'Na een standaardreset moet de medewerker bij de volgende login een eigen wachtwoord kiezen.',
+  'Use between 8 and 256 characters for the personal password.':'Gebruik tussen 8 en 256 tekens voor het persoonlijke wachtwoord.',
+  'Use the standard reset option for the standard password.':'Gebruik de standaardreset voor het standaardwachtwoord.',
+  'Personal password saved. The employee can sign in with this password.':'Persoonlijk wachtwoord opgeslagen. De medewerker kan hiermee inloggen.',
+  'Password reset saved. Use the standard ReMarkt password; the employee must choose a personal password at next sign-in.':'Wachtwoord gereset. Gebruik het standaard ReMarkt-wachtwoord; de medewerker moet bij de volgende login een eigen wachtwoord kiezen.',
+  'This laptop has already been processed':'Deze laptop is al verwerkt',
+  'Attention: this laptop has already been graded. Choose what you want to do next.':'Let op: deze laptop is al gegrade. Kies wat je nu wilt doen.',
+  'Attention: a label has already been printed for this laptop. Choose what you want to do next.':'Let op: voor deze laptop is al een label geprint. Kies wat je nu wilt doen.',
+  'Previous grade:':'Vorige grade:',
+  'Print previous label':'Vorige label printen',
+  'Back to scanning':'Terug naar scannen',
+  'Your account can print labels, but cannot grade laptops.':'Je account mag labels printen, maar geen laptops graden.',
+  'This laptop is no longer available. Return to scanning.':'Deze laptop is niet meer beschikbaar. Ga terug naar scannen.',
   'Local work mode':'Lokale werkmodus',
   'Saved on this computer; synchronization is pending.':'Op deze computer opgeslagen; synchronisatie staat open.',
   'Restore work lists':'Werklijsten herstellen',
@@ -999,6 +1017,8 @@ const NL_COPY = {
 };
 
 const NL_DYNAMIC_PATTERNS = [
+  [/^Reset (.+) to the standard ReMarkt password\? They must choose a personal password at next sign-in\.$/, 'Reset $1 naar het standaard ReMarkt-wachtwoord? Deze medewerker moet bij de volgende login een eigen wachtwoord kiezen.'],
+  [/^Set a personal password for (.+)\? The employee can sign in immediately with this password\.$/, 'Een persoonlijk wachtwoord instellen voor $1? De medewerker kan direct hiermee inloggen.'],
   [/^Too many attempts\. Try again in (\d+) minute\(s\)\. No data was deleted\.$/, 'Te veel pogingen. Probeer opnieuw over $1 minuut/minuten. Er zijn geen gegevens verwijderd.'],
   [/^Set a new temporary password for (.+)\?$/, 'Een nieuw tijdelijk wachtwoord instellen voor $1?'],
   [/^(\d+) active · (\d+) completed · (\d+) devices total$/i, '$1 actief · $2 voltooid · $3 apparaten totaal'],

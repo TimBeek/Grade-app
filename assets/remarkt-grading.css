@@ -3100,6 +3100,13 @@ html[data-theme="dark"] .analytics-filter-bar { background: transparent; }
 
 .acc-panel-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--remarkt-line); }
 .acc-secondary-actions { display: flex; gap: 4px; margin-right: auto; flex-wrap: wrap; }
+.acc-password-tools { min-width: 0; margin: 18px 0; padding: 16px; border: 1px solid var(--remarkt-line); border-radius: 10px; }
+.acc-password-tools legend { padding: 0 6px; font-weight: 700; }
+.acc-password-reset { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--remarkt-line); }
+.acc-password-reset .field-help { flex: 1; min-width: 180px; margin: 0; }
+#laptop-repeat-dialog .modal-actions { flex-wrap: wrap; }
+#laptop-repeat-dialog .modal-actions .btn { flex: 1 1 140px; }
+#laptop-repeat-dialog .laptop-repeat-error { padding: 10px 12px; border-left: 3px solid var(--remarkt-red); background: var(--action-soft, transparent); color: inherit; }
 .acc-link-btn { min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--remarkt-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .acc-link-btn:hover:not(:disabled) { background: rgba(0,0,0,0.05); color: var(--remarkt-ink); }
 .acc-link-btn.is-danger { color: var(--remarkt-red); }

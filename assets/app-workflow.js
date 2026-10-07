@@ -645,6 +645,22 @@ function applyMonitorManualVideoInputsToPicker(videoInputs) {
 }
 
 function handleDelegatedKeydown(e) {
+  if (STATE.laptopReprintPrompt) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!STATE.laptopReprintBusy) { cancelLaptopRepeat(); render(); }
+    } else if (e.key === 'Enter' && e.target.id === 'scanInput') {
+      e.preventDefault();
+    } else if (e.key === 'Tab') {
+      const buttons = document.querySelectorAll('#laptop-repeat-dialog button:not(:disabled)');
+      if (buttons.length) {
+        const first = buttons[0], last = buttons[buttons.length - 1];
+        if (e.shiftKey && (e.target === first || e.target.id === 'laptop-repeat-dialog')) {e.preventDefault();last.focus();}
+        else if (!e.shiftKey && (e.target === last || e.target.id === 'laptop-repeat-dialog')) {e.preventDefault();first.focus();}
+      }
+    }
+    return;
+  }
   if (typeof handleGuidedDialogKeydown === 'function' && handleGuidedDialogKeydown(e)) return;
   if (e.repeat && STATE.currentScreen === 'grading_beginner') return;
   if (e.key === 'Escape' && STATE.imagePreview) {
@@ -996,6 +1012,8 @@ const STICKER_ALLOWED_ACTIONS = new Set([
   'change_own_password',
   'print_supplier_specs_label',
   'reprint_completed_laptop',
+  'laptop_reprint_confirm',
+  'laptop_reprint_cancel',
   'set_touch_override',
 ]);
 
@@ -1036,6 +1054,7 @@ function guardPasswordChangeAction(action) {
 }
 
 async function handleAction(action, el) {
+  if (STATE.laptopReprintPrompt && !['laptop_reprint_confirm', 'laptop_reprint_cancel', 'laptop_regrade'].includes(action)) return;
   if (action === 'toggle_fullscreen') {
     await toggleAppFullscreen(); return;
   }
@@ -1094,7 +1113,7 @@ async function handleAction(action, el) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return;
   }
-  if (STATE.sharedStorageError && (!canWorkLocally() || /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_.*|verify_batch_completion|reopen_batch_completion)$/.test(action)) && /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_laptop|remove_batch|remove_monitor|remove_monitor_batch|manual_submit|monitor_manual_submit|verify_batch_completion|reopen_batch_completion|set_touch_override|confirm_save|confirm_expert|confirm_expert_repair|print_.*|monitor_reprint_confirm)$/.test(action)) {
+  if (STATE.sharedStorageError && (!canWorkLocally() || /^(create_user|update_user|reset_user_password|set_user_password|delete_user|change_own_password|remove_.*|verify_batch_completion|reopen_batch_completion)$/.test(action)) && /^(create_user|update_user|reset_user_password|set_user_password|delete_user|change_own_password|remove_laptop|remove_batch|remove_monitor|remove_monitor_batch|manual_submit|monitor_manual_submit|verify_batch_completion|reopen_batch_completion|set_touch_override|confirm_save|confirm_expert|confirm_expert_repair|print_.*|monitor_reprint_confirm|laptop_reprint_confirm)$/.test(action)) {
     setAppMessage('Live saving is unavailable. Retry the connection before changing or printing operational data.', 'warning');
     if (typeof liveRenderWouldDisruptInput !== 'function' || !liveRenderWouldDisruptInput()) render();
     return;
@@ -1214,6 +1233,30 @@ async function handleAction(action, el) {
       STATE.monitorManualAutoKey = monitorManualMatchKeyForMonitor(STATE.currentMonitor);
       STATE.monitorManualPortsAutoFilled = false;
       break;
+    case 'laptop_reprint_confirm': {
+      if (!STATE.laptopReprintPrompt || STATE.laptopReprintBusy) return;
+      const prompt = STATE.laptopReprintPrompt;
+      await reprintCompletedLaptopLabels(prompt.sticker, { source: prompt.source, returnScreen: prompt.returnScreen });
+      render(); return;
+    }
+    case 'laptop_regrade': {
+      if (!STATE.laptopReprintPrompt || STATE.laptopReprintBusy || !canGradeUser()) return;
+      const laptop = getLaptopBySticker(STATE.laptopReprintPrompt.sticker);
+      if (!laptop) {setAppMessage('This laptop is no longer available. Return to scanning.');render();return;}
+      STATE.laptopReprintPrompt = null;
+      STATE.currentLaptop = laptop;
+      STATE.currentGrading = null;
+      STATE.pendingDecision = null;
+      STATE.supplierNotice = null;
+      clearGuidedDraft();
+      setAppMessage(null);
+      startGrading(canUseExpertMode() && STATE.currentUser.voorkeur === 'expert' ? 'expert' : 'beginner');
+      render(); return;
+    }
+    case 'laptop_reprint_cancel':
+      if (STATE.laptopReprintBusy) return;
+      cancelLaptopRepeat();
+      break;
     case 'monitor_reprint_confirm': {
       const reprintSticker = STATE.monitorReprintPrompt && STATE.monitorReprintPrompt.sticker;
       await reprintMonitorLabel(reprintSticker);
@@ -1324,7 +1367,10 @@ async function handleAction(action, el) {
       await updateUserFromRow(el.dataset.userId);
       return;
     case 'reset_user_password':
-      await resetUserPassword(el.dataset.userId);
+      await resetUserPassword(el.dataset.userId, el.dataset.resetMode || 'temporary');
+      return;
+    case 'set_user_password':
+      await resetUserPassword(el.dataset.userId, 'personal');
       return;
     case 'delete_user':
       await deleteUser(el.dataset.userId);
@@ -1864,6 +1910,39 @@ function confirmSupplierNotice() {
 }
 
 async function selectLaptop(sticker) {
+  if (STATE.laptopReprintPrompt || STATE.laptopScanBusy || STATE.laptopReprintBusy) return;
+  STATE.laptopScanBusy = true;
+  try { return await selectLaptopForScan(sticker); }
+  finally { STATE.laptopScanBusy = false; }
+}
+
+function openLaptopRepeat(laptop, source) {
+  STATE.currentLaptop = null;
+  STATE.currentGrading = null;
+  STATE.pendingDecision = null;
+  STATE.supplierNotice = null;
+  STATE.scanSearch = '';
+  STATE.laptopReprintPrompt = { sticker: laptop.sticker, source,
+    returnScreen: source === 'label-scan' || isStickerUser() ? 'sticker_scan' : 'scan' };
+  STATE.currentScreen = STATE.laptopReprintPrompt.returnScreen;
+  setAppMessage(null);
+  render();
+  return false;
+}
+
+function cancelLaptopRepeat() {
+  const screen = STATE.laptopReprintPrompt?.returnScreen;
+  STATE.laptopReprintPrompt = null;
+  STATE.currentLaptop = null;
+  STATE.currentGrading = null;
+  STATE.pendingDecision = null;
+  STATE.supplierNotice = null;
+  STATE.currentScreen = screen || (isStickerUser() ? 'sticker_scan' : 'scan');
+  STATE.scanSearch = '';
+  setAppMessage(null);
+}
+
+async function selectLaptopForScan(sticker) {
   const cleanSticker = String(sticker || '').trim();
   let l = getLaptopBySticker(sticker);
   if (!l) {
@@ -1874,8 +1953,7 @@ async function selectLaptop(sticker) {
   if(STATE.storageFormat===3 && !await loadRecordTrace(l.sticker)) {render();return;}
   l=getLaptopBySticker(sticker) || l;
   if (isLaptopGraded(l.sticker) || isLaptopLabelPrinted(l.sticker)) {
-    await reprintCompletedLaptopLabels(l.sticker, { source: 'scan', confirmBeforePrint: true });
-    return;
+    return openLaptopRepeat(l, 'scan');
   }
   STATE.currentLaptop = l;
   STATE.currentScreen = 'laptop_info';
@@ -1947,18 +2025,19 @@ function getHistoryResultForReprint(historyItem) {
   return result;
 }
 
-function confirmCompletedLaptopReprint(laptop) {
-  if (typeof confirm !== 'function') return true;
-  const sticker = laptop && laptop.sticker ? laptop.sticker : '-';
-  const device = `${laptop && laptop.merk ? laptop.merk : ''} ${laptop && laptop.model ? laptop.model : ''}`.trim();
-  return confirm(
-    `This laptop has already been scanned and graded.\n\n` +
-    `Barcode: ${sticker}${device ? `\nDevice: ${device}` : ''}\n\n` +
-    `Are you sure you want to print the label again?`
-  );
+async function reprintCompletedLaptopLabels(sticker, options = {}) {
+  if (STATE.laptopReprintBusy) return false;
+  STATE.laptopReprintBusy = true;
+  if (STATE.laptopReprintPrompt) render();
+  try { return await performCompletedLaptopReprint(sticker, options); }
+  catch (error) {
+    reportAppError('Label print failed', error);
+    setAppMessage('Label print failed. Try again.');
+    return false;
+  } finally { STATE.laptopReprintBusy = false; render(); }
 }
 
-async function reprintCompletedLaptopLabels(sticker, options = {}) {
+async function performCompletedLaptopReprint(sticker, options = {}) {
   if(STATE.storageFormat===3 && !await loadRecordTrace(sticker)) {render();return false;}
   const cleanSticker = String(sticker || '').trim();
   if (!cleanSticker) {
@@ -1968,7 +2047,7 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
   }
   const historyItem = getLatestHistoryForSticker(cleanSticker);
   const labelPrint = getLatestLabelPrintForSticker(cleanSticker);
-  if (!historyItem && !labelPrint && !getLaptopBySticker(cleanSticker)) {
+  if (!historyItem && !labelPrint) {
     setAppMessage(`Barcode ${cleanSticker} not found for reprint.`);
     render();
     return false;
@@ -1976,16 +2055,6 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
 
   const laptop = buildLaptopFromHistoryOrBatch(cleanSticker, historyItem || labelPrint);
   const result = historyItem ? getHistoryResultForReprint(historyItem) : { eindgrade: '', problems: [] };
-  if (options.confirmBeforePrint && !confirmCompletedLaptopReprint(laptop)) {
-    STATE.currentLaptop = null;
-    STATE.currentGrading = null;
-    STATE.pendingDecision = null;
-    STATE.supplierNotice = null;
-    STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
-    setAppMessage(`Reprint for ${laptop.sticker || cleanSticker} cancelled.`);
-    render();
-    return false;
-  }
   const printTypes = ['specs'];
   if (needsProblemLabel(laptop, result)) printTypes.push('problems');
   const preparedWindows = {};
@@ -2019,13 +2088,21 @@ async function reprintCompletedLaptopLabels(sticker, options = {}) {
   STATE.currentGrading = null;
   STATE.pendingDecision = null;
   STATE.supplierNotice = null;
-  STATE.currentScreen = isStickerUser() ? 'sticker_scan' : 'scan';
+  STATE.laptopReprintPrompt = null;
+  STATE.currentScreen = options.returnScreen || (isStickerUser() ? 'sticker_scan' : 'scan');
   setAppMessage(`${printTypes.length > 1 ? 'Specs and repair labels' : 'Specs label'} reprinted for ${laptop.sticker || cleanSticker}.`, 'success');
   render();
   return true;
 }
 
 async function scanAndPrintStickerLabel(sticker, options = {}) {
+  if (STATE.laptopReprintPrompt || STATE.laptopScanBusy || STATE.laptopReprintBusy) return false;
+  STATE.laptopScanBusy = true;
+  try { return await performStickerScan(sticker, options); }
+  finally { STATE.laptopScanBusy = false; }
+}
+
+async function performStickerScan(sticker, options = {}) {
   if(STATE.storageFormat===3 && !await loadRecordTrace(getCanonicalSticker(sticker))) {render();return false;}
   const cleanSticker = String(sticker || '').trim();
   if (!cleanSticker) {
@@ -2047,12 +2124,8 @@ async function scanAndPrintStickerLabel(sticker, options = {}) {
   STATE.pendingDecision = null;
   STATE.scanSearch = '';
 
-  if (isLaptopGraded(laptop.sticker)) {
-    return reprintCompletedLaptopLabels(laptop.sticker, { source: 'label-scan', confirmBeforePrint: true });
-  }
-
-  if (isLaptopLabelPrinted(laptop.sticker)) {
-    return reprintCompletedLaptopLabels(laptop.sticker, { source: 'label-scan', confirmBeforePrint: true });
+  if (isLaptopGraded(laptop.sticker) || isLaptopLabelPrinted(laptop.sticker)) {
+    return openLaptopRepeat(laptop, 'label-scan');
   }
 
   const supplierResult = { eindgrade: '', problems: [] };
@@ -2551,14 +2624,14 @@ function accountAccessError(access) {
   return '';
 }
 
-function readTemporaryAccountPassword(passwordId, confirmId) {
+function readTemporaryAccountPassword(passwordId, confirmId, personal = false) {
   const input=document.getElementById(passwordId),confirmation=document.getElementById(confirmId);
   // The legacy, local-only workflow keeps its existing fallback. Production
   // accounts always require an explicit manager-chosen temporary password.
-  if(!input && !STATE.serverAuth)return FIRST_LOGIN_PASSWORD;
+  if(!input && !STATE.serverAuth && !personal)return FIRST_LOGIN_PASSWORD;
   const password=String(input?.value || '');
   if(password.length<8 || password.length>256) {
-    setAppMessage('Use between 8 and 256 characters for the temporary password.');return null;
+    setAppMessage(personal ? 'Use between 8 and 256 characters for the personal password.' : 'Use between 8 and 256 characters for the temporary password.');return null;
   }
   if(password!==String(confirmation?.value || '')) {
     setAppMessage('The two passwords are not the same.');return null;
@@ -2569,7 +2642,7 @@ function readTemporaryAccountPassword(passwordId, confirmId) {
 async function saveManagedAccount(action, profile, password) {
   if(STATE.accountPasswordBusy)return false;
   STATE.accountPasswordBusy=true;
-  document.querySelectorAll('[data-action="create_user"], [data-action="reset_user_password"]').forEach(button=>{button.disabled=true;});
+  document.querySelectorAll('[data-action="create_user"], [data-action="reset_user_password"], [data-action="set_user_password"]').forEach(button=>{button.disabled=true;});
   try {
     // Flush before changing private credentials. A later profile save must
     // never replay an old password reset or acknowledge unrelated pending work.
@@ -2578,6 +2651,7 @@ async function saveManagedAccount(action, profile, password) {
       body:JSON.stringify({action,...profile,password})});
     if(!response.ok){await readStorageFailure(response);return false;}
     const result=await response.json();
+    forgetOfflineLogin(result.user.id);
     const index=USERS.findIndex(user=>user.id===result.user.id);
     if(index<0)USERS.push(result.user);else USERS[index]=result.user;
     STATE.recordRevisions={...STATE.recordRevisions,...result.recordRevisions};
@@ -2592,7 +2666,10 @@ async function saveManagedAccount(action, profile, password) {
   } catch {
     setAppMessage('The account change was not confirmed. Check the connection and try again.', 'warning');
     return false;
-  } finally {STATE.accountPasswordBusy=false;}
+  } finally {
+    STATE.accountPasswordBusy=false;
+    document.querySelectorAll('[data-action="create_user"], [data-action="reset_user_password"], [data-action="set_user_password"]').forEach(button=>{button.disabled=false;});
+  }
 }
 
 async function createUserFromForm() {
@@ -2680,34 +2757,43 @@ async function updateUserFromRow(id) {
   render();
 }
 
-async function resetUserPassword(id) {
+async function resetUserPassword(id, mode = 'temporary') {
   if (!isAdminUser()) return;
+  if (STATE.accountPasswordBusy || !['temporary','standard','personal'].includes(mode)) return;
   const user = USERS.find(u => u.id === id);
   if (!user) return;
-  if(STATE.serverAuth && STATE.currentUser?.id===id) {
+  if(STATE.currentUser?.id===id) {
     setAppMessage('Use your personal password screen to change your own password.');render();return;
   }
-  const password=readTemporaryAccountPassword(`resetUserPassword-${id}`,`confirmResetUserPassword-${id}`);
+  const personal = mode === 'personal';
+  const password = mode === 'standard' ? FIRST_LOGIN_PASSWORD
+    : readTemporaryAccountPassword(`resetUserPassword-${id}`,`confirmResetUserPassword-${id}`, personal);
   if(password===null){render();return;}
-  if (!confirm(`Set a new temporary password for ${user.naam}?`)) return;
+  if(personal && password === FIRST_LOGIN_PASSWORD) {
+    setAppMessage('Use the standard reset option for the standard password.');render();return;
+  }
+  const question = mode === 'standard' ? `Reset ${user.naam} to the standard ReMarkt password? They must choose a personal password at next sign-in.`
+    : personal ? `Set a personal password for ${user.naam}? The employee can sign in immediately with this password.`
+    : `Set a new temporary password for ${user.naam}?`;
+  if (!confirm(translateCopy(question))) return;
+  const message = personal ? 'Personal password saved. The employee can sign in with this password.'
+    : mode === 'standard' ? 'Password reset saved. Use the standard ReMarkt password; the employee must choose a personal password at next sign-in.'
+    : 'Password reset saved. The employee must sign in with the new temporary password and choose a personal password.';
   if(STATE.serverAuth) {
-    if(await saveManagedAccount('reset_user_password',{id},password))
-      setAppMessage('Password reset saved. The employee must sign in with the new temporary password and choose a personal password.', 'success');
+    if(await saveManagedAccount(personal ? 'set_user_password' : 'reset_user_password',
+      {id,...(mode === 'standard' ? {resetMode:'standard'} : {})}, mode === 'standard' ? undefined : password))
+      setAppMessage(message, 'success');
     render();return;
   }
   user.passwordHash = await hashDemoPassword(password);
-  user.mustChangePassword = true;
-  user.passwordUpdatedAt = '';
-  if (STATE.currentUser && STATE.currentUser.id === id) {
-    STATE.currentUser = user;
-    saveSessionUser(user);
-    STATE.currentScreen = 'password_change';
-  }
+  user.mustChangePassword = !personal;
+  user.passwordUpdatedAt = new Date().toISOString();
+  forgetOfflineLogin(id);
   saveUsers();
-  logAudit('reset_user_password', 'user', id);
+  logAudit(personal ? 'set_user_password' : 'reset_user_password', 'user', id);
   const saved=await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
   if(canUseSharedDemoState() && !saved){render();return;}
-  setAppMessage('Password reset saved. The employee must sign in with the new temporary password and choose a personal password.', 'success');
+  setAppMessage(message, 'success');
   render();
 }
 

@@ -2242,7 +2242,7 @@ test('admin kan gebruiker resetten naar startwachtwoord met verplichte wijziging
   const resetUser = vm.runInContext(`USERS.find(user => user.id === 'resetcase')`, app);
   assert.equal(resetUser.passwordHash, startHash);
   assert.equal(resetUser.mustChangePassword, true);
-  assert.equal(resetUser.passwordUpdatedAt, '');
+  assert.match(resetUser.passwordUpdatedAt, /^20/);
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Password reset saved/);
 });
 
@@ -2270,9 +2270,9 @@ test('scan-en-print markeert label klaar en sluit digitale grading af', async ()
   assert.equal(vm.runInContext("getStickerOpenLaptops().some(laptop => laptop.sticker === '7771198')", app), false);
   assert.equal(vm.runInContext("getOpenLaptops().some(laptop => laptop.sticker === '7771198')", app), false);
   assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /blank grade line|Device completed/);
-  vm.runInContext("selectLaptop('7771198')", app);
+  await app.selectLaptop('7771198');
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'sticker_scan');
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /complete in the digital workflow/);
+  assert.match(app.renderLaptopReprintModal(vm.runInContext('STATE.laptopReprintPrompt', app)), /a label has already been printed/);
 
   vm.runInContext(`STATE.history = [{ sticker: '8460024' }]; rebuildHistoryIndexes();`, app);
   assert.equal(vm.runInContext("getStickerOpenLaptops().some(laptop => laptop.sticker === '8460024')", app), false);
@@ -2398,9 +2398,10 @@ test('afgeronde laptop kan via dezelfde scan opnieuw worden geprint', async () =
 
   await app.selectLaptop('8460024');
 
-  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
-  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /already been scanned and graded/);
-  assert.match(vm.runInContext('window.__confirmCalls[0]', app), /print the label again/);
+  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 0);
+  assert.equal(vm.runInContext('window.__printCalls.length', app), 0);
+  assert.match(app.renderLaptopReprintModal(vm.runInContext('STATE.laptopReprintPrompt', app)), /already been graded/);
+  await app.handleAction('laptop_reprint_confirm');
   assert.equal(vm.runInContext('window.__printCalls.length', app), 1);
   assert.equal(vm.runInContext('window.__printCalls[0].type', app), 'specs');
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
@@ -2440,10 +2441,11 @@ test('afgeronde laptop print niet opnieuw als bevestiging wordt geweigerd', asyn
 
   await app.selectLaptop('8460024');
 
-  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 1);
+  await app.handleAction('laptop_reprint_cancel');
+  assert.equal(vm.runInContext('window.__confirmCalls.length', app), 0);
   assert.equal(vm.runInContext('window.__printCalls.length', app), 0);
   assert.equal(vm.runInContext('STATE.currentScreen', app), 'scan');
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /cancelled/);
+  assert.equal(vm.runInContext('STATE.laptopReprintPrompt', app), null);
 });
 
 test('kleine leveranciersmelding staat achter Controlepunten bij het passende onderdeel', async () => {
