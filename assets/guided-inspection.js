@@ -62,10 +62,175 @@ async function selectGuidedPhotoFinding(triggerId, componentId) {
   }
 }
 
-function guidedObservationDetail(componentId, letter, detail) {
-  if (componentId === 'scharnieren' && letter === 'D') return 'Check whether the hinge still opens and closes.';
-  if (componentId === 'lcd' && letter === 'C') return 'Visible when the screen is on';
-  return detail;
+// Observable criteria only: these captions never alter grading rules.
+const GUIDED_CHOICE_POINTS = {
+  "bovenkap": {
+    "A": [
+      "No dents or coating damage",
+      "Clean surface; no stickers"
+    ],
+    "B": [
+      "Light coating wear or small dents",
+      "Scratches up to 1 cm"
+    ],
+    "C": [
+      "Deep scratches or heavy coating wear",
+      "Dents or a small missing corner"
+    ],
+    "D": [
+      "Structural break or sharp edges",
+      "Bent cover that does not close"
+    ]
+  },
+  "onderkant": {
+    "A": [
+      "Light marks up to 0.5 cm",
+      "All rubber feet present"
+    ],
+    "B": [
+      "Visible scratches or a small dent",
+      "Light coating wear; feet may be missing"
+    ],
+    "C": [
+      "Heavy scratches, dents or coating damage",
+      "Crack or small missing corner"
+    ],
+    "D": [
+      "Severe damage to the bottom cover",
+      "Damage prevents normal use"
+    ]
+  },
+  "randen": {
+    "A": [
+      "Only light signs of use",
+      "No dents or coating damage"
+    ],
+    "B": [
+      "Scratches or light dents",
+      "Coating wear in several places"
+    ],
+    "C": [
+      "Deep scratches or strong dents",
+      "Missing corner: check the damage"
+    ],
+    "D": [
+      "Broken, open or badly bent housing",
+      "Check for dangerous sharp edges"
+    ]
+  },
+  "palmrest": {
+    "A": [
+      "No scratches or coating damage",
+      "Soft-touch coating intact"
+    ],
+    "B": [
+      "Light scratches or coating wear",
+      "A small dent is allowed"
+    ],
+    "C": [
+      "Heavy scratches or sticky coating",
+      "Dents or a small missing corner"
+    ],
+    "D": [
+      "Large missing corner or breakage",
+      "Sharp edges or a safety risk"
+    ]
+  },
+  "bezel": {
+    "A": [
+      "No visible damage or cracks",
+      "No visible repairs"
+    ],
+    "B": [
+      "Small scratches or discoloration",
+      "Hairline crack: choose the detail"
+    ],
+    "C": [
+      "Clear cracks or heavy coating damage",
+      "Inspect the corners and frame"
+    ],
+    "D": [
+      "Broken or loose screen frame",
+      "Check the exact damage next"
+    ]
+  },
+  "lcd": {
+    "A": [
+      "No key marks or scratches",
+      "No white spots, lines or cracked glass"
+    ],
+    "B": [
+      "Light key marks or a small white spot",
+      "Barely visible with the screen on"
+    ],
+    "C": [
+      "Visible key marks, scratches or spots",
+      "Clearly visible with the screen on"
+    ],
+    "D": [
+      "Cracked glass, pixel lines or flicker",
+      "Check the exact screen fault next"
+    ]
+  },
+  "keyboard": {
+    "A": [
+      "Only minimal key wear",
+      "Check all keys are present and working"
+    ],
+    "B": [
+      "Light use marks or fading",
+      "Check every key responds"
+    ],
+    "C": [
+      "Heavy fading or coating wear",
+      "Check every key responds"
+    ],
+    "D": [
+      "Missing or non-responsive keys",
+      "Choose the exact keyboard fault next"
+    ]
+  },
+  "touchpad": {
+    "A": [
+      "No visible damage",
+      "Movement and clicks work normally"
+    ],
+    "B": [
+      "Light scratches or signs of use",
+      "Movement and clicks work normally"
+    ],
+    "C": [
+      "Deep scratches, coating loss or a crack",
+      "Check movement and clicks"
+    ],
+    "D": [
+      "Touchpad missing or not responding",
+      "Check movement and clicks"
+    ]
+  },
+  "scharnieren": {
+    "A": [
+      "No visible hinge damage",
+      "Screen opens and closes normally"
+    ],
+    "B": [
+      "Light wear; no deep scratches",
+      "Check both hinge attachments"
+    ],
+    "C": [
+      "Play or clearly visible wear",
+      "Still connected; no break"
+    ],
+    "D": [
+      "Heavy hinge or mounting damage",
+      "Check whether it opens and closes"
+    ]
+  }
+};
+
+function renderGuidedChoicePoints(componentId, letter) {
+  const points = GUIDED_CHOICE_POINTS[componentId]?.[letter] || [];
+  return `<span class="inspection-choice-points" role="list" id="inspection-points-${componentId}-${letter}">${points.map((text, index) => `<span class="inspection-choice-point" role="listitem">${uiIcon(index === 0 ? `part_${componentId}` : 'inspectParts')}<span>${escapeHtml(text)}</span></span>`).join('')}</span>`;
 }
 
 function guidedDecisionLabel(label) {
@@ -591,14 +756,13 @@ function renderGuidedInspection() {
           ${component.keuzes.map(choice => {
             const copy = captions[component.id] && captions[component.id][choice.letter];
             const title = copy ? copy[0] : choice.letter === 'D' ? 'Broken, missing or not working' : choice.titel;
-            const detail = guidedObservationDetail(component.id, choice.letter, copy ? copy[1] : choice.detail);
             const photoFindings = (component.triggers || []).filter(t => GUIDED_PHOTO_FINDINGS[t.id] && GUIDED_PHOTO_FINDINGS[t.id].letter === choice.letter);
             const supplierAdvice = getGuidedSupplierPhotoAdvice(component.id, choice.letter);
             const importantAdvice = supplierAdvice.some(note => isGuidedSupplierImportant(component.id, note));
             return `<article class="inspection-example ${g.keuzes[component.id] === choice.letter ? 'selected' : ''}">
-              <button type="button" class="inspection-choice" data-keuze="${choice.letter}" data-inspection-component="${component.id}" data-auto-advance="true" ${blocked ? 'disabled' : ''} aria-label="${displayGrade(choice.letter)} · ${escapeHtml(translateCopy(title))}">
+              <button type="button" class="inspection-choice" data-keuze="${choice.letter}" data-inspection-component="${component.id}" data-auto-advance="true" ${blocked ? 'disabled' : ''} aria-label="${displayGrade(choice.letter)} · ${escapeHtml(translateCopy(title))}" aria-describedby="inspection-points-${component.id}-${choice.letter}">
                 ${images[choice.letter] ? `<span class="inspection-photo"><img src="${images[choice.letter]}" alt="${escapeHtml(title)}" width="640" height="426" decoding="async"></span>` : ''}
-                <span class="inspection-choice-copy"><span class="inspection-choice-heading"><span class="inspection-choice-grade" data-grade="${displayGrade(choice.letter)}" aria-hidden="true" data-i18n-skip>${displayGrade(choice.letter)}</span><strong>${escapeHtml(title)}</strong></span>${detail ? `<span>${escapeHtml(detail)}</span>` : ''}</span>
+                <span class="inspection-choice-copy"><span class="inspection-choice-heading"><span class="inspection-choice-grade" data-grade="${displayGrade(choice.letter)}" aria-hidden="true" data-i18n-skip>${displayGrade(choice.letter)}</span><strong>${escapeHtml(title)}</strong></span>${renderGuidedChoicePoints(component.id, choice.letter)}</span>
               </button>
               <div class="inspection-photo-hints">${photoFindings.map(t => { const finding = GUIDED_PHOTO_FINDINGS[t.id]; return `<button type="button" class="inspection-photo-hint ${g.triggers[t.id] ? 'active' : ''}" data-inspection-finding="${t.id}" data-inspection-component="${component.id}" aria-pressed="${Boolean(g.triggers[t.id])}" ${blocked ? 'disabled' : ''}>${uiIcon(finding.icon)}<span>${finding.label}</span></button>`; }).join('')}</div>
               ${supplierAdvice.length ? `<button type="button" class="inspection-supplier-info ${importantAdvice ? 'important' : 'minor'}" data-inspection-supplier="${choice.letter}" data-inspection-component="${component.id}" aria-label="${importantAdvice ? 'Important supplier observation' : 'Minor supplier observation'}" title="${importantAdvice ? 'Important supplier observation' : 'Minor supplier observation'}" ${blocked ? 'disabled' : ''}>${uiIcon('info')}</button>` : ''}

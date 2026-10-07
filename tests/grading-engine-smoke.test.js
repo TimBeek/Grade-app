@@ -557,6 +557,41 @@ test('all nine inspection steps show subtle A/B/C/X choice hints without changin
   }
 });
 
+test('all nine guided steps describe A/B/C/X with two concise accessible icon bullets', () => {
+  const app = guidedSandbox();
+  for (let index = 0; index < 9; index++) {
+    app.visitGuidedComponent(index);
+    const before = vm.runInContext('JSON.stringify(STATE.currentGrading)', app);
+    const component = vm.runInContext('getGradingOnderdelen()[STATE.currentGrading.huidigeIndex].id', app);
+    const html = app.renderGuidedInspection();
+    assert.equal((html.match(/class="inspection-choice-points" role="list"/g) || []).length, 4);
+    assert.equal((html.match(/class="inspection-choice-point" role="listitem"/g) || []).length, 8);
+    assert.equal((html.match(/<img /g) || []).length, 4);
+    for (const letter of ['A', 'B', 'C', 'D']) {
+      const id = `inspection-points-${component}-${letter}`;
+      assert.ok(html.includes(`aria-describedby="${id}"`));
+      assert.ok(html.includes(`id="${id}"`));
+      const points = vm.runInContext(`GUIDED_CHOICE_POINTS.${component}.${letter}`, app);
+      assert.equal(points.length, 2);
+      const markup = app.renderGuidedChoicePoints(component, letter);
+      assert.equal((markup.match(/<svg /g) || []).length, 2);
+      assert.equal((markup.match(/aria-hidden="true"/g) || []).length, 2);
+      for (const point of points) {
+        assert.ok(point.length <= 45, point);
+        app.localStorage.setItem('remarktLanguagePreferenceV1', 'en');
+        vm.runInContext("STATE.language = 'en'", app);
+        assert.equal(app.translateCopy(point), point);
+        app.localStorage.setItem('remarktLanguagePreferenceV1', 'nl');
+        vm.runInContext("STATE.language = 'nl'", app);
+        const translated = app.translateCopy(point);
+        assert.notEqual(translated, point, `Missing Dutch translation: ${point}`);
+        assert.ok(translated.length <= 60, translated);
+      }
+    }
+    assert.equal(vm.runInContext('JSON.stringify(STATE.currentGrading)', app), before);
+  }
+});
+
 test('inspection chooses one row only when complete reference photos become larger', () => {
   const app = loadAppSandbox();
   assert.equal(app.chooseInspectionColumns({2:250,4:210}),2);
