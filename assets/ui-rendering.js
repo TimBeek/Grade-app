@@ -2309,9 +2309,9 @@ function renderAccounts() {
           <h2>User Management</h2>
           <p>Choose per employee what they may do with laptops and monitors.</p>
         </div>
-        <div class="acc-password-chip" title="The employee chooses a personal password at first sign-in">
+        <div class="acc-password-chip" title="Used only when resetting an account to the standard password.">
           ${uiIcon('accountKey')}
-          <span><small>Temporary password</small><strong>Set by manager</strong></span>
+          <span><small>Standard reset password</small><strong data-i18n-skip>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></span>
         </div>
       </div>
 

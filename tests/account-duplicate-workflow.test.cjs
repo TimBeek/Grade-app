@@ -162,3 +162,16 @@ test('a revoked session cannot leave a previous employee duplicate popup behind'
   app.clearSessionUser();
   assert.equal(vm.runInContext('STATE.laptopReprintPrompt',app),null);
 });
+
+test('standard password chip is manager-only, correctly labelled and never exposes employee passwords',()=>{
+  const app=loadAppSandbox();
+  vm.runInContext(`STATE.currentUser=USERS.find(u=>u.id==='tim');`,app);
+  const html=app.renderAccounts();
+  assert.match(html,/<small>Standard reset password<\/small><strong data-i18n-skip>ReMarkt2026!<\/strong>/);
+  assert.doesNotMatch(html,/Set by manager/);
+  vm.runInContext(`STATE.language='nl';`,app);
+  assert.equal(app.translateCopy('Standard reset password'),'Wachtwoord bij standaardreset');
+  assert.equal(app.translateCopy('ReMarkt2026!'),'ReMarkt2026!');
+  vm.runInContext(`STATE.currentUser={id:'worker',naam:'Worker',rol:'Grader',laptopAccess:'grade'};`,app);
+  assert.doesNotMatch(app.renderAccounts(),/acc-password-chip|ReMarkt2026!/);
+});

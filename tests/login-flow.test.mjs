@@ -67,8 +67,12 @@ test('employee login and manager password administration remain reliable on a sh
         assert.equal(response.data.user.passwordHash,'server-managed');
       }
       assert.equal((await request({id:'legacy',password:'LegacyPassword123!'})).statusCode,200);
-      const failures=await db.query('SELECT hits FROM remarkt_rate_limits WHERE hits<45');
-      assert.equal(failures.rows.length,0,'Successful sign-ins do not consume failed-attempt counters');
+      const counters=await db.query('SELECT scope,hits FROM remarkt_rate_limits');
+      const burstScope=createHash('sha256').update('login-qa:login-burst-v2:office').digest('hex');
+      // A run crossing a minute boundary legitimately creates two burst rows.
+      // Identify the counter by scope, not by an assumed number of hits.
+      assert.ok(counters.rows.every(row=>row.scope===burstScope),'Successful sign-ins do not consume failed-attempt counters');
+      assert.equal(counters.rows.reduce((sum,row)=>sum+row.hits,0),46);
     });
     await t.test('one repeatedly failing account does not lock out its colleagues; 429 is not an outage',async()=>{
       for(let i=0;i<20;i++)assert.equal((await request({id:'staff-0',password:'wrong'})).statusCode,401);

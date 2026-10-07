@@ -6,6 +6,8 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Standard reset password':'Wachtwoord bij standaardreset',
+  'Used only when resetting an account to the standard password.':'Alleen gebruikt wanneer een account naar het standaardwachtwoord wordt gereset.',
   'New personal password':'Nieuw persoonlijk wachtwoord',
   'Repeat personal password':'Herhaal persoonlijk wachtwoord',
   'Set personal password':'Persoonlijk wachtwoord instellen',

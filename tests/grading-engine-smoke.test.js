@@ -286,7 +286,8 @@ test('manager temporary-password fields are masked; confirmed server writes neve
   vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';STATE.accountCreateOpen=true;lastSharedStateSnapshot=getSharedDemoSnapshot({includeUsers:true});",app);
   let html=app.renderAccounts();
   assert.match(html,/type="password"[^>]*id="newUserPassword"/);assert.match(html,/confirmNewUserPassword/);
-  assert.doesNotMatch(html,/ReMarkt2026!/);
+  assert.match(html,/Standard reset password/);
+  assert.match(html,/<strong data-i18n-skip>ReMarkt2026!<\/strong>/);
   const fields={newUserName:{value:'New Employee'},newUserId:{value:'newemployee'},
     newUserPassword:{value:'UniqueTemporary123!'},confirmNewUserPassword:{value:'UniqueTemporary123!'}};
   app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
