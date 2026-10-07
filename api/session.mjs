@@ -27,7 +27,7 @@ export default async function handler(request, response) {
         passwordUpdatedAt: new Date().toISOString() };
       await store.merge({ mutationId: randomUUID(), operations: [{ collection: 'users', id: user.id,
         expectedRevision: Number(existing.revision), payload: updated }] });
-      return response.status(200).json({ user: publicUser(updated), token: issueSession(updated, workspace) });
+      return response.status(200).json({ user: publicUser(updated), workspaceId:workspace, token: issueSession(updated, workspace) });
     }
     if (['create_user', 'reset_user_password'].includes(body.action)) {
       const manager = await requireSession(request, store, workspace);
@@ -82,6 +82,6 @@ export default async function handler(request, response) {
       await Promise.all(failedScopes.map(({scope,limit})=>pgRateLimit(scope,limit,failureWindow)));
       throw storageError('AUTH_INVALID_CREDENTIALS', 'Incorrect account or password.', 401);
     }
-    response.status(200).json({ user: publicUser(row.payload), token: issueSession(row.payload, workspace) });
+    response.status(200).json({ user: publicUser(row.payload), workspaceId:workspace, token: issueSession(row.payload, workspace) });
   } catch (error) { sendStorageError(response, error); }
 }

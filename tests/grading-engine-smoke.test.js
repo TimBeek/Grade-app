@@ -10,6 +10,7 @@ function loadAppSandbox(options = {}) {
     'guided-inspection.js',
     'app-state.js',
     'record-sync.js',
+    'offline-work.js',
     'import-workflow.js',
     'analytics-history.js',
     'label-printing.js',
@@ -143,6 +144,83 @@ test('employees do not see yellow infrastructure notices, but receive actionable
   vm.runInContext("STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.sharedStorageError=null;",app);
   assert.match(app.renderStorageStatus(),/Temporary working database/);
   assert.match(app.renderStorageStatus(),/Data protection/);
+});
+
+test('local continuity never loads example batches and requires durable storage, correct workspace and verified credentials',async()=>{
+  const {webcrypto}=require('node:crypto');
+  const app=loadAppSandbox({gzip:true});app.window.crypto=webcrypto;
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedWorkspaceId='local-qa';STATE.currentUser=normalizeStoredUser({id:'worker',naam:'Worker',rol:'Grader',passwordHash:'server-managed'});STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';",app);
+  assert.equal(await app.beginLocalWork({allowEmpty:true}),true);
+  assert.equal(vm.runInContext('BATCHES.length',app),0);assert.equal(vm.runInContext('STATE.offlineManualOnly',app),true);
+  assert.match(app.renderStorageStatus(),/Local work mode|Manual entry/);
+  assert.doesNotMatch(app.renderStorageStatus(),/Data protection|Database usage limit reached/);
+  const user=vm.runInContext('STATE.currentUser',app);
+  await app.rememberOfflineLogin(user,'PersonalPassword123!','local-qa');
+  assert.equal(await app.tryOfflineLogin('worker','wrong'),false);
+  assert.equal(await app.tryOfflineLogin('worker','PersonalPassword123!'),true);
+  const entries=JSON.parse(app.localStorage.getItem('remarktOfflineLoginV1'));
+  entries.worker.verifiedAt=Date.now()-8*24*3600000;
+  app.localStorage.setItem('remarktOfflineLoginV1',JSON.stringify(entries));
+  assert.equal(await app.tryOfflineLogin('worker','PersonalPassword123!'),false);
+  await app.rememberOfflineLogin({...user,id:'temporary',mustChangePassword:true},'Temporary123!','local-qa');
+  assert.equal(await app.tryOfflineLogin('temporary','Temporary123!'),false);
+  for(const code of ['STORAGE_RECORD_CONFLICT','STORAGE_CORRUPT','AUTH_FORBIDDEN']) {
+    vm.runInContext(`STATE.sharedStorageError='${code}';`,app);
+    assert.equal(await app.beginLocalWork({allowEmpty:true}),false,code);
+  }
+  vm.runInContext("STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';STATE.localBackupError=true;",app);
+  assert.equal(app.canWorkLocally(),false);
+  app.localStorage.setItem=()=>{throw Error('quota');};
+  const print=await app.printLabelJobsWithDymoFallback([{rows:['QA'],type:'specs'}]);
+  assert.equal(print.ok,false);
+});
+
+test('offline personal-password login survives a browser restart with IndexedDB work and rejects changed account rights',async()=>{
+  const {webcrypto}=require('node:crypto');
+  const {IDBFactory}=await import('fake-indexeddb');const indexedDB=new IDBFactory();
+  const first=loadAppSandbox({gzip:true,indexedDB});first.window.crypto=webcrypto;
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='restart-qa';STATE.currentUser=normalizeStoredUser({id:'worker',naam:'Worker',rol:'Grader',passwordHash:'server-managed'});STATE.sharedStorageError='STORAGE_UNAVAILABLE';USERS.splice(0,USERS.length,STATE.currentUser);saveUsers();",first);
+  await first.beginLocalWork({allowEmpty:true});
+  await first.rememberOfflineLogin(vm.runInContext('STATE.currentUser',first),'PersonalPassword123!','restart-qa');
+  const second=loadAppSandbox({gzip:true,indexedDB,localStorage:{
+    remarktOfflineLoginV1:first.localStorage.getItem('remarktOfflineLoginV1'),remarktDemoUsersV2:first.localStorage.getItem('remarktDemoUsersV2'),
+  }});second.window.crypto=webcrypto;second.URLSearchParams=URLSearchParams;
+  second.fetch=async()=>new Response(JSON.stringify({code:'STORAGE_QUOTA_EXCEEDED'}),{status:503});
+  await second.initApp();
+  const fields={loginUser:{value:'worker'},loginPassword:{value:'PersonalPassword123!'}};
+  second.document.getElementById=id=>id==='app'?second.__appElement:fields[id]||null;
+  await second.loginWithPassword();
+  assert.equal(vm.runInContext('STATE.currentScreen',second),'home');
+  assert.equal(second.canWorkLocally(),true);
+  vm.runInContext("USERS[0].laptopAccess='none';",second);
+  assert.equal(await second.tryOfflineLogin('worker','PersonalPassword123!'),false);
+});
+
+test('new workstation with verified login and no database can use manual entry, never fictitious supplier inventory',async()=>{
+  const app=loadAppSandbox({gzip:true});app.URLSearchParams=URLSearchParams;
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=null;",app);
+  const fields={loginUser:{value:'newworker'},loginPassword:{value:'Personal123!'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async url=>url==='/api/session'?new Response(JSON.stringify({workspaceId:'verified-qa',token:'synthetic',
+    user:{id:'newworker',naam:'New Worker',rol:'Grader',passwordHash:'server-managed',mustChangePassword:false}})):
+    new Response(JSON.stringify({code:'STORAGE_QUOTA_EXCEEDED'}),{status:503});
+  await app.loginWithPassword();
+  assert.equal(vm.runInContext('STATE.currentScreen',app),'home');
+  assert.equal(app.canWorkLocally(),true);assert.equal(vm.runInContext('BATCHES.length',app),0);
+  assert.match(app.renderStorageStatus(),/No cached supplier lists/);
+  assert.doesNotMatch(app.__appElement.innerHTML,/batch_50375/);
+});
+
+test('ambiguous write acknowledgements stay in the durable outbox, and conflicts never become offline successes',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedWorkspaceId='receipt-qa';STATE.currentUser=USERS[0];lastSharedStateSnapshot=getSharedDemoSnapshot();STATE.history.push({id:'receipt-h',grade:'A',sticker:'receipt-1',user_id:STATE.currentUser.id});",app);
+  app.fetch=async()=>new Response('{}');
+  assert.equal(await app.saveSharedDemoState(),true);
+  assert.ok(app.readLocalDemoStateBackup()._pendingRecordMutation);assert.equal(app.canWorkLocally(),true);
+  vm.runInContext('STATE.sharedStorageError=null;STATE.offlineWork=false;',app);
+  app.fetch=async()=>new Response(JSON.stringify({code:'STORAGE_RECORD_CONFLICT'}),{status:409});
+  assert.equal(await app.saveSharedDemoState(),false);
+  assert.ok(app.readLocalDemoStateBackup()._pendingRecordMutation);assert.equal(app.canWorkLocally(),false);
 });
 
 test('429 has an honest waiting message, leaves the login form usable and does not pause operational sync',async()=>{

@@ -1567,6 +1567,7 @@ function formatLiveRelativeTime(value) {
 
 // Fetches the authoritative, database-computed live pulse from /api/stats.
 async function refreshAnalyticsServerStats() {
+  if(typeof canWorkLocally==='function' && canWorkLocally())return;
   if(STATE.storageFormat===3 && typeof appRetryAfter!=='undefined' && appRetryAfter>Date.now())return;
   const container = document.getElementById('manager-live-stats');
   if (!container) return;

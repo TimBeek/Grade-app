@@ -3165,3 +3165,9 @@ html[data-theme="dark"] .acc-search:focus-within { border-color: #EDEDE8; box-sh
 .storage-status p { margin: 8px 0; line-height: 1.5; }
 .storage-status-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 html[data-theme="dark"] .storage-status { background: #2b2117; color: #ffddb2; border-color: #fbbf24; }
+:root .local-work-status {
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;
+  padding:10px 12px;margin:8px 0;color:var(--remarkt-ink);border:1px solid var(--remarkt-line);border-radius:12px;
+}
+.local-work-status details, .local-work-status > p {flex-basis:100%;margin:0;}
+html[data-theme="dark"] .local-work-status {color:var(--dark-text);}

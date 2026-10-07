@@ -51,6 +51,8 @@ const STATE = {
   storageFormat: 2,
   recordRevisions: {},
   pendingRecordMutation: null,
+  offlineWork: false,
+  offlineManualOnly: false,
   localRecoveryAvailable: false,
   localBackupError: false,
   appMessage: null,
@@ -2074,6 +2076,7 @@ function getSharedDemoSnapshot(options = {}) {
   const snapshot = {
     version: 1,
     ...(STATE.storageFormat === 3 ? { storageFormat: 3, recordRevisions: STATE.recordRevisions,
+      _workInventoryComplete: !STATE.offlineManualOnly,
       _recordProjectionsComplete: Boolean(STATE.recordProjectionsComplete) } : {}),
     ...(STATE.sharedWorkspaceId ? { workspaceId: STATE.sharedWorkspaceId } : {}),
     ...(includeUsers ? {
@@ -2138,8 +2141,15 @@ async function loadDurableBackup() {
 
 function saveLocalDemoStateBackup(snapshot = getSharedDemoSnapshot()) {
   const previousBackup = readLocalDemoStateBackup();
+  // Pre-print checks, detail reads and draft writes must not erase the sealed
+  // outbox before its acknowledgement. Completed saves clear STATE first.
+  if(snapshot.storageFormat===3 && STATE.sharedSyncPending && STATE.pendingRecordMutation && !snapshot._pendingRecordMutation) {
+    snapshot={...snapshot,_pendingRecordMutation:STATE.pendingRecordMutation,
+      _recordPendingBase:previousBackup?._recordPendingBase || lastSharedStateSnapshot,
+      _recordMutationOptions:previousBackup?._recordMutationOptions || {},_clientSyncPending:true};
+  }
   let backupSnapshot = { ...snapshot,
-    ...(snapshot.storageRevision || previousBackup?.storageRevision
+    ...(snapshot.storageRevision || (snapshot.workspaceId===previousBackup?.workspaceId && previousBackup?.storageRevision)
       ? { storageRevision: snapshot.storageRevision || previousBackup.storageRevision } : {}),
   };
   let smallCopySaved = false;
@@ -2783,7 +2793,7 @@ function saveSharedDemoState(options = {}) {
 }
 
 async function performSharedStateSave(options = {}) {
-  if (STATE.sharedStorageError) return false;
+  if (STATE.sharedStorageError && !(typeof canWorkLocally==='function' && canWorkLocally())) return false;
   const snapshot = getSharedDemoSnapshot(options);
   if (STATE.storageFormat === 3 && STATE.serverAuth) {
     try { return await saveRecordState(snapshot, STATE.pendingRecordMutation || createRecordMutation(snapshot, lastSharedStateSnapshot, options), options); }
@@ -2847,6 +2857,7 @@ async function refreshSharedUsers() {
     }
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
     if (remoteState.serverAuth) { STATE.serverAuth = true; STATE.storageFormat = remoteState.storageFormat; }
+    if(remoteState.workspaceId)STATE.sharedWorkspaceId=remoteState.workspaceId;
     const applied = applySharedUsers(remoteState);
     if(applied)STATE.loginDirectoryUnavailable=false;
     // A successful directory read fixes a stale sign-in warning, but does not

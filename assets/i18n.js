@@ -6,6 +6,19 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Local work mode':'Lokale werkmodus',
+  'Saved on this computer; synchronization is pending.':'Op deze computer opgeslagen; synchronisatie staat open.',
+  'Restore work lists':'Werklijsten herstellen',
+  'Local work instructions':'Instructies voor lokaal werken',
+  'Do not clear browser data. Use separate devices or batches per workstation to avoid duplicate work.':'Wis geen browsergegevens. Verdeel apparaten of batches over werkplekken om dubbel werk te voorkomen.',
+  'Offline sign-in is available only after a successful personal-password sign-in on this computer, for up to seven days. Account changes require the server.':'Lokaal inloggen kan maximaal zeven dagen na succesvol inloggen met je eigen wachtwoord op deze computer. Accountwijzigingen vereisen de server.',
+  'Ask a manager to synchronize queued work from different employees on this computer.':'Vraag een manager om het openstaande werk van verschillende medewerkers op deze computer te synchroniseren.',
+  'No cached supplier lists are available here. Manual entry is available; ask a manager for a work backup to restore the lists.':'Hier zijn geen leverancierslijsten opgeslagen. Handmatige invoer is beschikbaar; vraag een manager om een werkback-up om de lijsten te herstellen.',
+  'Download and synchronize pending local work before restoring another backup.':'Download en synchroniseer openstaand lokaal werk voordat je een andere back-up herstelt.',
+  'Work lists restored locally. No server records were replaced.':'Werklijsten lokaal hersteld. Er zijn geen servergegevens vervangen.',
+  'Use a complete work backup from the same workspace without pending changes. Nothing was replaced.':'Gebruik een volledige werkback-up van dezelfde werkomgeving zonder openstaande wijzigingen. Er is niets vervangen.',
+  'Labels printed. Grading saved locally; synchronization is pending.':'Labels geprint. Beoordeling lokaal opgeslagen; synchronisatie staat open.',
+  'The password does not match the last verified password on this computer. Ask your manager if it was recently reset.':'Het wachtwoord komt niet overeen met het laatst gecontroleerde wachtwoord op deze computer. Vraag je manager of het onlangs is gereset.',
   'Choose a personal password different from your temporary or current password.':'Kies een eigen wachtwoord dat verschilt van je tijdelijke of huidige wachtwoord.',
   'Account verified':'Account gecontroleerd',
   'Your password is correct, but work data could not be loaded yet. Retry to continue safely.':'Je wachtwoord is correct, maar de werkgegevens konden nog niet worden geladen. Probeer opnieuw om veilig verder te gaan.',

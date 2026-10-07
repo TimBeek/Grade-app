@@ -170,6 +170,11 @@ async function loadRecordPages(collection, query = {}, maxPages = Infinity) {
   } while (after && ++pages < maxPages);
   return rows;
 }
+async function recordLoadFailure(response) {
+  await readStorageFailure(response);
+  if(response.status===429)markSharedStorageFailure({code:'STORAGE_RATE_LIMITED'});
+  return typeof beginLocalWork==='function' && await beginLocalWork({allowEmpty:true});
+}
 function applyRecordRows(state, rows) {
   const lists = new Map(clientSnapshotRecords(state).map(row => [recordClientIdentity(row.collection, row.id), row]));
   const revisions = { ...(state.recordRevisions || {}) };
@@ -214,6 +219,7 @@ function applyLoadedRecordRows(rows) {
   return state;
 }
 async function prepareRecordRead() {
+  if(typeof canWorkLocally==='function' && canWorkLocally())return true;
   if(STATE.pendingRecordMutation || STATE.sharedSyncPending) return await saveSharedDemoState();
   return !STATE.sharedStorageError;
 }
@@ -221,6 +227,14 @@ async function prepareRecordRead() {
 let recordHistoryTicket=0;
 async function loadRecordHistory(pageNumber=1) {
   if(STATE.storageFormat!==3)return true;
+  if(typeof canWorkLocally==='function' && canWorkLocally()) {
+    const query=String(STATE.historySearch||'').toLowerCase();
+    const rows=STATE.history.filter(row=>(isAdminUser() || row.user_id===STATE.currentUser.id) &&
+      (!query || JSON.stringify(row).toLowerCase().includes(query))).slice().reverse();
+    const page=Math.max(1,pageNumber),size=STATE.historyPageSize||50;
+    STATE.recordHistoryPage={query:STATE.historySearch||'',page,total:rows.length,cursors:[],items:rows.slice((page-1)*size,page*size),local:true};
+    STATE.historyPage=page;return true;
+  }
   if(!await prepareRecordRead())return false;
   const ticket=++recordHistoryTicket;
   const query=STATE.historySearch || '';
@@ -251,11 +265,12 @@ async function loadRecordState() {
 async function performRecordLoad() {
   await loadDurableBackup();
   const backup = readLocalDemoStateBackup();
-  if (!liveSessionToken()) return false;
+  if (!liveSessionToken()) return typeof canWorkLocally==='function' && canWorkLocally();
   try {
     const stampResponse = await appFetch(`${SHARED_DEMO_STATE_URL}?meta=1`, { cache: 'no-store' });
-    if (!stampResponse.ok) { await readStorageFailure(stampResponse); return false; }
+    if (!stampResponse.ok)return recordLoadFailure(stampResponse);
     const stamp = await stampResponse.json();
+    STATE.sharedWorkspaceId=stamp.workspaceId;
     if(backup?.storageRevision!==stamp.storageRevision) {
       invalidateRecordInsights();
     }
@@ -263,39 +278,56 @@ async function performRecordLoad() {
     if (backup && !same) await archivePreviousWorkspace(backup);
     let state = same ? backup : { version: 1, workspaceId: stamp.workspaceId, storageFormat: 3, users: USERS.map(serializeUser) };
     let rows = [];
-    if (same && backup.storageRevision > 0) {
+    if (same && backup.storageRevision > 0 && backup._workInventoryComplete!==false) {
       let after = '';
       do {
         const response = await appFetch(`${SHARED_DEMO_STATE_URL}?since=${backup.storageRevision}${after ? '&after=' + encodeURIComponent(after) : ''}`, { cache: 'no-store' });
-        if (!response.ok) { await readStorageFailure(response); return false; }
+        if (!response.ok)return recordLoadFailure(response);
         const delta = await response.json(); rows.push(...delta.records); after = delta.next || '';
       } while (after);
     } else {
       // List projections, never full historical inspection trees. Pages are
       // bounded; detail requests use a single stable assessment identity.
-      for (const collection of ['users','batches','monitorBatches','laptops','monitors',
-        'deletedBatchIds','deletedLaptopStickers','deletedMonitorBatchIds','deletedMonitorStickers']) rows.push(...await loadRecordPages(collection));
-      for (const collection of ['history','labelPrints','monitorLabelPrints','auditLogs'])
-        rows.push(...await loadRecordPages(collection,{recent:'1',limit:'50'},1));
-      state._recordProjectionsComplete=false;
+      const response=await appFetch(`${SHARED_DEMO_STATE_URL}?work=1`,{cache:'no-store'});
+      if(!response.ok)return recordLoadFailure(response);
+      state=await decodeSharedDemoStatePayload(await response.json());
+      if(state.workspaceId!==stamp.workspaceId || state.storageFormat!==3 ||
+        !Array.isArray(state.users) || !state.users.length || !Array.isArray(state.batches) || !Array.isArray(state.monitorBatches)) {
+        markSharedStorageFailure({code:'STORAGE_CORRUPT'});return false;
+      }
+      state._workInventoryComplete=true;
     }
     const remote = applyRecordRows(state, rows);
     remote.storageRevision = stamp.storageRevision; remote.updatedAt = stamp.updatedAt;
     // A snapshot cannot acknowledge writes occurring after its initial stamp.
     STATE.recordRevisions = remote.recordRevisions; STATE.storageFormat = 3; STATE.sharedWorkspaceId = stamp.workspaceId;
     STATE.sharedStorageError = null;
-    const statistics = await appFetch('/api/stats',{cache:'no-store'});
-    if(!statistics.ok) { await readStorageFailure(statistics);return false; }
-    const summary=await statistics.json();STATE.recordDashboard=summary.dashboard;rememberRecordProtection(summary);
+    STATE.offlineWork=false;
+    STATE.localSyncNeedsManager=false;
+    STATE.offlineManualOnly=remote._workInventoryComplete===false;
+    // Statistics are fetched by dashboard consumers, never a prerequisite
+    // for accessing operational inventory or finishing employee sign-in.
     const pending = same && backup._pendingRecordMutation;
     if (pending) {
       STATE.pendingRecordMutation = pending;
       STATE.sharedSyncPending = true;
       // Keep pending local edits separate, and replay their original mutation
       // identity. Never regenerate them using newly downloaded revisions.
-      applySharedDemoState(backup); lastSharedStateSnapshot = backup._recordPendingBase || backup;
+      const authenticatedUser=STATE.currentUser;
+      applySharedDemoState(backup);STATE.currentUser=authenticatedUser;saveSessionUser(authenticatedUser);
+      lastSharedStateSnapshot = backup._recordPendingBase || backup;
       const savedRows=[];
-      if(!await saveRecordState(backup, pending, backup._recordMutationOptions || {}, savedRows)) return false;
+      if(!await saveRecordState(backup, pending, backup._recordMutationOptions || {}, savedRows)) {
+        // A different employee must not replay a colleague's queued writes.
+        // Preserve the queue for a manager, while allowing new local work.
+        if(STATE.currentUser && !STATE.sharedStorageError) {
+          markSharedStorageFailure({code:'STORAGE_UNAVAILABLE'});
+          STATE.localSyncNeedsManager=true;
+          return typeof beginLocalWork==='function' && await beginLocalWork();
+        }
+        return false;
+      }
+      if(STATE.sharedSyncPending)return typeof beginLocalWork==='function' && await beginLocalWork();
       const acknowledged=applyRecordRows(remote,savedRows);
       STATE.recordRevisions=acknowledged.recordRevisions;
       applySharedDemoState(acknowledged);lastSharedStateSnapshot=getSharedDemoSnapshot();
@@ -307,7 +339,11 @@ async function performRecordLoad() {
     }
     lastSharedStateStamp = stamp.updatedAt;
     return true;
-  } catch (error) { markSharedStorageFailure(null); return loadLocalDemoStateBackup(); }
+  } catch (error) {
+    reportAppWarning('Operational load failed',error);
+    if(!STATE.sharedStorageError)markSharedStorageFailure(null);
+    return typeof beginLocalWork==='function' ? await beginLocalWork({allowEmpty:true}) : loadLocalDemoStateBackup();
+  }
 }
 
 let recordProjectionRequest=null;
@@ -324,6 +360,7 @@ function recordInsightsKey(filters=getAnalyticsFilters()) {
 }
 async function loadRecordInsights(filters=getAnalyticsFilters(), forBatch=false) {
   if(STATE.storageFormat!==3)return true;
+  if(typeof canWorkLocally==='function' && canWorkLocally())return false;
   filters={...filters};
   const key=recordInsightsKey(filters);
   const cached=recordInsightsCache.get(key);
@@ -354,6 +391,7 @@ async function loadRecordBatchInsights(id) {
   if(data){STATE.recordBatchInsights={...(STATE.recordBatchInsights||{}),[id]:data};return true;}return false;
 }
 async function ensureRecordProjections() {
+  if(typeof canWorkLocally==='function' && canWorkLocally())return true;
   if(STATE.storageFormat!==3 || STATE.recordProjectionsComplete) return true;
   if(!await prepareRecordRead())return false;
   if(recordProjectionRequest) return recordProjectionRequest;
@@ -371,19 +409,23 @@ async function ensureRecordProjections() {
 }
 const recordTraceCache=new Map();
 async function loadRecordTrace(sticker) {
+  if(typeof canWorkLocally==='function' && canWorkLocally())return true;
   if(STATE.storageFormat!==3) return true;
   if(!await prepareRecordRead())return false;
   const cacheKey=STATE.sharedWorkspaceId+':'+normalizeStickerCode(sticker);
   if((recordTraceCache.get(cacheKey)||0)>Date.now())return true;
   try {
     const response=await appFetch(`${SHARED_DEMO_STATE_URL}?trace=${encodeURIComponent(normalizeStickerCode(sticker))}`,{cache:'no-store'});
-    if(!response.ok){await readStorageFailure(response);return false;}
+    if(!response.ok){await readStorageFailure(response);
+      if(typeof beginLocalWork==='function' && await beginLocalWork())return true;
+      return false;}
     const rows=(await response.json()).records;
     const state=applyLoadedRecordRows(rows);
     recordTraceCache.set(cacheKey,Date.now()+2000);
     if(recordTraceCache.size>100)recordTraceCache.delete(recordTraceCache.keys().next().value);
     await saveLocalDemoStateBackup(state);return true;
-  } catch { markSharedStorageFailure(null);return false; }
+  } catch { markSharedStorageFailure(null);
+    return typeof beginLocalWork==='function' && await beginLocalWork(); }
 }
 async function saveRecordState(snapshot, mutation, options={}, savedRows=[]) {
   if (!mutation.operations.length) return true;
@@ -392,10 +434,32 @@ async function saveRecordState(snapshot, mutation, options={}, savedRows=[]) {
     _pendingRecordMutation: mutation, _recordPendingBase:lastSharedStateSnapshot,
     _recordMutationOptions:options, _clientSyncPending: true });
   if(!secured)return false;
-  const response = await appFetch(SHARED_DEMO_STATE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: await encodeSharedDemoStateBody(mutation) });
-  if (!response.ok) { await readStorageFailure(response); return false; }
-  const result = await response.json();
+  const accountMutation=mutation.operations.some(op=>op.collection==='users');
+  if(!accountMutation && typeof canWorkLocally==='function' && canWorkLocally())return true;
+  let response;
+  try {
+    response=await appFetch(SHARED_DEMO_STATE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: await encodeSharedDemoStateBody(mutation) });
+  }catch {markSharedStorageFailure(null);}
+  if(!response?.ok) {
+    if(response)await readStorageFailure(response);
+    if(response?.status===429)markSharedStorageFailure({code:'STORAGE_RATE_LIMITED'});
+    if(!accountMutation && typeof isContinuityFailure==='function' && isContinuityFailure(STATE.sharedStorageError)) {
+      STATE.offlineWork=true;STATE.localRecoveryAvailable=true;return true;
+    }
+    return false;
+  }
+  let result;
+  try {
+    result=await response.json();
+    if(!result?.recordRevisions || mutation.operations.some(op=>
+      !Number.isSafeInteger(Number(result.recordRevisions[recordClientIdentity(op.collection,op.id)])) ||
+      Number(result.recordRevisions[recordClientIdentity(op.collection,op.id)])<1))throw Error('Missing mutation receipt');
+  }catch {
+    markSharedStorageFailure(null);
+    if(!accountMutation){STATE.offlineWork=true;STATE.localRecoveryAvailable=true;return true;}
+    return false;
+  }
   appStatsCache=null;
   invalidateRecordInsights();
   recordTraceCache.clear();

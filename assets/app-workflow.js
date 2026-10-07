@@ -1053,7 +1053,7 @@ async function handleAction(action, el) {
     if (!STATE.currentUser) await refreshSharedUsers();
     else {
       const loaded=await loadSharedDemoState();
-      if(loaded && !STATE.sharedStorageError && STATE.loginLoadPending && STATE.currentUser) {
+      if(loaded && (!STATE.sharedStorageError || canWorkLocally()) && STATE.loginLoadPending && STATE.currentUser) {
         STATE.loginLoadPending=false;
         STATE.currentScreen=STATE.currentUser.mustChangePassword?'password_change':'home';
         STATE.homeTab='workflow';setAppMessage(null);
@@ -1061,6 +1061,27 @@ async function handleAction(action, el) {
     }
     render();
     return;
+  }
+  if(action==='restore_work_backup') {
+    if(!isAdminUser() || !canWorkLocally())return;
+    if(STATE.sharedSyncPending){setAppMessage('Download and synchronize pending local work before restoring another backup.','warning');render();return;}
+    const input=document.createElement('input');input.type='file';input.accept='.json,application/json';
+    input.onchange=async()=>{
+      const previousBackup=readLocalDemoStateBackup();
+      try {
+        const state=JSON.parse(await input.files[0].text());
+        if(state.storageFormat!==3 || state.workspaceId!==STATE.sharedWorkspaceId || state._recoveryScope==='accounts-only' ||
+          !Array.isArray(state.batches) || !Array.isArray(state.monitorBatches) || state._pendingRecordMutation)
+          throw Error('invalid backup');
+        const batches=state.batches.map(normalizeSharedBatch),monitorBatches=state.monitorBatches.map(normalizeSharedMonitorBatch);
+        if(batches.some(batch=>!batch) || monitorBatches.some(batch=>!batch))throw Error('invalid batch');
+        const restored={...state,batches,monitorBatches,users:USERS.map(serializeUser),_workInventoryComplete:true};
+        if(!await saveLocalDemoStateBackup(restored)){durableBackup=previousBackup;throw Error('local storage unavailable');}
+        applySharedDemoState(restored);lastSharedStateSnapshot=restored;STATE.offlineManualOnly=false;
+        setAppMessage('Work lists restored locally. No server records were replaced.','success');
+      }catch{setAppMessage('Use a complete work backup from the same workspace without pending changes. Nothing was replaced.','warning');}
+      render();
+    };input.click();return;
   }
   if (action === 'download_local_backup') {
     const backup = getLocalRecoveryExport();
@@ -1073,7 +1094,7 @@ async function handleAction(action, el) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return;
   }
-  if (STATE.sharedStorageError && /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_laptop|remove_batch|remove_monitor|remove_monitor_batch|manual_submit|monitor_manual_submit|verify_batch_completion|reopen_batch_completion|set_touch_override|confirm_save|confirm_expert|confirm_expert_repair|print_.*|monitor_reprint_confirm)$/.test(action)) {
+  if (STATE.sharedStorageError && (!canWorkLocally() || /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_.*|verify_batch_completion|reopen_batch_completion)$/.test(action)) && /^(create_user|update_user|reset_user_password|delete_user|change_own_password|remove_laptop|remove_batch|remove_monitor|remove_monitor_batch|manual_submit|monitor_manual_submit|verify_batch_completion|reopen_batch_completion|set_touch_override|confirm_save|confirm_expert|confirm_expert_repair|print_.*|monitor_reprint_confirm)$/.test(action)) {
     setAppMessage('Live saving is unavailable. Retry the connection before changing or printing operational data.', 'warning');
     if (typeof liveRenderWouldDisruptInput !== 'function' || !liveRenderWouldDisruptInput()) render();
     return;
@@ -2346,6 +2367,7 @@ async function loginWithPassword() {
 async function performLoginWithPassword() {
   const id = document.getElementById('loginUser').value;
   const password = document.getElementById('loginPassword').value;
+  STATE.offlineLoginError=null;
   STATE.loginAccountId=id;
   if(!STATE.serverAuth && canUseSharedDemoState() && !await refreshSharedUsers()) {render();return;}
   if (!STATE.serverAuth && STATE.sharedStorageError && !STATE.localRecoveryAvailable) { render(); return; }
@@ -2355,28 +2377,33 @@ async function performLoginWithPassword() {
       const response = await appFetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, password }) });
       if (!response.ok) {
-        if(response.status===401)setAppMessage('Incorrect account or password. Check the selected account and password. After a reset, use the new temporary password from your manager.');
+        if(response.status===401){forgetOfflineLogin(id);setAppMessage('Incorrect account or password. Check the selected account and password. After a reset, use the new temporary password from your manager.');}
         else {
           await readStorageFailure(response);
-          if(response.status===503)setAppMessage('Sign-in is temporarily unavailable because the account service could not be reached. Your password was not verified. Retry or contact your manager.', 'warning');
+          if(response.status>=500 && isContinuityFailure(STATE.sharedStorageError) && await tryOfflineLogin(id,password)){render();return;}
+          if(response.status===503)setAppMessage(STATE.offlineLoginError || 'Sign-in is temporarily unavailable because the account service could not be reached. Your password was not verified. Retry or contact your manager.', 'warning');
         }
         render(); return;
       }
       const session = await response.json();
+      if(session.workspaceId)STATE.sharedWorkspaceId=session.workspaceId;
       STATE.sharedStorageError=null;
       STATE.loginLoadPending=false;
       setLiveSessionToken(session.token); STATE.currentUser = session.user; saveSessionUser(session.user);
+      await rememberOfflineLogin(session.user,password,STATE.sharedWorkspaceId);
       if(session.user.mustChangePassword) {
         STATE.currentScreen='password_change';setAppMessage(null);render();return;
       }
       STATE.loginLoadPending=true;
       const loaded=await loadSharedDemoState();
       if(!STATE.currentUser){STATE.loginLoadPending=false;return;}
-      if(!loaded || STATE.sharedStorageError) { STATE.currentScreen='login';render();return; }
+      if(!loaded || (STATE.sharedStorageError && !canWorkLocally())) { STATE.currentScreen='login';render();return; }
       STATE.loginLoadPending=false;STATE.currentScreen='home';
       STATE.homeTab = 'workflow'; setAppMessage(null); render(); return;
     } catch {
-      setAppMessage('Could not reach the sign-in service. Check your internet connection and try again. Your password was not verified.', 'warning');
+      markSharedStorageFailure(null);
+      if(await tryOfflineLogin(id,password)){render();return;}
+      setAppMessage(STATE.offlineLoginError || 'Could not reach the sign-in service. Check your internet connection and try again. Your password was not verified.', 'warning');
       render(); return;
     }
   }
@@ -2429,13 +2456,15 @@ async function performChangeOwnPassword() {
         body: JSON.stringify({ action: 'password', password }) });
       if (!response.ok) { await readStorageFailure(response); render(); return; }
       const session = await response.json(); setLiveSessionToken(session.token);
+      if(session.workspaceId)STATE.sharedWorkspaceId=session.workspaceId;
+      await rememberOfflineLogin(session.user,password,STATE.sharedWorkspaceId);
       const profile = USERS.find(account => account.id === session.user.id);
       if (profile) Object.assign(profile, session.user);
       STATE.currentUser = session.user; saveSessionUser(session.user);
       STATE.loginLoadPending=true;
       const loaded=await loadSharedDemoState();
       if(!STATE.currentUser) {render();return;}
-      if(!loaded || STATE.sharedStorageError) {STATE.currentScreen='login';render();return;}
+      if(!loaded || (STATE.sharedStorageError && !canWorkLocally())) {STATE.currentScreen='login';render();return;}
       STATE.loginLoadPending=false;STATE.currentScreen = 'home'; STATE.homeTab = 'workflow';
       setAppMessage('Your password has been saved.', 'success');
     } catch { markSharedStorageFailure(null); }
@@ -3115,7 +3144,7 @@ async function performConfirmSaveWithAutomaticLabels() {
   g.bevestigd = Date.now();
   const savedLive = await saveGrading();
   if (savedLive) {
-    setAppMessage(printTypes.length > 1
+    setAppMessage(STATE.sharedSyncPending ? 'Labels printed. Grading saved locally; synchronization is pending.' : printTypes.length > 1
       ? 'Specs and repair labels printed. Grading saved.'
       : 'Specs label printed. Grading saved.',
     'success');

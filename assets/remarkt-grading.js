@@ -4,6 +4,15 @@
 async function initApp() {
   await loadMonitorPortDatabase();
   await refreshSharedUsers();
+  if(STATE.sharedStorageError) {
+    await loadDurableBackup();
+    const backup=readLocalDemoStateBackup();
+    if(backup?.storageFormat===3 && backup.workspaceId) {
+      STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedWorkspaceId=backup.workspaceId;
+      STATE.localRecoveryAvailable=true;
+      STATE.loginDirectoryUnavailable=false;
+    }
+  }
   if (STATE.serverAuth && !liveSessionToken()) {
     clearSessionUser(); STATE.currentUser = null; STATE.currentScreen = 'login'; render(); return;
   }
@@ -68,10 +77,16 @@ function installLiveUserSync() {
     // Pauzeer wanneer het tabblad niet zichtbaar is: geen database-verkeer op
     // de achtergrond. Dit bespaart de meeste commando's.
     if (typeof document !== 'undefined' && document.hidden) return;
-    if (STATE.sharedStorageError) return; // explicit retry/focus only during incidents
+    if (STATE.sharedStorageError && !STATE.offlineWork) return;
+    if(typeof appRetryAfter!=='undefined' && appRetryAfter>Date.now())return;
     if (syncInFlight) return;
     syncInFlight = true;
     try {
+      if(STATE.offlineWork) {
+        await loadSharedDemoState();
+        if(!liveRenderWouldDisruptInput())render();
+        return;
+      }
       if (typeof STATE !== 'undefined' && STATE.sharedSyncPending && typeof saveSharedDemoState === 'function') {
         await saveSharedDemoState();
       }

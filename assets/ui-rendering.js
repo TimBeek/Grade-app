@@ -267,6 +267,7 @@ function renderLogin() {
 }
 
 function renderStorageStatus() {
+  if(typeof canWorkLocally==='function' && canWorkLocally())return renderLocalWorkStatus();
   return renderStorageStatusCore() + (typeof renderRecordProtectionAlerts==='function'?renderRecordProtectionAlerts():'');
 }
 function renderStorageStatusCore() {

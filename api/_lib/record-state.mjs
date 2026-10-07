@@ -183,6 +183,21 @@ export function createRecordStore(sql, workspaceId) {
       WHERE workspace_id = ${workspaceId} AND collection = ${collection} AND id = ${id} AND NOT deleted`;
     return rows[0] || null;
   }
+  async function workSnapshot() {
+    const stamp=await meta();
+    // Inventory is essential; historical inspection trees and management
+    // statistics are not. One bounded projection query replaces dozens of
+    // sequential first-login pages. The earlier stamp remains conservative.
+    const rows=await sql`SELECT collection,id,batch_id,revision,
+      summary || CASE WHEN collection IN ('laptops','monitors') THEN jsonb_build_object('_completion',jsonb_build_object(
+        'graded',EXISTS(SELECT 1 FROM remarkt_records done WHERE done.workspace_id=${workspaceId} AND NOT done.deleted AND done.collection='history' AND done.sticker=r.sticker),
+        'labelPrinted',EXISTS(SELECT 1 FROM remarkt_records done WHERE done.workspace_id=${workspaceId} AND NOT done.deleted AND done.collection=CASE WHEN r.collection='laptops' THEN 'labelPrints' ELSE 'monitorLabelPrints' END AND done.sticker=r.sticker))) ELSE '{}'::jsonb END AS payload
+      FROM (SELECT *,row_number() OVER(PARTITION BY collection ORDER BY occurred_ms DESC,id DESC) AS recent_number
+        FROM remarkt_records WHERE workspace_id=${workspaceId} AND NOT deleted) r
+      WHERE collection IN ('users','batches','monitorBatches','laptops','monitors','deletedBatchIds','deletedLaptopStickers','deletedMonitorBatchIds','deletedMonitorStickers')
+        OR (collection IN ('history','labelPrints','monitorLabelPrints','auditLogs') AND recent_number<=50)`;
+    return {...recordsToSnapshot(rows,stamp),_workInventoryComplete:true,_recordProjectionsComplete:false};
+  }
   async function trace(sticker) {
     const rows=await sql`SELECT collection,id,batch_id,revision,summary AS payload FROM (
       SELECT collection,id,batch_id,revision,summary,row_number() OVER(PARTITION BY collection ORDER BY occurred_ms DESC,id DESC) n
@@ -211,5 +226,5 @@ export function createRecordStore(sql, workspaceId) {
     validateSnapshot(state);
     return state;
   }
-  return { meta, merge, page, detail, trace, changes, exportState };
+  return { meta, merge, page, detail, trace, changes, workSnapshot, exportState };
 }

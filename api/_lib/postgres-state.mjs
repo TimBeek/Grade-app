@@ -147,7 +147,8 @@ export async function pgReadUsers() {
     const rows = await getSql()`SELECT summary FROM remarkt_records WHERE workspace_id = ${process.env.REMARKT_WORKSPACE_ID}
       AND collection = 'users' AND NOT deleted ORDER BY id`;
     await pgRecordStore().meta();
-    return { users: rows.map(row => row.summary), serverAuth: true, storageFormat: 3, userSync: 'user-management' };
+    return { users: rows.map(row => row.summary), workspaceId:process.env.REMARKT_WORKSPACE_ID,
+      serverAuth: true, storageFormat: 3, userSync: 'user-management' };
   }
   const meta = await getStore().peekMeta();
   if (meta) return { users: meta.users || [], userSync: meta.userSync || '', userSyncAt: meta.userSyncAt, updatedAt: meta.updatedAt };

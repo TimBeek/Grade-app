@@ -3,7 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, webcrypto } from 'node:crypto';
+import vm from 'node:vm';
+import { IDBFactory } from 'fake-indexeddb';
+import { loadAppSandbox } from './app-sandbox.cjs';
 import { PGlite } from '@electric-sql/pglite';
 import { neonConfig } from '@neondatabase/serverless';
 import { createRecordStore } from '../api/_lib/record-state.mjs';
@@ -151,6 +154,80 @@ test('employee login and manager password administration remain reliable on a sh
       for(let i=0;i<50;i++)assert.equal((await request({id:'staff-6',password:'wrong'},'',`isolated-network-${i}`)).statusCode,401);
       assert.equal((await request({id:'staff-6',password:'SyntheticPassword123!'},'','another-new-network')).statusCode,429);
       assert.equal((await request({id:'staff-7',password:'SyntheticPassword123!'},'','another-new-network')).statusCode,200);
+    });
+    await t.test('actual employee client: fresh login, database outage, local work, reload and idempotent recovery',async()=>{
+      await store.merge({mutationId:randomUUID(),operations:[
+        {collection:'batches',id:'work-batch',expectedRevision:0,payload:{id:'work-batch',nummer:'QA',leverancier:'Synthetic'}},
+        {collection:'laptops',id:'["work-batch","QA-100"]',batchId:'work-batch',expectedRevision:0,
+          payload:{sticker:'QA-100',serial:'SNQA100',merk:'Dell',model:'QA',batchId:'work-batch',batchNummer:'QA'}},
+      ]});
+      const app=loadAppSandbox({gzip:true,indexedDB:new IDBFactory()});
+      app.URLSearchParams=URLSearchParams;app.window.crypto=webcrypto;
+      const fields={loginUser:{value:'staff-8'},loginPassword:{value:'SyntheticPassword123!'}};
+      app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+      let phase='online',statsCalls=0,posts=0,lost=false;const urls=[];
+      app.fetch=async(url,options={})=>{
+        urls.push(url);
+        if(url.startsWith('/api/stats')){statsCalls++;return new Response('{}',{status:503});}
+        if(phase==='offline' || (phase==='data-outage' && url!=='/api/session'))
+          return new Response(JSON.stringify({code:'STORAGE_QUOTA_EXCEEDED'}),{status:503});
+        const result={headers:{},statusCode:200,setHeader(k,v){this.headers[k]=v;},status(c){this.statusCode=c;return this;},json(data){this.data=data;}};
+        const handle=url==='/api/session'?handler:directory;
+        if((options.method||'GET')==='POST' && handle===directory)posts++;
+        await handle({method:options.method||'GET',url,headers:{'x-forwarded-for':'client-qa',authorization:options.headers?.Authorization},
+          body:options.body?JSON.parse(options.body):undefined},result);
+        if(lost && handle===directory && options.method==='POST' && result.statusCode===200){lost=false;throw Error('response lost after commit');}
+        return new Response(JSON.stringify(result.data),{status:result.statusCode,headers:result.headers});
+      };
+      vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=null;STATE.currentScreen='login';",app);
+      await app.loginWithPassword();
+      assert.equal(vm.runInContext('STATE.currentScreen',app),'home');
+      assert.equal(vm.runInContext('BATCHES.length',app),1);
+      assert.equal(app.getLaptopBySticker('SNQA100').sticker,'QA-100');
+      assert.equal(statsCalls,0);assert.equal(urls.filter(url=>url.includes('?work=1')).length,1);
+      assert.ok(!urls.some(url=>url.includes('collection=')),'fresh inventory is one compressed request');
+      assert.doesNotMatch(app.localStorage.getItem('remarktOfflineLoginV1'),/SyntheticPassword123/);
+      phase='data-outage';
+      await app.loginWithPassword();
+      assert.equal(vm.runInContext('STATE.currentScreen',app),'home');
+      assert.equal(vm.runInContext('canWorkLocally()',app),true);
+      let physicalPrints=0;app.printRowsWithDymo=async()=>{physicalPrints++;return {printerName:'Synthetic DYMO'};};
+      vm.runInContext(`STATE.currentLaptop=getLaptopBySticker('QA-100');STATE.currentScreen='result';
+        STATE.currentGrading={gestart:Date.now()-20000,bevestigd:Date.now(),modus:'beginner',
+          keuzes:Object.fromEntries(getGradingOnderdelen().map(part=>[part.id,'A'])),triggers:[],impactOverrides:{},
+          result:{eindgrade:'A',score:0,problems:[],redenen:[]}};`,app);
+      await app.confirmSaveWithAutomaticLabels();
+      assert.equal(physicalPrints,1);assert.equal(vm.runInContext('STATE.history.length',app),1);
+      assert.match(vm.runInContext('STATE.appMessage.text',app),/saved locally/);
+      assert.equal(vm.runInContext("STATE.pendingRecordMutation.operations.filter(op=>op.collection==='batches').length",app),0);
+      const originalMutation=vm.runInContext('STATE.pendingRecordMutation.mutationId',app);
+      vm.runInContext(`STATE.history.push({id:'offline-history-2',sticker:'QA-101',batchId:'work-batch',grade:'B',savedAt:new Date().toISOString(),user_id:'staff-8',user_naam:'QA'});`,app);
+      assert.equal(await app.saveSharedDemoState(),true);
+      assert.equal(vm.runInContext('STATE.pendingRecordMutation.mutationId',app),originalMutation);
+      assert.equal(app.readLocalDemoStateBackup().history.length,2);
+      // The next pre-print/draft check must not clear the sealed first write.
+      await app.saveLocalDemoStateBackup();
+      assert.equal(app.readLocalDemoStateBackup()._pendingRecordMutation.mutationId,originalMutation);
+      const secured=structuredClone(app.readLocalDemoStateBackup());
+      app.clearSessionUser();vm.runInContext("STATE.currentUser=null;STATE.currentScreen='login';",app);
+      phase='offline';await app.loginWithPassword();
+      assert.equal(vm.runInContext('STATE.currentScreen',app),'home');
+      assert.equal(vm.runInContext('STATE.history.length',app),2);
+      phase='online';lost=true;
+      await app.loginWithPassword(); // first replay commits, its response is lost
+      assert.equal(vm.runInContext('canWorkLocally()',app),true);
+      assert.equal(app.readLocalDemoStateBackup()._pendingRecordMutation.mutationId,originalMutation);
+      await app.handleAction('retry_storage',{});
+      assert.equal(vm.runInContext('STATE.sharedStorageError',app),null);
+      assert.equal(vm.runInContext('STATE.sharedSyncPending',app),false);
+      assert.equal((await store.page({collection:'history',userId:'staff-8'})).records.length,2);
+      assert.equal((await store.detail('history','offline-history-2')).payload.grade,'B');
+      assert.ok(posts>=3);
+      // An exported pending snapshot remains independently recoverable.
+      assert.equal(secured.history.length,2);assert.ok(secured._pendingRecordMutation);
+      fields.loginPassword.value='wrong';phase='online';await app.loginWithPassword();
+      assert.match(vm.runInContext('STATE.appMessage.text',app),/Incorrect account/);
+      assert.equal(JSON.parse(app.localStorage.getItem('remarktOfflineLoginV1'))['staff-8'],undefined);
     });
   } finally {neonConfig.fetchFunction=undefined;await db.close();}
 });

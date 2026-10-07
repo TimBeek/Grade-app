@@ -1139,7 +1139,9 @@ function describeDymoPrintError(error) {
 }
 
 async function printLabelJobsWithDymoFallback(jobs, options = {}) {
-  if (STATE.sharedStorageError) return { ok: false, fallbackReason: 'Live database unavailable. Printing is paused to prevent unregistered labels.' };
+  if (STATE.sharedStorageError && !(typeof canWorkLocally==='function' && canWorkLocally())) return { ok: false, fallbackReason: 'Live database unavailable. Printing is paused to prevent unregistered labels.' };
+  if(STATE.storageFormat===3 && STATE.serverAuth && !await saveLocalDemoStateBackup())
+    return {ok:false,fallbackReason:'Local recovery copy could not be saved'};
   const printJobs = (jobs || []).filter(Boolean);
   if (!printJobs.length) return { ok: true, fallbackUsed: false };
   const firstProfile = printJobs[0].browserProfile || BROWSER_PRINT_PROFILES.dymoLabel;
