@@ -599,6 +599,46 @@ test('inspection chooses one row only when complete reference photos become larg
   assert.equal(app.chooseInspectionColumns({2:200,4:208}),2);
 });
 
+test('compact inspection gives spare height to photos, never empty caption or findings spacers', () => {
+  const app = loadAppSandbox();
+  const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'remarkt-grading.css'), 'utf8');
+  assert.match(css, /\.inspection-choices \.inspection-choice-copy\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*0/);
+  assert.match(css, /\.inspection-choices \.inspection-photo\s*\{[^}]*flex-grow:\s*1/);
+  assert.match(css, /\.inspection-photo-hints:empty\s*\{\s*padding:\s*0/);
+  assert.doesNotMatch(css, /--inspection-(copy|findings)-height/);
+  const properties = new Map(), classes = new Set();
+  const cards = [{clientHeight: 340, scrollHeight: 340}];
+  const choices = {
+    dataset: {},
+    querySelectorAll(selector) {
+      if (selector === '.inspection-photo') return [{getBoundingClientRect: () => ({height: this.dataset.columns === '2' ? 245 : 180, width: this.dataset.columns === '2' ? 600 : 300})}];
+      if (selector === '.inspection-example') return cards;
+      throw new Error('Unexpected global caption/finding measurement: ' + selector);
+    },
+  };
+  const screen = {
+    classList: {add: name => classes.add(name), remove: name => classes.delete(name)},
+    style: {setProperty: (name, value) => properties.set(name, value), removeProperty: name => properties.delete(name)},
+    getBoundingClientRect: () => ({top: 120}),
+    querySelector: () => choices,
+    clientHeight: 776, scrollHeight: 776,
+  };
+  app.document.querySelector = () => screen;
+  Object.assign(app.window, {innerWidth: 1280, innerHeight: 900, scrollY: 0});
+  app.fitInspectionViewport();
+  assert.equal(choices.dataset.columns, '2');
+  assert.equal(classes.has('inspection-fit'), true);
+  assert.deepEqual([...properties], [['--inspection-work-height', '776px']]);
+  cards[0].scrollHeight = 400;
+  app.fitInspectionViewport();
+  assert.equal(classes.has('inspection-fit'), false, 'Overflow must still reflow, never be clipped');
+  assert.equal(properties.size, 0);
+  assert.equal(choices.dataset.columns, undefined);
+  app.window.innerWidth = 500;
+  app.fitInspectionViewport();
+  assert.equal(classes.has('inspection-fit'), false, 'Phone layout must remain accessible');
+});
+
 test('fullscreen uses the stable document root and does not render or erase manual input', async () => {
   const app = loadAppSandbox();
   let renders=0,requests=0,exits=0;

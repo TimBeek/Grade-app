@@ -61,8 +61,6 @@ function fitInspectionViewport() {
   const choices = screen.querySelector('.inspection-choices');
   if (!choices) return;
   delete choices.dataset.columns;
-  screen.style.removeProperty('--inspection-copy-height');
-  screen.style.removeProperty('--inspection-findings-height');
   // Preserve readable reflow at extreme zoom/phone sizes rather than silently
   // clipping content. Workstation/tablet grading fits without page scrolling.
   const available = height - (screen.getBoundingClientRect().top + window.scrollY) - 4;
@@ -72,23 +70,14 @@ function fitInspectionViewport() {
   const scores = {};
   for (const columns of [2, 4]) {
     choices.dataset.columns = String(columns);
-    screen.style.removeProperty('--inspection-copy-height');
-    screen.style.removeProperty('--inspection-findings-height');
-    const copyHeight = Math.max(...Array.from(choices.querySelectorAll('.inspection-choice-copy')).map(e => e.getBoundingClientRect().height));
-    const findingsHeight = Math.max(...Array.from(choices.querySelectorAll('.inspection-photo-hints')).map(e => e.getBoundingClientRect().height));
-    screen.style.setProperty('--inspection-copy-height', `${Math.ceil(copyHeight)}px`);
-    screen.style.setProperty('--inspection-findings-height', `${Math.ceil(findingsHeight)}px`);
+    // Each caption and findings strip keeps its natural content height. An
+    // empty strip must not reserve the space used by another card's buttons.
     scores[columns] = Math.min(...Array.from(choices.querySelectorAll('.inspection-photo')).map(photo => {
       const box = photo.getBoundingClientRect();
       return Math.min(box.height, box.width / 1.5);
     }));
   }
   choices.dataset.columns = String(chooseInspectionColumns(scores));
-  // Recompute row alignment for the winning layout (the last candidate was 4).
-  screen.style.removeProperty('--inspection-copy-height');
-  screen.style.removeProperty('--inspection-findings-height');
-  screen.style.setProperty('--inspection-copy-height', `${Math.ceil(Math.max(...Array.from(choices.querySelectorAll('.inspection-choice-copy')).map(e => e.getBoundingClientRect().height)))}px`);
-  screen.style.setProperty('--inspection-findings-height', `${Math.ceil(Math.max(...Array.from(choices.querySelectorAll('.inspection-photo-hints')).map(e => e.getBoundingClientRect().height)))}px`);
   // Never hide long text, damage controls or the footer to claim a false fit.
   if (screen.scrollHeight > screen.clientHeight + 2 || Array.from(choices.querySelectorAll('.inspection-example')).some(card => card.scrollHeight > card.clientHeight + 2)) {
     screen.classList.remove('inspection-fit');

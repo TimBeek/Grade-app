@@ -11,6 +11,15 @@
       const screen=document.querySelector('.inspection-screen'),footer=screen.querySelector('.inspection-footer');
       const photos=[...screen.querySelectorAll('.inspection-photo')].map(p=>({height:p.clientHeight,width:p.clientWidth,fit:getComputedStyle(p.querySelector('img')).objectFit}));
       if (photos.length!==4 || photos.some(p=>p.fit!=='contain'||p.height<90)) throw new Error('Incomplete or unreadable photos, step '+(i+1));
+      for (const strip of screen.querySelectorAll('.inspection-photo-hints:empty')) {
+        if (strip.getBoundingClientRect().height > 1) throw new Error('Empty damage controls reserve space, step '+(i+1));
+      }
+      for (const copy of screen.querySelectorAll('.inspection-choices .inspection-choice-copy')) {
+        const style=getComputedStyle(copy);
+        const content=[...copy.children].reduce((sum,child)=>sum+child.getBoundingClientRect().height,0);
+        const natural=content+parseFloat(style.paddingTop)+parseFloat(style.paddingBottom)+parseFloat(style.rowGap)*(copy.children.length-1);
+        if (copy.getBoundingClientRect().height > natural+2) throw new Error('Caption has unnecessary blank height, step '+(i+1));
+      }
       if (!screen.classList.contains('inspection-fit') || document.documentElement.scrollHeight>innerHeight+2 || document.documentElement.scrollWidth>innerWidth+2 || footer.getBoundingClientRect().bottom>innerHeight+1) throw new Error('Viewport overflow, step '+(i+1));
       for (const control of screen.querySelectorAll('.inspection-choice,.inspection-photo-hint,.inspection-zoom,.inspection-footer button')) {
         const box=control.getBoundingClientRect();
