@@ -1050,7 +1050,15 @@ async function handleAction(action, el) {
   }
   if (action === 'retry_storage') {
     if(typeof appRetryAfter!=='undefined')appRetryAfter=0;
-    await loadSharedDemoState();
+    if (!STATE.currentUser) await refreshSharedUsers();
+    else {
+      const loaded=await loadSharedDemoState();
+      if(loaded && !STATE.sharedStorageError && STATE.loginLoadPending && STATE.currentUser) {
+        STATE.loginLoadPending=false;
+        STATE.currentScreen=STATE.currentUser.mustChangePassword?'password_change':'home';
+        STATE.homeTab='workflow';setAppMessage(null);
+      }
+    }
     render();
     return;
   }
@@ -2329,26 +2337,48 @@ async function reprintMonitorLabel(sticker) {
 }
 
 async function loginWithPassword() {
-  await refreshSharedUsers();
-  if (STATE.sharedStorageError && !STATE.localRecoveryAvailable) { render(); return; }
+  if(STATE.loginBusy)return;
+  STATE.loginBusy=true;
+  document.querySelectorAll('[data-action="login_password"]').forEach(button=>{button.disabled=true;});
+  try { await performLoginWithPassword(); }
+  finally { STATE.loginBusy=false; render(); }
+}
+async function performLoginWithPassword() {
   const id = document.getElementById('loginUser').value;
   const password = document.getElementById('loginPassword').value;
+  STATE.loginAccountId=id;
+  if(!STATE.serverAuth && canUseSharedDemoState() && !await refreshSharedUsers()) {render();return;}
+  if (!STATE.serverAuth && STATE.sharedStorageError && !STATE.localRecoveryAvailable) { render(); return; }
   const user = USERS.find(u => u.id === id);
   if (STATE.serverAuth) {
     try {
       const response = await appFetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, password }) });
       if (!response.ok) {
-        if(response.status===401)setAppMessage('Incorrect login or password.');
-        else await readStorageFailure(response);
+        if(response.status===401)setAppMessage('Incorrect account or password. Check the selected account and password. After a reset, use the new temporary password from your manager.');
+        else {
+          await readStorageFailure(response);
+          if(response.status===503)setAppMessage('Sign-in is temporarily unavailable because the account service could not be reached. Your password was not verified. Retry or contact your manager.', 'warning');
+        }
         render(); return;
       }
       const session = await response.json();
+      STATE.sharedStorageError=null;
+      STATE.loginLoadPending=false;
       setLiveSessionToken(session.token); STATE.currentUser = session.user; saveSessionUser(session.user);
-      await loadSharedDemoState();
-      STATE.currentScreen = session.user.mustChangePassword ? 'password_change' : 'home';
+      if(session.user.mustChangePassword) {
+        STATE.currentScreen='password_change';setAppMessage(null);render();return;
+      }
+      STATE.loginLoadPending=true;
+      const loaded=await loadSharedDemoState();
+      if(!STATE.currentUser){STATE.loginLoadPending=false;return;}
+      if(!loaded || STATE.sharedStorageError) { STATE.currentScreen='login';render();return; }
+      STATE.loginLoadPending=false;STATE.currentScreen='home';
       STATE.homeTab = 'workflow'; setAppMessage(null); render(); return;
-    } catch { setAppMessage('Login is temporarily unavailable. Please try again later.'); render(); return; }
+    } catch {
+      setAppMessage('Could not reach the sign-in service. Check your internet connection and try again. Your password was not verified.', 'warning');
+      render(); return;
+    }
   }
   const passwordHash = await hashDemoPassword(password);
   if (!user || user.passwordHash !== passwordHash) {
@@ -2365,6 +2395,13 @@ async function loginWithPassword() {
 }
 
 async function changeOwnPassword() {
+  if(STATE.passwordChangeBusy)return;
+  STATE.passwordChangeBusy=true;
+  document.querySelectorAll('[data-action="change_own_password"]').forEach(button=>{button.disabled=true;});
+  try {await performChangeOwnPassword();}
+  finally {STATE.passwordChangeBusy=false;render();}
+}
+async function performChangeOwnPassword() {
   if (!STATE.currentUser) return;
   const passwordInput = document.getElementById('newOwnPassword');
   const confirmInput = document.getElementById('confirmOwnPassword');
@@ -2395,7 +2432,11 @@ async function changeOwnPassword() {
       const profile = USERS.find(account => account.id === session.user.id);
       if (profile) Object.assign(profile, session.user);
       STATE.currentUser = session.user; saveSessionUser(session.user);
-      await loadSharedDemoState(); STATE.currentScreen = 'home'; STATE.homeTab = 'workflow';
+      STATE.loginLoadPending=true;
+      const loaded=await loadSharedDemoState();
+      if(!STATE.currentUser) {render();return;}
+      if(!loaded || STATE.sharedStorageError) {STATE.currentScreen='login';render();return;}
+      STATE.loginLoadPending=false;STATE.currentScreen = 'home'; STATE.homeTab = 'workflow';
       setAppMessage('Your password has been saved.', 'success');
     } catch { markSharedStorageFailure(null); }
     render(); return;
@@ -2481,11 +2522,56 @@ function accountAccessError(access) {
   return '';
 }
 
+function readTemporaryAccountPassword(passwordId, confirmId) {
+  const input=document.getElementById(passwordId),confirmation=document.getElementById(confirmId);
+  // The legacy, local-only workflow keeps its existing fallback. Production
+  // accounts always require an explicit manager-chosen temporary password.
+  if(!input && !STATE.serverAuth)return FIRST_LOGIN_PASSWORD;
+  const password=String(input?.value || '');
+  if(password.length<8 || password.length>256) {
+    setAppMessage('Use between 8 and 256 characters for the temporary password.');return null;
+  }
+  if(password!==String(confirmation?.value || '')) {
+    setAppMessage('The two passwords are not the same.');return null;
+  }
+  return password;
+}
+
+async function saveManagedAccount(action, profile, password) {
+  if(STATE.accountPasswordBusy)return false;
+  STATE.accountPasswordBusy=true;
+  document.querySelectorAll('[data-action="create_user"], [data-action="reset_user_password"]').forEach(button=>{button.disabled=true;});
+  try {
+    // Flush before changing private credentials. A later profile save must
+    // never replay an old password reset or acknowledge unrelated pending work.
+    if(STATE.storageFormat===3 && !await prepareRecordRead())return false;
+    const response=await appFetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action,...profile,password})});
+    if(!response.ok){await readStorageFailure(response);return false;}
+    const result=await response.json();
+    const index=USERS.findIndex(user=>user.id===result.user.id);
+    if(index<0)USERS.push(result.user);else USERS[index]=result.user;
+    STATE.recordRevisions={...STATE.recordRevisions,...result.recordRevisions};
+    if(lastSharedStateSnapshot) {
+      const users=(lastSharedStateSnapshot.users || []).filter(user=>user.id!==result.user.id);
+      lastSharedStateSnapshot={...lastSharedStateSnapshot,users:[...users,result.user],
+        recordRevisions:{...lastSharedStateSnapshot.recordRevisions,...result.recordRevisions}};
+    }
+    saveUsers();
+    await saveLocalDemoStateBackup({...readLocalDemoStateBackup(),...getSharedDemoSnapshot({includeUsers:true})});
+    return true;
+  } catch {
+    setAppMessage('The account change was not confirmed. Check the connection and try again.', 'warning');
+    return false;
+  } finally {STATE.accountPasswordBusy=false;}
+}
+
 async function createUserFromForm() {
   if (!isAdminUser()) return;
   const naam = normalizeText(document.getElementById('newUserName').value);
   const id = normalizeText(document.getElementById('newUserId').value).toLowerCase().replace(/[^a-z0-9_-]/g, '');
   const access = readAccountAccess('new', { rol: 'Grader', voorkeur: 'beginner' });
+  STATE.accountCreateDraft={naam,id,access};
   const { rol, laptopAccess, monitorAccess, voorkeur } = access;
   if (accountAccessError(access)) {
     setAppMessage(accountAccessError(access));
@@ -2502,7 +2588,17 @@ async function createUserFromForm() {
     render();
     return;
   }
-  const passwordHash = await hashDemoPassword(FIRST_LOGIN_PASSWORD);
+  const password=readTemporaryAccountPassword('newUserPassword','confirmNewUserPassword');
+  if(password===null){render();return;}
+  if(STATE.serverAuth) {
+    if(await saveManagedAccount('create_user',{id,naam:sanitizeExternalText(naam,80),...access},password)) {
+      STATE.accountCreateOpen=false;
+      STATE.accountCreateDraft=null;
+      setAppMessage('Account created. Share the temporary password securely; the employee must choose a personal password at first sign-in.', 'success');
+    }
+    render();return;
+  }
+  const passwordHash = await hashDemoPassword(password);
   USERS.push({
     id,
     naam: sanitizeExternalText(naam, 80),
@@ -2517,9 +2613,11 @@ async function createUserFromForm() {
   });
   saveUsers();
   logAudit('create_user', 'user', id, { rol, laptopAccess, monitorAccess, voorkeur });
-  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'create', id } });
+  const saved=await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'create', id } });
+  if(canUseSharedDemoState() && !saved){render();return;}
   STATE.accountCreateOpen = false;
-  setAppMessage(`User ${naam} created. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
+  STATE.accountCreateDraft=null;
+  setAppMessage('Account created. Share the temporary password securely; the employee must choose a personal password at first sign-in.', 'success');
   render();
 }
 
@@ -2546,7 +2644,8 @@ async function updateUserFromRow(id) {
   }
   saveUsers();
   logAudit('update_user', 'user', id, access);
-  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
+  const saved=await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
+  if(canUseSharedDemoState() && !saved){render();return;}
   STATE.accountEditId = null;
   setAppMessage(`User ${user.naam} updated.`, 'success');
   render();
@@ -2556,8 +2655,18 @@ async function resetUserPassword(id) {
   if (!isAdminUser()) return;
   const user = USERS.find(u => u.id === id);
   if (!user) return;
-  if (!confirm(`Reset password for ${user.naam} to the start password?`)) return;
-  user.passwordHash = await hashDemoPassword(FIRST_LOGIN_PASSWORD);
+  if(STATE.serverAuth && STATE.currentUser?.id===id) {
+    setAppMessage('Use your personal password screen to change your own password.');render();return;
+  }
+  const password=readTemporaryAccountPassword(`resetUserPassword-${id}`,`confirmResetUserPassword-${id}`);
+  if(password===null){render();return;}
+  if (!confirm(`Set a new temporary password for ${user.naam}?`)) return;
+  if(STATE.serverAuth) {
+    if(await saveManagedAccount('reset_user_password',{id},password))
+      setAppMessage('Password reset saved. The employee must sign in with the new temporary password and choose a personal password.', 'success');
+    render();return;
+  }
+  user.passwordHash = await hashDemoPassword(password);
   user.mustChangePassword = true;
   user.passwordUpdatedAt = '';
   if (STATE.currentUser && STATE.currentUser.id === id) {
@@ -2567,8 +2676,9 @@ async function resetUserPassword(id) {
   }
   saveUsers();
   logAudit('reset_user_password', 'user', id);
-  await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
-  setAppMessage(`Password reset for ${user.naam}. Start password: ${FIRST_LOGIN_PASSWORD}`, 'success');
+  const saved=await saveSharedDemoState({ includeUsers: true, userMutation: { action: 'update', id } });
+  if(canUseSharedDemoState() && !saved){render();return;}
+  setAppMessage('Password reset saved. The employee must sign in with the new temporary password and choose a personal password.', 'success');
   render();
 }
 

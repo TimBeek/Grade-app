@@ -6,6 +6,29 @@ const LANGUAGE_STORAGE_KEY = 'remarktLanguagePreferenceV1';
 const SUPPORTED_LANGUAGES = new Set(['nl', 'en']);
 
 const NL_COPY = {
+  'Choose a personal password different from your temporary or current password.':'Kies een eigen wachtwoord dat verschilt van je tijdelijke of huidige wachtwoord.',
+  'Account verified':'Account gecontroleerd',
+  'Your password is correct, but work data could not be loaded yet. Retry to continue safely.':'Je wachtwoord is correct, maar de werkgegevens konden nog niet worden geladen. Probeer opnieuw om veilig verder te gaan.',
+  'Refresh accounts':'Accounts vernieuwen',
+  'Incorrect account or password. Check the selected account and password. After a reset, use the new temporary password from your manager.':'Verkeerd account of wachtwoord. Controleer het geselecteerde account en je wachtwoord. Gebruik na een reset het nieuwe tijdelijke wachtwoord van je manager.',
+  'Sign-in is temporarily unavailable because the account service could not be reached. Your password was not verified. Retry or contact your manager.':'Inloggen is tijdelijk niet mogelijk omdat de accountservice niet bereikbaar is. Je wachtwoord is niet gecontroleerd. Probeer opnieuw of neem contact op met je manager.',
+  'Could not reach the sign-in service. Check your internet connection and try again. Your password was not verified.':'De inlogservice is niet bereikbaar. Controleer je internetverbinding en probeer opnieuw. Je wachtwoord is niet gecontroleerd.',
+  'Work is temporarily paused':'Het werk is tijdelijk gepauzeerd',
+  'We could not safely load or save your work. Nothing has been deleted. Retry the connection or ask a manager for help.':'Je werk kon niet veilig worden geladen of opgeslagen. Er is niets verwijderd. Probeer de verbinding opnieuw of vraag een manager om hulp.',
+  'Temporary password':'Tijdelijk wachtwoord',
+  'New temporary password':'Nieuw tijdelijk wachtwoord',
+  'Repeat temporary password':'Herhaal tijdelijk wachtwoord',
+  'Set by manager':'Ingesteld door manager',
+  'The employee chooses a personal password at first sign-in':'De medewerker kiest bij de eerste aanmelding een eigen wachtwoord',
+  'Choose a temporary password. The employee must choose a personal password at first sign-in.':'Kies een tijdelijk wachtwoord. De medewerker moet bij de eerste aanmelding een eigen wachtwoord kiezen.',
+  'Fill both password fields only when resetting the password. Saving access rights does not change the password.':'Vul beide wachtwoordvelden alleen in om het wachtwoord te resetten. Het opslaan van rechten verandert het wachtwoord niet.',
+  'Use between 8 and 256 characters for the temporary password.':'Gebruik tussen 8 en 256 tekens voor het tijdelijke wachtwoord.',
+  'Account details or password are invalid. Check the fields and try again.':'De accountgegevens of het wachtwoord zijn ongeldig. Controleer de velden en probeer opnieuw.',
+  'This account does not have permission for this action.':'Dit account heeft geen toestemming voor deze actie.',
+  'The account change was not confirmed. Check the connection and try again.':'De accountwijziging is niet bevestigd. Controleer de verbinding en probeer opnieuw.',
+  'Account created. Share the temporary password securely; the employee must choose a personal password at first sign-in.':'Account aangemaakt. Deel het tijdelijke wachtwoord veilig; de medewerker moet bij de eerste aanmelding een eigen wachtwoord kiezen.',
+  'Password reset saved. The employee must sign in with the new temporary password and choose a personal password.':'Wachtwoordreset opgeslagen. De medewerker moet met het nieuwe tijdelijke wachtwoord inloggen en een eigen wachtwoord kiezen.',
+  'Use your personal password screen to change your own password.':'Gebruik je persoonlijke wachtwoordscherm om je eigen wachtwoord te wijzigen.',
   'Fullscreen': 'Volledig scherm',
   'Exit fullscreen': 'Volledig scherm verlaten',
   'Fullscreen could not start. Use F11 in Chrome or Edge. Your input is unchanged.': 'Volledig scherm kon niet starten. Gebruik F11 in Chrome of Edge. Je invoer blijft behouden.',
@@ -963,6 +986,8 @@ const NL_COPY = {
 };
 
 const NL_DYNAMIC_PATTERNS = [
+  [/^Too many attempts\. Try again in (\d+) minute\(s\)\. No data was deleted\.$/, 'Te veel pogingen. Probeer opnieuw over $1 minuut/minuten. Er zijn geen gegevens verwijderd.'],
+  [/^Set a new temporary password for (.+)\?$/, 'Een nieuw tijdelijk wachtwoord instellen voor $1?'],
   [/^(\d+) active · (\d+) completed · (\d+) devices total$/i, '$1 actief · $2 voltooid · $3 apparaten totaal'],
   [/^Show completed batches \((\d+)\)$/i, 'Voltooide batches tonen ($1)'],
   [/^1 result · page (\d+) of (\d+) · max (\d+)$/i, '1 resultaat · pagina $1 van $2 · max. $3'],

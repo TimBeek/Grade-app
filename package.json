@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node tools/remarkt-static-server.mjs",
     "start": "node tools/remarkt-static-server.mjs",
-    "test": "node --test tests/grading-engine-smoke.test.js tests/storage-shards.test.mjs tests/storage-records.test.mjs tests/reliability.test.mjs",
+    "test": "node --test tests/grading-engine-smoke.test.js tests/storage-shards.test.mjs tests/storage-records.test.mjs tests/reliability.test.mjs tests/login-flow.test.mjs",
     "migrate:kv": "node scripts/migrate-to-kv.mjs",
     "seed:postgres": "node scripts/seed-postgres.mjs",
     "recover:redis": "node scripts/recover-redis-to-postgres.mjs",

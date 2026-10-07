@@ -2571,10 +2571,27 @@ function getLocalRecoveryExport() {
 async function readStorageFailure(response) {
   try {
     const payload=await response.json();
+    if(payload?.code==='RATE_LIMITED' || response.status===429) {
+      if(STATE.sharedStorageError==='RATE_LIMITED')STATE.sharedStorageError=null;
+      const seconds=Math.max(1,Number(payload.retryAfterSeconds || response.headers?.get('Retry-After')) || 60);
+      setAppMessage(`Too many attempts. Try again in ${Math.ceil(seconds/60)} minute(s). No data was deleted.`, 'warning');
+      return;
+    }
+    if(['REQUEST_INVALID','AUTH_FORBIDDEN','AUTH_PASSWORD_CHANGE_REQUIRED'].includes(payload?.code)) {
+      setAppMessage(payload.code==='REQUEST_INVALID' ? 'Account details or password are invalid. Check the fields and try again.'
+        : 'This account does not have permission for this action.', 'warning');
+      return;
+    }
+    if(payload?.code==='REQUEST_PASSWORD_UNCHANGED') {
+      setAppMessage('Choose a personal password different from your temporary or current password.');return;
+    }
     if(payload?.code==='AUTH_REQUIRED') {
       STATE.sharedStorageError=null;
       setAppMessage('Your session expired. Sign in again; unsynchronized work is kept on this computer.', 'warning');
       return;
+    }
+    if(payload?.code==='AUTH_INVALID_CREDENTIALS') {
+      setAppMessage('Incorrect account or password. Check the selected account and password. After a reset, use the new temporary password from your manager.');return;
     }
     markSharedStorageFailure(payload);
   }
@@ -2606,6 +2623,7 @@ async function primeSharedStateStamp() {
 // This prevents every colleague's completed grade from downloading the entire
 // batch/history dataset to every open browser.
 async function syncSharedStateIfChanged(options = {}) {
+  if(STATE.serverAuth && !liveSessionToken())return false;
   const loadFull = options.loadFull === true || STATE.storageFormat === 3;
   if (typeof appRetryAfter !== 'undefined' && Date.now() < appRetryAfter) return false;
   if (!canUseSharedDemoState()) return false;
@@ -2822,10 +2840,19 @@ async function refreshSharedUsers() {
   if (!canUseSharedDemoState()) return false;
   try {
     const response = await (typeof appFetch === 'function' ? appFetch : fetch)(`${SHARED_DEMO_STATE_URL}?users=1`, { cache: 'no-store' });
-    if (!response.ok) { await readStorageFailure(response); return false; }
+    if (!response.ok) {
+      await readStorageFailure(response);
+      STATE.loginDirectoryUnavailable=!STATE.serverAuth;
+      return false;
+    }
     const remoteState = await decodeSharedDemoStatePayload(await response.json());
     if (remoteState.serverAuth) { STATE.serverAuth = true; STATE.storageFormat = remoteState.storageFormat; }
-    return applySharedUsers(remoteState);
+    const applied = applySharedUsers(remoteState);
+    if(applied)STATE.loginDirectoryUnavailable=false;
+    // A successful directory read fixes a stale sign-in warning, but does not
+    // acknowledge pending operational work in an authenticated session.
+    if(applied && !STATE.currentUser)STATE.sharedStorageError=null;
+    return applied;
   } catch (error) {
     markSharedStorageFailure(null);
     reportAppWarning('Gebruikers konden niet live worden bijgewerkt', error);

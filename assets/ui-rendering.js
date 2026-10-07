@@ -222,15 +222,23 @@ function renderImagePreviewModal(preview) {
 }
 
 function renderLogin() {
+  if(STATE.currentUser && STATE.loginLoadPending) {
+    return `<div class="screen">${renderStorageStatus()}${renderAppMessage()}
+      <div class="login-card"><h1>Account verified</h1>
+        <p>Your password is correct, but work data could not be loaded yet. Retry to continue safely.</p>
+        ${!STATE.sharedStorageError ? '<button class="btn btn-primary" data-action="retry_storage" type="button">Retry connection</button>' : ''}
+      </div></div>`;
+  }
   // Built-in fallback users are NOT recovered production accounts. During
   // an outage without an operational copy, do not present them as real users.
-  if (STATE.sharedStorageError && !STATE.localRecoveryAvailable) {
+  if ((STATE.sharedStorageError && !STATE.localRecoveryAvailable) || STATE.loginDirectoryUnavailable) {
     return `<div class="screen">
       ${renderStorageStatus()}
       ${renderAppMessage()}
       <div class="login-card">
         <div class="login-language-row">${renderOptionalLanguageToggle()}</div>
         <h1>REMARKT GRADING</h1>
+        ${STATE.loginDirectoryUnavailable && !STATE.sharedStorageError ? '<button class="btn btn-secondary" data-action="retry_storage" type="button">Refresh accounts</button>' : ''}
       </div>
     </div>`;
   }
@@ -245,11 +253,12 @@ function renderLogin() {
         <div class="login-fields">
           <label class="form-label" for="loginUser">Account</label>
           <select class="form-input" id="loginUser">
-            ${USERS.map(u => `<option value="${escapeHtml(u.id)}">${escapeHtml(u.naam)} · ${escapeHtml(displayUserRole(u.rol))}</option>`).join('')}
+            ${USERS.map(u => `<option value="${escapeHtml(u.id)}" ${STATE.loginAccountId===u.id?'selected':''}>${escapeHtml(u.naam)} · ${escapeHtml(displayUserRole(u.rol))}</option>`).join('')}
           </select>
           <label class="form-label" for="loginPassword">Password</label>
           <input type="password" class="form-input" id="loginPassword" placeholder="Password" autocomplete="current-password">
-          <button class="btn btn-primary" data-action="login_password">Sign in</button>
+          <button class="btn btn-primary" data-action="login_password" ${STATE.loginBusy?'disabled':''}>Sign in</button>
+          <button class="btn btn-secondary" data-action="retry_storage" type="button">Refresh accounts</button>
           <div class="field-help">${STATE.serverAuth ? 'Your password is verified securely by the server.' : 'Demo passwords are hashed in browser code; this is not production security.'}</div>
         </div>
       </div>
@@ -261,6 +270,15 @@ function renderStorageStatus() {
   return renderStorageStatusCore() + (typeof renderRecordProtectionAlerts==='function'?renderRecordProtectionAlerts():'');
 }
 function renderStorageStatusCore() {
+  if(!isAdminUser()) {
+    if(!STATE.sharedStorageError && !STATE.localBackupError)return '';
+    // Employees get only an actionable blocking error, not infrastructure,
+    // quota, migration or backup administration notices.
+    return `<section id="storage-status" class="card" role="alert" aria-live="polite">
+      <strong>Work is temporarily paused</strong>
+      <p>We could not safely load or save your work. Nothing has been deleted. Retry the connection or ask a manager for help.</p>
+      <button class="btn btn-secondary" data-action="retry_storage" type="button">Retry connection</button></section>`;
+  }
   if (!STATE.sharedStorageError && !STATE.localBackupError && STATE.sharedWorkspaceId.startsWith('recovery-')) {
     const key = 'remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId;
     let dismissed = STATE.dismissedRecoveryNotice === STATE.sharedWorkspaceId;
@@ -2258,9 +2276,9 @@ function renderAccounts() {
           <h2>User Management</h2>
           <p>Choose per employee what they may do with laptops and monitors.</p>
         </div>
-        <div class="acc-password-chip" title="New users and password resets get this start password">
+        <div class="acc-password-chip" title="The employee chooses a personal password at first sign-in">
           ${uiIcon('accountKey')}
-          <span><small>Start password</small><strong data-i18n-skip>${escapeHtml(FIRST_LOGIN_PASSWORD)}</strong></span>
+          <span><small>Temporary password</small><strong>Set by manager</strong></span>
         </div>
       </div>
 
@@ -2283,19 +2301,29 @@ function renderAccounts() {
         <div class="acc-panel acc-create">
           <div class="acc-panel-head">
             <h3>New user</h3>
-            <p>The user logs in with the start password and chooses a personal password right away.</p>
+            <p>Choose a temporary password. The employee must choose a personal password at first sign-in.</p>
           </div>
           <div class="acc-create-inputs">
             <div class="form-group">
               <label class="form-label" for="newUserName">Name</label>
-              <input class="form-input" id="newUserName" placeholder="Employee name" autocomplete="off">
+              <input class="form-input" id="newUserName" value="${escapeHtml(STATE.accountCreateDraft?.naam || '')}" placeholder="Employee name" autocomplete="off" maxlength="80">
             </div>
             <div class="form-group">
               <label class="form-label" for="newUserId">Login ID</label>
-              <input class="form-input" id="newUserId" placeholder="e.g. first name" autocomplete="off">
+              <input class="form-input" id="newUserId" value="${escapeHtml(STATE.accountCreateDraft?.id || '')}" placeholder="e.g. first name" autocomplete="off" maxlength="80">
             </div>
           </div>
-          ${accessFields('new', { rol: 'Grader', laptopAccess: 'grade', monitorAccess: 'grade', voorkeur: 'beginner' })}
+          <div class="acc-create-inputs">
+            <div class="form-group">
+              <label class="form-label" for="newUserPassword">Temporary password</label>
+              <input type="password" class="form-input" id="newUserPassword" minlength="8" maxlength="256" autocomplete="new-password" placeholder="At least 8 characters" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="confirmNewUserPassword">Repeat temporary password</label>
+              <input type="password" class="form-input" id="confirmNewUserPassword" minlength="8" maxlength="256" autocomplete="new-password" required>
+            </div>
+          </div>
+          ${accessFields('new', STATE.accountCreateDraft?.access || { rol: 'Grader', laptopAccess: 'grade', monitorAccess: 'grade', voorkeur: 'beginner' })}
           <div class="acc-panel-actions">
             <button class="btn btn-secondary" data-action="toggle_account_create" type="button">Cancel</button>
             <button class="btn btn-primary" data-action="create_user" type="button">Create user</button>
@@ -2324,9 +2352,19 @@ function renderAccounts() {
               ${editing ? `
                 <div class="acc-row-editor">
                   ${accessFields(u.id, u)}
+                  ${!isSelf ? `<div class="acc-create-inputs">
+                    <div class="form-group">
+                      <label class="form-label" for="resetUserPassword-${escapeHtml(u.id)}">New temporary password</label>
+                      <input type="password" class="form-input" id="resetUserPassword-${escapeHtml(u.id)}" minlength="8" maxlength="256" autocomplete="new-password" placeholder="At least 8 characters">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="confirmResetUserPassword-${escapeHtml(u.id)}">Repeat temporary password</label>
+                      <input type="password" class="form-input" id="confirmResetUserPassword-${escapeHtml(u.id)}" minlength="8" maxlength="256" autocomplete="new-password">
+                    </div>
+                  </div><p class="field-help">Fill both password fields only when resetting the password. Saving access rights does not change the password.</p>` : ''}
                   <div class="acc-panel-actions">
                     <div class="acc-secondary-actions">
-                      <button class="acc-link-btn" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}" type="button">Reset password</button>
+                      ${!isSelf ? `<button class="acc-link-btn" data-action="reset_user_password" data-user-id="${escapeHtml(u.id)}" type="button">Reset password</button>` : ''}
                       <button class="acc-link-btn is-danger" data-action="delete_user" data-user-id="${escapeHtml(u.id)}" type="button" ${isSelf ? 'disabled' : ''}>Delete user</button>
                     </div>
                     <button class="btn btn-secondary" data-action="toggle_account_edit" data-user-id="${escapeHtml(u.id)}" type="button">Cancel</button>

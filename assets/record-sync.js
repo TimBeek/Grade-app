@@ -92,7 +92,9 @@ async function appFetch(url, options = {}) {
       if (response.status === 401 && STATE.serverAuth) {
         setLiveSessionToken(''); clearSessionUser(); STATE.currentUser = null; STATE.currentScreen = 'login';
       }
-      if ([429, 503].includes(response.status)) appRetryAfter = Date.now() + (Number(response.headers?.get('Retry-After')) || 300) * 1000;
+      const authRequest = url === '/api/session' || /[?&]users=1\b/.test(url);
+      if (!authRequest && [429,503].includes(response.status))
+        appRetryAfter = Date.now() + (Number(response.headers?.get('Retry-After')) || 300) * 1000;
       if(method==='GET' && url==='/api/stats' && response.ok && typeof response.clone==='function')
         appStatsCache={key:requestKey,until:Date.now()+5000,response:response.clone()};
       return response;

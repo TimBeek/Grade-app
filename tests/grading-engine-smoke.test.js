@@ -130,6 +130,165 @@ function allChoices(sandbox, letter) {
   );
 }
 
+test('employees do not see yellow infrastructure notices, but receive actionable blocking errors',()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='recovery-qa';STATE.currentUser={id:'employee',rol:'Grader'};STATE.recordProtection={status:'stale'};",app);
+  assert.equal(app.renderStorageStatus(),'');
+  vm.runInContext("STATE.currentUser=null;",app);
+  assert.equal(app.renderStorageStatus(),'');
+  vm.runInContext("STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';",app);
+  const error=app.renderStorageStatus();
+  assert.match(error,/Work is temporarily paused/);assert.match(error,/Retry connection/);
+  assert.doesNotMatch(error,/storage-status-dismissible|Temporary working database|Data protection|usage limit reached/);
+  vm.runInContext("STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.sharedStorageError=null;",app);
+  assert.match(app.renderStorageStatus(),/Temporary working database/);
+  assert.match(app.renderStorageStatus(),/Data protection/);
+});
+
+test('429 has an honest waiting message, leaves the login form usable and does not pause operational sync',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  vm.runInContext("STATE.serverAuth=true;STATE.sharedStorageError='RATE_LIMITED';STATE.currentScreen='login';",app);
+  app.fetch=async()=>new Response(JSON.stringify({code:'RATE_LIMITED',retryAfterSeconds:80}),{status:429,headers:{'Retry-After':'80'}});
+  const response=await app.appFetch('/api/session',{method:'POST'});await app.readStorageFailure(response);
+  assert.equal(vm.runInContext('STATE.sharedStorageError',app),null);
+  assert.equal(vm.runInContext('appRetryAfter',app),0);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/Try again in 2 minute/);
+  assert.match(app.renderLogin(),/id="loginPassword"/);
+  assert.doesNotMatch(app.renderLogin(),/Live database unavailable/);
+  vm.runInContext("STATE.language='nl';",app);
+  assert.match(app.translateCopy(vm.runInContext('STATE.appMessage.text',app)),/Probeer opnieuw over 2/);
+});
+
+test('retry before login really reloads the directory and clears an old sign-in storage warning',async()=>{
+  const app=loadAppSandbox({gzip:true});let requests=0;
+  vm.runInContext("STATE.currentUser=null;STATE.currentScreen='login';STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedStorageError='STORAGE_UNAVAILABLE';",app);
+  app.fetch=async url=>{requests++;assert.match(url,/users=1/);return new Response(JSON.stringify({serverAuth:true,storageFormat:3,
+    users:[{id:'restored',naam:'Restored',rol:'Grader',passwordHash:'server-managed'}]}));};
+  await app.handleAction('retry_storage',{});
+  assert.equal(requests,1);assert.equal(vm.runInContext('STATE.sharedStorageError',app),null);
+  assert.match(app.renderLogin(),/restored/);assert.match(app.renderLogin(),/loginPassword/);
+});
+
+test('server login coalesces clicks, preserves account choice and postpones data loading until a personal password is chosen',async()=>{
+  const app=loadAppSandbox({gzip:true});let requests=0,loads=0,answer;
+  vm.runInContext("STATE.currentUser=null;STATE.serverAuth=true;STATE.storageFormat=3;STATE.sharedStorageError='RATE_LIMITED';STATE.currentScreen='login';",app);
+  const fields={loginUser:{value:'employee'},loginPassword:{value:'Temporary123!'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.loadSharedDemoState=async()=>{loads++;return true;};
+  app.fetch=async url=>{requests++;assert.equal(url,'/api/session');return await new Promise(resolve=>{answer=resolve;});};
+  const pending=app.loginWithPassword();await app.loginWithPassword();
+  assert.equal(requests,1);
+  answer(new Response(JSON.stringify({token:'synthetic',user:{id:'employee',naam:'Employee',rol:'Grader',passwordHash:'server-managed',mustChangePassword:true}})));
+  await pending;
+  assert.equal(loads,0);assert.equal(vm.runInContext('STATE.currentScreen',app),'password_change');
+  assert.equal(vm.runInContext('STATE.sharedStorageError',app),null);assert.equal(vm.runInContext('STATE.loginBusy',app),false);
+});
+
+test('wrong passwords, connection failures, rate limits and expired sessions have distinct sign-in explanations',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  vm.runInContext("STATE.currentUser=null;STATE.serverAuth=true;STATE.currentScreen='login';",app);
+  const fields={loginUser:{value:'tim'},loginPassword:{value:'wrong'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async()=>new Response(JSON.stringify({code:'AUTH_INVALID_CREDENTIALS'}),{status:401});
+  await app.loginWithPassword();
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/Incorrect account or password/);
+  assert.match(app.renderLogin(),/value="tim" selected/);
+  app.fetch=async()=>{throw new Error('network failed');};
+  await app.loginWithPassword();
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/internet connection/);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/password was not verified/);
+  app.fetch=async()=>new Response(JSON.stringify({code:'STORAGE_UNAVAILABLE'}),{status:503});
+  await app.loginWithPassword();
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/account service could not be reached/);
+  assert.doesNotMatch(vm.runInContext('STATE.appMessage.text',app),/Incorrect account/);
+});
+
+test('manager temporary-password fields are masked; confirmed server writes never cache plaintext or reset other work',async()=>{
+  const app=loadAppSandbox({gzip:true});let sent;
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';STATE.accountCreateOpen=true;lastSharedStateSnapshot=getSharedDemoSnapshot({includeUsers:true});",app);
+  let html=app.renderAccounts();
+  assert.match(html,/type="password"[^>]*id="newUserPassword"/);assert.match(html,/confirmNewUserPassword/);
+  assert.doesNotMatch(html,/ReMarkt2026!/);
+  const fields={newUserName:{value:'New Employee'},newUserId:{value:'newemployee'},
+    newUserPassword:{value:'UniqueTemporary123!'},confirmNewUserPassword:{value:'UniqueTemporary123!'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async(url,options)=>{assert.equal(url,'/api/session');sent=JSON.parse(options.body);
+    return new Response(JSON.stringify({user:{id:'newemployee',naam:'New Employee',rol:'Grader',passwordHash:'server-managed',mustChangePassword:true},
+      recordRevisions:{'["users","newemployee"]':2}}));};
+  await app.createUserFromForm();
+  assert.equal(sent.password,'UniqueTemporary123!');assert.equal(sent.action,'create_user');
+  assert.equal(vm.runInContext('USERS.find(u=>u.id===\'newemployee\').mustChangePassword',app),true);
+  assert.equal(vm.runInContext('STATE.recordRevisions[\'["users","newemployee"]\']',app),2);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/Account created/);
+  assert.doesNotMatch(vm.runInContext('JSON.stringify(getSharedDemoSnapshot({includeUsers:true}))',app),/UniqueTemporary123!/);
+  assert.doesNotMatch(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)',app),/UniqueTemporary123!/);
+  vm.runInContext("STATE.accountEditId='newemployee';",app);html=app.renderAccounts();
+  assert.match(html,/resetUserPassword-newemployee/);assert.match(html,/Saving access rights does not change the password/);
+});
+
+test('failed server password resets never change the cached account or claim success',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';USERS.push({id:'employee',naam:'Employee',rol:'Grader',passwordHash:'server-managed',mustChangePassword:false});",app);
+  const fields={'resetUserPassword-employee':{value:'Temporary123!'},'confirmResetUserPassword-employee':{value:'Temporary123!'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async()=>new Response(JSON.stringify({code:'STORAGE_UNAVAILABLE'}),{status:503});
+  await app.resetUserPassword('employee');
+  assert.equal(vm.runInContext('USERS.find(u=>u.id===\'employee\').mustChangePassword',app),false);
+  assert.doesNotMatch(vm.runInContext('STATE.appMessage?.text || ""',app),/Password reset saved/);
+  assert.equal(vm.runInContext('STATE.sharedStorageError',app),'STORAGE_UNAVAILABLE');
+});
+
+test('valid password plus unavailable work data never opens a placeholder batch; retry completes the login',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=null;STATE.currentScreen='login';",app);
+  const fields={loginUser:{value:'employee'},loginPassword:{value:'Correct123!'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async()=>new Response(JSON.stringify({token:'synthetic',user:{id:'employee',naam:'Employee',rol:'Grader',passwordHash:'server-managed',mustChangePassword:false}}));
+  app.loadSharedDemoState=async()=>false;
+  await app.loginWithPassword();
+  assert.equal(vm.runInContext('STATE.currentScreen',app),'login');
+  assert.equal(vm.runInContext('STATE.loginLoadPending',app),true);
+  assert.match(app.renderLogin(),/Your password is correct/);
+  assert.doesNotMatch(app.__appElement.innerHTML,/data-action="scan"/);
+  app.loadSharedDemoState=async()=>true;
+  await app.handleAction('retry_storage',{});
+  assert.equal(vm.runInContext('STATE.currentScreen',app),'home');
+  assert.equal(vm.runInContext('STATE.loginLoadPending',app),false);
+});
+
+test('anonymous background refresh never produces a spurious session-expired message',async()=>{
+  const app=loadAppSandbox({gzip:true});let requests=0;
+  vm.runInContext("STATE.serverAuth=true;STATE.storageFormat=3;STATE.currentUser=null;STATE.currentScreen='login';",app);
+  app.fetch=async()=>{requests++;throw new Error('Must not be requested');};
+  assert.equal(await app.syncSharedStateIfChanged({loadFull:true}),false);
+  assert.equal(requests,0);assert.equal(vm.runInContext('STATE.appMessage',app),null);
+});
+
+test('temporary-password validation does not send empty, short or mismatching passwords to the server',async()=>{
+  const app=loadAppSandbox();let requests=0;
+  vm.runInContext("STATE.serverAuth=true;STATE.currentUser=USERS.find(user=>user.id==='tim');STATE.currentScreen='accounts';",app);
+  const fields={newUserName:{value:'Test'},newUserId:{value:'test-new'},newUserPassword:{value:'short'},confirmNewUserPassword:{value:'short'}};
+  app.document.getElementById=id=>id==='app'?app.__appElement:fields[id]||null;
+  app.fetch=async()=>{requests++;throw new Error('Must not be requested');};
+  await app.createUserFromForm();assert.equal(requests,0);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/8 and 256/);
+  fields.newUserPassword.value='ValidPassword123!';fields.confirmNewUserPassword.value='different';
+  await app.createUserFromForm();assert.equal(requests,0);
+  assert.match(vm.runInContext('STATE.appMessage.text',app),/not the same/);
+});
+
+test('a first-load directory rate limit never exposes built-in fallback accounts as production accounts',async()=>{
+  const app=loadAppSandbox({gzip:true});
+  app.fetch=async()=>new Response(JSON.stringify({code:'RATE_LIMITED',retryAfterSeconds:10}),{status:429});
+  assert.equal(await app.refreshSharedUsers(),false);
+  assert.doesNotMatch(app.renderLogin(),/id="loginUser"/);
+  assert.match(app.renderLogin(),/Refresh accounts/);
+  app.fetch=async()=>new Response(JSON.stringify({serverAuth:true,storageFormat:3,
+    users:[{id:'realemployee',naam:'Real Employee',rol:'Grader',passwordHash:'server-managed'}]}));
+  assert.equal(await app.refreshSharedUsers(),true);
+  assert.match(app.renderLogin(),/id="loginUser"/);assert.match(app.renderLogin(),/realemployee/);
+});
+
 test('tijdelijke werkdatabase is sluitbaar per werkdatabase, maar echte opslagfouten blijven zichtbaar', async () => {
   const app=loadAppSandbox();
   vm.runInContext("STATE.sharedWorkspaceId='recovery-a'; STATE.currentUser=USERS[0]; STATE.currentScreen='home';",app);
@@ -1024,6 +1183,8 @@ test('quota-storing behoudt herstelkopie en blokkeert opnieuw opslaan en printen
   assert.equal(await app.loadSharedDemoState(), true);
   assert.equal(vm.runInContext('STATE.sharedStorageError', app), 'STORAGE_QUOTA_EXCEEDED');
   assert.equal(vm.runInContext('STATE.history[0].id', app), 'kept');
+  assert.match(app.renderStorageStatus(), /Work is temporarily paused/);
+  vm.runInContext("STATE.currentUser=USERS.find(user=>user.id==='tim');",app);
   assert.match(app.renderStorageStatus(), /Database usage limit reached/);
   assert.match(app.renderStorageStatus(), /local recovery copy is available/);
   assert.equal(await app.saveSharedDemoState(), false);
@@ -1037,7 +1198,7 @@ test('storing zonder kopie ziet er niet uit als een succesvolle lege database', 
   app.fetch = async () => ({ ok: false, json: async () => ({ code: 'STORAGE_UNAVAILABLE' }) });
   assert.equal(await app.loadSharedDemoState(), false);
   assert.equal(vm.runInContext('STATE.localRecoveryAvailable', app), false);
-  assert.match(app.renderLogin(), /No local operational copy/);
+  assert.match(app.renderLogin(), /Work is temporarily paused/);
   assert.doesNotMatch(app.renderLogin(), /id="loginUser"|id="loginPassword"|data-action="login_password"/);
   vm.runInContext("STATE.currentUser=USERS[0]; STATE.currentScreen='home'; render();", app);
   assert.doesNotMatch(app.document.getElementById('app').innerHTML, /data-action="scan"/);
@@ -1060,6 +1221,8 @@ test('accountcache is apart te herstellen en wordt nooit een volledige of fictie
   assert.equal(vm.runInContext('__accountRecovery.users[0].id', app), 'cached-worker');
   assert.equal(vm.runInContext('__accountRecovery.batches', app), undefined);
   assert.equal(vm.runInContext('STATE.localRecoveryAvailable', app), false);
+  assert.doesNotMatch(app.renderLogin(), /Download cached accounts only/);
+  vm.runInContext("STATE.currentUser=USERS.find(user=>user.id==='tim');",app);
   assert.match(app.renderLogin(), /Download cached accounts only/);
   assert.doesNotMatch(app.renderLogin(), /id="loginUser"/);
 });
@@ -1845,7 +2008,7 @@ test('nieuwe gebruiker krijgt startwachtwoord en moet dit bij eerste login wijzi
   assert.equal(created.naam, 'Nieuwe Grader');
   assert.equal(created.passwordHash, startHash);
   assert.equal(created.mustChangePassword, true);
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Start password/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Share the temporary password securely/);
   assert.match(vm.runInContext('localStorage.getItem(DEMO_STORAGE_KEYS.users)', app), /mustChangePassword/);
 });
 
@@ -2002,7 +2165,7 @@ test('admin kan gebruiker resetten naar startwachtwoord met verplichte wijziging
   assert.equal(resetUser.passwordHash, startHash);
   assert.equal(resetUser.mustChangePassword, true);
   assert.equal(resetUser.passwordUpdatedAt, '');
-  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Start password/);
+  assert.match(vm.runInContext('STATE.appMessage && STATE.appMessage.text', app), /Password reset saved/);
 });
 
 test('scan-en-print markeert label klaar en sluit digitale grading af', async () => {

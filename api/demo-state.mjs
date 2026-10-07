@@ -26,7 +26,7 @@ export default async function handler(request, response) {
   try {
     if (recordStorageEnabled()) {
       if (request.method === 'GET' && /[?&]users=1\b/.test(request.url || '')) {
-        await pgRateLimit('directory:' + (request.headers?.['x-forwarded-for'] || 'unknown'), 60);
+        await pgRateLimit('directory-v2:' + String(request.headers?.['x-forwarded-for'] || 'unknown').split(',')[0].trim(), 600);
         response.status(200).json(await kvReadUsers()); return;
       }
       const store = pgRecordStore();

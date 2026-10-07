@@ -8,10 +8,10 @@ import { emptyState, normalizeDemoState } from "./state-core.mjs";
 import { createShardedStore } from './sharded-state.mjs';
 import { storageError, validateSnapshot } from './storage-safety.mjs';
 import { createRecordStore } from './record-state.mjs';
-import { createHash } from 'node:crypto';
 import { readRecordStats } from './record-stats.mjs';
 import { readRecordInsights } from './record-insights.mjs';
 import { emitMetric } from './telemetry.mjs';
+import { createRateLimiter } from './rate-limit.mjs';
 
 const STATE_ROW = "shared_state";
 const STATS_ROW = "dashboard_stats";
@@ -29,11 +29,10 @@ export function pgRecordStore() {
   return recordStore;
 }
 export async function pgRateLimit(scope, limit = 500, windowMs = 60000) {
-  const key = createHash('sha256').update(String(process.env.REMARKT_WORKSPACE_ID) + ':' + scope).digest('hex');
-  const start = Math.floor(Date.now() / windowMs) * windowMs;
-  const rows = await getSql()`INSERT INTO remarkt_rate_limits(scope, window_start, hits) VALUES (${key}, ${start}, 1)
-    ON CONFLICT(scope,window_start) DO UPDATE SET hits = remarkt_rate_limits.hits + 1 RETURNING hits`;
-  if (Number(rows[0].hits) > limit) throw storageError('RATE_LIMITED', 'Too many requests. Please wait.', 429);
+  return createRateLimiter(getSql(), process.env.REMARKT_WORKSPACE_ID).consume(scope, limit, windowMs);
+}
+export async function pgCheckRateLimits(scopes, windowMs) {
+  return createRateLimiter(getSql(), process.env.REMARKT_WORKSPACE_ID).check(scopes, windowMs);
 }
 
 function getStore() {
