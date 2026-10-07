@@ -1425,7 +1425,8 @@ async function handleAction(action, el) {
         break;
       }
       STATE.currentScreen = 'analytics';
-      if(STATE.storageFormat===3 && !await loadRecordInsights()) {render();return;}
+      // Paint the Insights shell immediately; its renderer owns the bounded,
+      // coalesced aggregate request and loading feedback.
       break;
     case 'analytics_filters_clear_advanced':
       if (typeof clearAnalyticsAdvancedFilters === 'function') clearAnalyticsAdvancedFilters();

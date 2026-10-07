@@ -14,9 +14,16 @@ export function insightFilters(params, user) {
 const percent=(part,total)=>total?Math.round(Number(part)*100/Number(total)):0;
 export async function readRecordInsights(sql,workspace,f) {
   const search=`%${f.query.replace(/[\\%_]/g,'\\$&')}%`;
-  const rows=await sql`WITH records AS MATERIALIZED (
+  // Keep this projection inline so batch joins can use the existing primary
+  // key instead of scanning a materialized copy of every workspace record.
+  const rows=await sql`WITH records AS NOT MATERIALIZED (
     SELECT collection,id,batch_id,sticker,user_id,occurred_ms,started_ms,duration_sec,summary,search_text
     FROM remarkt_records WHERE workspace_id=${workspace} AND NOT deleted
+  ), completion AS MATERIALIZED (
+    SELECT sticker,bool_or(collection='history') graded,bool_or(collection='labelPrints') labelled,
+      bool_or(collection='monitorLabelPrints') monitor_labelled
+    FROM remarkt_records WHERE workspace_id=${workspace} AND NOT deleted
+      AND collection IN ('history','labelPrints','monitorLabelPrints') GROUP BY sticker
   ), raw AS (
     SELECT r.*,COALESCE(NULLIF(r.summary->>'batchNummer',''),b.summary->>'nummer',NULLIF(r.batch_id,''),'—') batch,
       COALESCE(b.summary->>'leverancier',r.summary->>'leverancier','Unknown') supplier,
@@ -35,12 +42,14 @@ export async function readRecordInsights(sql,workspace,f) {
       COALESCE((r.summary->>'_repairLabel')::boolean,false) repair_label,
       COALESCE(r.summary->'result'->>'repairLabelType',r.summary->'result'->'repairPolicy'->>'labelType','reject') route
     FROM records r LEFT JOIN records b ON b.collection=CASE WHEN r.collection IN ('monitorLabelPrints','monitors') THEN 'monitorBatches' ELSE 'batches' END AND b.id=r.batch_id
-    LEFT JOIN LATERAL (SELECT summary FROM remarkt_records WHERE workspace_id=${workspace} AND NOT deleted AND collection='laptops' AND sticker=r.sticker ORDER BY (batch_id=r.batch_id) DESC,id LIMIT 1) l ON r.collection='history'
+    LEFT JOIN completion done ON done.sticker=r.sticker
+    LEFT JOIN LATERAL (SELECT summary FROM remarkt_records WHERE workspace_id=${workspace} AND NOT deleted AND collection='laptops' AND sticker=r.sticker
+      AND r.collection='history' AND NULLIF(r.summary->>'leverancier_class','') IS NULL AND r.summary->>'supplierGradeRaw' IS NULL
+      ORDER BY (batch_id=r.batch_id) DESC,id LIMIT 1) l ON true
     WHERE r.collection IN ('history','labelPrints','monitorLabelPrints','laptops','monitors')
-      AND (r.collection NOT IN ('laptops','monitors','labelPrints') OR NOT EXISTS (
-        SELECT 1 FROM remarkt_records done WHERE done.workspace_id=${workspace} AND NOT done.deleted AND done.sticker=r.sticker AND
-          (done.collection='history' AND r.collection IN ('laptops','labelPrints') OR
-           done.collection='labelPrints' AND r.collection='laptops' OR done.collection='monitorLabelPrints' AND r.collection='monitors')))
+      AND NOT (COALESCE(done.graded,false) AND r.collection IN ('laptops','labelPrints') OR
+        COALESCE(done.labelled,false) AND r.collection='laptops' OR
+        COALESCE(done.monitor_labelled,false) AND r.collection='monitors')
       AND (${f.viewer}='' OR r.user_id=${f.viewer} OR r.collection IN ('laptops','monitors'))
   ), enriched AS (
     SELECT *,CASE WHEN supplier_grade_raw='X' THEN 'D' ELSE supplier_grade_raw END supplier_grade,

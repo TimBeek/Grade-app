@@ -19,8 +19,9 @@ function rememberRecordResponse(response) {
 }
 function rememberRecordProtection(stats) {
   STATE.recordProtection=stats.backup || null;
-  if(STATE.recordInsights && stats.storageRevision!==undefined &&
-    Number(STATE.recordInsights.data.revision)!==Number(stats.storageRevision))invalidateRecordInsights();
+  if(stats.storageRevision!==undefined &&
+    ((STATE.recordInsights && Number(STATE.recordInsights.data.revision)!==Number(stats.storageRevision)) ||
+      [...recordInsightsCache.values()].some(entry=>Number(entry.data.revision)!==Number(stats.storageRevision))))invalidateRecordInsights();
 }
 function recordProtectionNotice() {
   if(STATE.storageFormat!==3 || !STATE.currentUser || !isAdminUser())return null;
@@ -348,31 +349,41 @@ async function performRecordLoad() {
 
 let recordProjectionRequest=null;
 const recordInsightsCache=new Map();
-let recordInsightsRequest=null;
+const recordInsightsRequests=new Map();
 let recordInsightsGeneration=0;
 function invalidateRecordInsights() {
   recordInsightsGeneration++;
-  recordInsightsCache.clear();recordInsightsRequest=null;
+  recordInsightsCache.clear();recordInsightsRequests.clear();
   STATE.recordInsights=null;STATE.recordBatchInsights={};
 }
 function recordInsightsKey(filters=getAnalyticsFilters()) {
-  return JSON.stringify([STATE.sharedWorkspaceId,STATE.currentUser?.id,filters]);
+  return JSON.stringify([STATE.sharedWorkspaceId,STATE.currentUser?.id,STATE.currentUser?.rol,filters]);
+}
+function getCachedRecordInsights(filters=getAnalyticsFilters()) {
+  const key=recordInsightsKey(filters);
+  const cached=recordInsightsCache.get(key);
+  if(cached && cached.until>Date.now())return cached;
+  if(STATE.recordInsights?.key===key && STATE.recordInsights.until>Date.now())
+    return {data:STATE.recordInsights.data,until:STATE.recordInsights.until};
+  return null;
 }
 async function loadRecordInsights(filters=getAnalyticsFilters(), forBatch=false) {
   if(STATE.storageFormat!==3)return true;
   if(typeof canWorkLocally==='function' && canWorkLocally())return false;
   filters={...filters};
   const key=recordInsightsKey(filters);
-  const cached=recordInsightsCache.get(key);
-  if(cached && cached.until>Date.now()) {
+  const cached=getCachedRecordInsights(filters);
+  if(cached) {
     if(!forBatch)STATE.recordInsights={key,data:cached.data,until:cached.until};return cached.data;
   }
-  if(recordInsightsRequest?.key===key)return recordInsightsRequest.promise;
+  if(recordInsightsRequests.has(key))return recordInsightsRequests.get(key);
   const promise=(async()=>{
+    let generation=recordInsightsGeneration;
     try {
       if(!await prepareRecordRead())return false;
-      const generation=recordInsightsGeneration;
+      generation=recordInsightsGeneration;
       const response=await appFetch('/api/stats?'+new URLSearchParams({insights:'1',...filters,cacheRevision:String(generation)}),{cache:'no-store'});
+      if(generation!==recordInsightsGeneration || key!==recordInsightsKey(filters))return false;
       if(!response.ok){await readStorageFailure(response);return false;}
       const data=await response.json();
       if(generation!==recordInsightsGeneration || key!==recordInsightsKey(filters))return false;
@@ -381,10 +392,10 @@ async function loadRecordInsights(filters=getAnalyticsFilters(), forBatch=false)
       if(recordInsightsCache.size>20)recordInsightsCache.delete(recordInsightsCache.keys().next().value);
       if(!forBatch && recordInsightsKey()===key)STATE.recordInsights={key,data,until};
       return data;
-    } catch {markSharedStorageFailure(null);return false;}
+    } catch {if(generation===recordInsightsGeneration && key===recordInsightsKey(filters))markSharedStorageFailure(null);return false;}
   })();
-  recordInsightsRequest={key,promise};
-  try{return await promise;}finally{if(recordInsightsRequest?.promise===promise)recordInsightsRequest=null;}
+  recordInsightsRequests.set(key,promise);
+  try{return await promise;}finally{if(recordInsightsRequests.get(key)===promise)recordInsightsRequests.delete(key);}
 }
 async function loadRecordBatchInsights(id) {
   const data=await loadRecordInsights({...ANALYTICS_FILTER_DEFAULTS,productType:'laptop',batch:id},true);

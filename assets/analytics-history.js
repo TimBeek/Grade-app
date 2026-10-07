@@ -270,8 +270,8 @@ function renderTransitionChips(transitions) {
 // Per-supplier roll-up of the grade comparison. The headline management view:
 // which suppliers under-grade (we capture margin) vs over-grade (we overpay),
 // and the average grade-uplift per device — the real "rendement" signal.
-function getSupplierScorecardRows(items) {
-  const rows = getSupplierComparisonRows(items);
+function getSupplierScorecardRows(items, comparisonRows) {
+  const rows = comparisonRows || getSupplierComparisonRows(items);
   const map = new Map();
   rows.forEach(row => {
     const key = (row.batchSupplier || '').trim() || 'Onbekend';
@@ -1411,9 +1411,10 @@ function renderEmployeeTable(rows, productScope = 'all') {
 function buildBatchProgressRows(productFilter) {
   const rows = [];
   if (productFilter === 'all' || productFilter === 'laptop') {
+    const verifiedCodes = getVerifiedLaptopCompletionCodes();
     BATCHES.forEach(batch => {
       const total = (batch.laptops || []).length;
-      const open = openLaptopCount(batch);
+      const open = openLaptopCount(batch, verifiedCodes);
       const done = Math.max(total - open, 0);
       rows.push({
         label: `Laptop batch ${batch.nummer || '-'}`,
@@ -1806,8 +1807,8 @@ function renderDivergingBar(rows, opts = {}) {
 }
 
 // Per-batch grade uplift (net grade delta / device) as a diverging bar.
-function buildBatchYieldRows(supplierItems) {
-  return getSupplierComparisonStats(supplierItems).batches
+function buildBatchYieldRows(supplierItems, aggregate) {
+  return (aggregate || getSupplierComparisonStats(supplierItems)).batches
     .filter(batch => batch.total > 0)
     .slice(0, 12)
     .map(batch => ({
@@ -2163,16 +2164,24 @@ function renderTimingMethodRows(productScope, laptop, monitor) {
   return renderAnalyticsRows(rows, 'No timing data available yet.');
 }
 
+const analyticsLoadingKeys = new Set();
 function renderAnalytics() {
   const isAdmin = isAdminUser();
   const filters = getAnalyticsFilters();
   const activeTab = getAnalyticsTab();
   const v3=STATE.storageFormat===3;
-  const remote=v3 && STATE.recordInsights?.key===recordInsightsKey() && STATE.recordInsights.until>Date.now() ? STATE.recordInsights.data : null;
+  const key=recordInsightsKey();
+  const loadingKey=key+':'+recordInsightsGeneration;
+  const cached=v3 ? getCachedRecordInsights(filters) : null;
+  if(cached) STATE.recordInsights={key,...cached};
+  const remote=cached?.data || null;
   if(v3 && !remote) {
-    if(!STATE.sharedStorageError && !STATE.recordInsightsLoading) {
-      STATE.recordInsightsLoading=true;
-      runUiAction(null, () => loadRecordInsights(), {key:'insights:'+recordInsightsKey(),label:'Loading...'}).then(()=>{STATE.recordInsightsLoading=false;if(STATE.currentScreen==='analytics')render();});
+    if(!STATE.sharedStorageError && !analyticsLoadingKeys.has(loadingKey)) {
+      analyticsLoadingKeys.add(loadingKey);
+      runUiAction(null, () => loadRecordInsights(), {key:'insights:'+loadingKey,label:'Loading...'}).finally(()=>{
+        analyticsLoadingKeys.delete(loadingKey);
+        if(STATE.currentScreen==='analytics' && recordInsightsKey()===key)render();
+      });
     }
     return `<div class="screen analytics-screen">${renderDashboardTabs('analytics')}
       ${renderAnalyticsSidebar(activeTab,filters.productType)}
@@ -2190,35 +2199,36 @@ function renderAnalytics() {
   const counts = remote ? remote.counts : getAnalyticsCounts(completedItems);
   const totalCompleted = remote ? remote.completed : completedItems.length;
   const openCount = remote ? remote.open : countAnalyticsStatus(filteredItems, 'open');
-  const laptopTiming = remote ? remote.laptopTiming : buildLaptopTimingStats(filteredItems);
-  const monitorTiming = remote ? remote.monitorTiming : buildMonitorTimingStats(filteredItems);
-  const todayCompleted = remote ? remote.today : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
-  const weekCompleted = remote ? remote.week : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
+  const needsTiming = activeTab==='overview' || activeTab==='throughput';
+  const laptopTiming = !needsTiming ? null : remote ? remote.laptopTiming : buildLaptopTimingStats(filteredItems);
+  const monitorTiming = !needsTiming ? null : remote ? remote.monitorTiming : buildMonitorTimingStats(filteredItems);
+  const todayCompleted = activeTab!=='overview' ? 0 : remote ? remote.today : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'today')).length;
+  const weekCompleted = activeTab!=='overview' ? 0 : remote ? remote.week : completedItems.filter(item => isWithinAnalyticsRange(item.date, 'week')).length;
   const completionRate = remote ? safePercent(totalCompleted,totalCompleted+openCount) : safePercent(activeWorkItems.filter(item => item.status !== 'open').length, activeWorkItems.length);
-  const employeeRows = remote ? remote.employees : buildEmployeeRows(filteredItems);
-  const batchProgressRows = buildBatchProgressRows(filters.productType);
-  const trendBuckets = buildTrendBuckets(filteredItems,7).map(bucket=>{
+  const employeeRows = activeTab==='throughput' ? (remote ? remote.employees : buildEmployeeRows(filteredItems)) : [];
+  const batchProgressRows = activeTab==='throughput' ? buildBatchProgressRows(filters.productType) : [];
+  const trendBuckets = ['overview','throughput'].includes(activeTab) ? buildTrendBuckets(filteredItems,7).map(bucket=>{
     if(!remote)return bucket;
     const day=bucket.date.toLocaleDateString('sv-SE',{timeZone:'Europe/Amsterdam'});
     const row=remote.trend.find(row=>row.day===day);return {...bucket,value:Number(row?.value||0),repair:Number(row?.repair||0)};
-  });
-  const supplierComparisonItems = filteredItems.filter(item => item.source === 'history' && item.rawItem).map(item => item.rawItem);
-  const supplierStats = remote ? remote.supplierStats : getSupplierComparisonStats(supplierComparisonItems);
+  }) : [];
+  const supplierComparisonItems = activeTab==='batch' ? filteredItems.filter(item => item.source === 'history' && item.rawItem).map(item => item.rawItem) : [];
+  const supplierStats = activeTab==='batch' ? (remote ? remote.supplierStats : getSupplierComparisonStats(supplierComparisonItems)) : {summary:{total:0}};
   const supplierSummary = supplierStats.summary;
   const upliftAvg = supplierSummary.total ? Math.round((supplierSummary.netDelta / supplierSummary.total) * 100) / 100 : 0;
-  const supplierScorecardRows = remote ? remote.supplierScorecard : getSupplierScorecardRows(supplierComparisonItems);
-  const favorabilityRows = getSupplierFavorabilityRows(supplierScorecardRows);
-  const batchYieldRows = remote ? supplierStats.batches.slice(0,12).map(row=>({label:`Batch ${row.batchNummer}`,value:row.avgUplift,meta:`${row.batchSupplier} · ${row.total} devices`})) : buildBatchYieldRows(supplierComparisonItems);
+  const supplierScorecardRows = activeTab==='batch' ? (remote ? remote.supplierScorecard : getSupplierScorecardRows(supplierComparisonItems,supplierStats.rows)) : [];
+  const favorabilityRows = activeTab==='batch' ? getSupplierFavorabilityRows(supplierScorecardRows) : [];
+  const batchYieldRows = activeTab!=='batch' ? [] : buildBatchYieldRows(supplierComparisonItems,supplierStats);
   const premiumBase = (counts.A || 0) + (counts.B || 0) + (counts.C || 0);
   const premiumYield = safePercent((counts.A || 0) + (counts.B || 0), premiumBase);
   const usableYield = safePercent((counts.A || 0) + (counts.B || 0) + (counts.C || 0), totalCompleted);
   const rejectRate = safePercent(counts.D || 0, totalCompleted);
   const concordance = safePercent(supplierSummary.same, supplierSummary.total);
-  const repairItems = remote ? {length:remote.repairCount} : getRepairItems(filteredItems);
-  const repairBinRows = remote ? remote.bins : buildRepairBinRows(repairItems);
-  const repairBatchRows = remote ? remote.repairBatches : buildRepairBatchRows(filteredItems);
-  const routeSplit = remote ? {production:remote.repairRoutes.production||0,direct:remote.repairRoutes.direct||0,reject:remote.repairCount-(remote.repairRoutes.production||0)-(remote.repairRoutes.direct||0)} : getRepairRouteSplit(repairItems);
-  const paretoRows = remote ? remote.causes : buildAnalyticsProblemRows(repairItems);
+  const repairItems = activeTab!=='repair' ? [] : remote ? {length:remote.repairCount} : getRepairItems(filteredItems);
+  const repairBinRows = activeTab!=='repair' ? [] : remote ? remote.bins : buildRepairBinRows(repairItems);
+  const repairBatchRows = activeTab!=='repair' ? [] : remote ? remote.repairBatches : buildRepairBatchRows(filteredItems);
+  const routeSplit = activeTab!=='repair' ? {} : remote ? {production:remote.repairRoutes.production||0,direct:remote.repairRoutes.direct||0,reject:remote.repairCount-(remote.repairRoutes.production||0)-(remote.repairRoutes.direct||0)} : getRepairRouteSplit(repairItems);
+  const paretoRows = activeTab!=='repair' ? [] : remote ? remote.causes : buildAnalyticsProblemRows(repairItems);
   const rangeLabel = filters.dateRange === 'today' ? 'today'
     : filters.dateRange === 'week' ? 'last 7 days'
       : filters.dateRange === 'month' ? 'last 30 days'
@@ -2228,7 +2238,7 @@ function renderAnalytics() {
       : 'all products';
   const activeTabMeta = ANALYTICS_TABS.find(tab => tab.key === activeTab) || ANALYTICS_TABS[0];
 
-  const overviewTab = `
+  const overviewTab = () => `
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>At a glance</h2><span>Six signals for ${productScopeLabel} · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--overview">
@@ -2258,7 +2268,7 @@ function renderAnalytics() {
     </section>
   `;
 
-  const batchTab = `
+  const batchTab = () => `
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Quality signals</h2><span>Grade outcome and supplier value · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
@@ -2275,14 +2285,14 @@ function renderAnalytics() {
       <div class="analytics-grid">
         ${renderAnalyticsPanel('Grade mix', 'Distribution across A/B/C/X for the current filters.', render100StackedGradeBar(counts))}
         ${renderAnalyticsPanel('Yield per batch', 'Net grade uplift per device; green beats and red misses.', renderDivergingBar(batchYieldRows, { empty: 'No supplier grades to compare yet.' }))}
-        ${renderSupplierComparisonPanel(supplierComparisonItems,remote?supplierStats:null)}
+        ${renderSupplierComparisonPanel(supplierComparisonItems,supplierStats)}
         ${renderAnalyticsPanel('Supplier favourability index', 'One 0–100 buy/avoid score per supplier (uplift + % above − % below).', renderScoreBars(favorabilityRows, { empty: 'No supplier grades yet.' }), 'analytics-wide')}
         ${renderAnalyticsPanel('Supplier scorecard', 'Per supplier: who under- or over-grades and the average uplift per device.', renderSupplierScorecard(supplierScorecardRows), 'analytics-wide')}
       </div>
     </section>
   `;
 
-  const throughputTab = `
+  const throughputTab = () => `
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Flow &amp; capacity</h2><span>Reliable output and timing · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto">
@@ -2300,7 +2310,7 @@ function renderAnalytics() {
     </section>
   `;
 
-  const repairTab = `
+  const repairTab = () => `
     <section class="analytics-section analytics-section-first">
       <div class="analytics-section-head"><h2>Repair KPIs</h2><span>Size of the repair queue and its bins · ${rangeLabel}</span></div>
       <div class="analytics-kpi-grid analytics-kpi-grid--auto analytics-kpi-grid--compact">
@@ -2323,10 +2333,10 @@ function renderAnalytics() {
     </section>
   `;
 
-  const tabBody = activeTab === 'batch' ? batchTab
-    : activeTab === 'throughput' ? throughputTab
-      : activeTab === 'repair' ? repairTab
-        : overviewTab;
+  const tabBody = activeTab === 'batch' ? batchTab()
+    : activeTab === 'throughput' ? throughputTab()
+      : activeTab === 'repair' ? repairTab()
+        : overviewTab();
 
   return `
     <div class="screen analytics-screen analytics-pro-screen">

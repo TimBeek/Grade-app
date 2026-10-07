@@ -91,6 +91,29 @@ test('SQL insights keep grade, supplier, repair bins, dates, employee timing and
     assert.equal((await readRecordInsights(sql,'qa',all)).repairCount,2);
   }finally{await db.close();}
 });
+test('optimized insight joins preserve cross-product completion, supplier fallback, deletion and workspace isolation',async()=>{
+  const {db,sql,store}=await fixture();
+  try {
+    const savedAt=new Date().toISOString();
+    const state={...emptyState(),batches:[{id:'b',nummer:'Right',laptops:[{sticker:'L'},{sticker:'G',leverancier_class:'B'},{sticker:'O'},{sticker:'M'}]},
+      {id:'wrong',nummer:'Wrong',laptops:[{sticker:'G',leverancier_class:'X'}]}],
+      monitorBatches:[{id:'mon',nummer:'Monitors',monitors:[{sticker:'G'},{sticker:'M'}]}],
+      history:[{id:'graded',sticker:'G',batchId:'b',grade:'A',user_id:'one',savedAt,result:{problems:[]}}],
+      labelPrints:[{id:'label',sticker:'L',printedAt:savedAt},{id:'redundant',sticker:'G',printedAt:savedAt}],
+      monitorLabelPrints:[{id:'monitor',sticker:'M',grade:'B',printedAt:savedAt}]};
+    await store.merge({mutationId:randomUUID(),operations:snapshotRecords(state).map(row=>({...row,expectedRevision:0}))});
+    await db.query("INSERT INTO remarkt_workspaces(id) VALUES('another')");
+    const other=createRecordStore(sql,'another');
+    await other.merge({mutationId:randomUUID(),operations:snapshotRecords({...emptyState(),history:[{id:'other',sticker:'O',grade:'X',savedAt}]}).map(row=>({...row,expectedRevision:0}))});
+    await store.merge({mutationId:randomUUID(),operations:[{collection:'history',id:'deleted',deleted:true,expectedRevision:0,payload:{id:'deleted',sticker:'O',grade:'X',savedAt}}]});
+    const result=await readRecordInsights(sql,'qa',all);
+    assert.equal(result.completed,2);assert.equal(result.open,3);assert.equal(result.total,6);
+    assert.equal(result.supplierStats.summary.improved,1);assert.equal(result.counts.D,0);
+    assert.equal((await readRecordInsights(sql,'qa',{...all,productType:'monitor'})).open,1);
+    assert.equal((await readRecordInsights(sql,'qa',{...all,productType:'laptop'})).open,2);
+    assert.equal((await readRecordInsights(sql,'qa',{...all,status:'label'})).total,1);
+  }finally{await db.close();}
+});
 test('10,000 assessments produce category-sized insight responses rather than archive-sized payloads',async()=>{
   const {db,sql,store}=await fixture();
   try {
