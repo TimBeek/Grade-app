@@ -79,9 +79,27 @@ async function tryOfflineLogin(id,password) {
   if(!await beginLocalWork({allowEmpty:true})) {STATE.currentUser=before;return false;}
   STATE.currentScreen='home';STATE.homeTab='workflow';setAppMessage(null);return true;
 }
+function localWorkNoticeIdentity() {
+  return {
+    key:'remarktLocalWorkNoticeDismissed:' + JSON.stringify([STATE.sharedWorkspaceId,STATE.currentUser?.id]),
+    signature:JSON.stringify([Boolean(STATE.offlineManualOnly),Boolean(STATE.localSyncNeedsManager)])
+  };
+}
+function dismissLocalWorkNotice() {
+  if(!canWorkLocally())return false;
+  const notice=localWorkNoticeIdentity();
+  STATE.dismissedLocalWorkNotice=notice;
+  try { sessionStorage.setItem(notice.key,notice.signature); } catch { /* Memory fallback. */ }
+  return true;
+}
 function renderLocalWorkStatus() {
   if(!canWorkLocally())return '';
+  const notice=localWorkNoticeIdentity(),dismissed=STATE.dismissedLocalWorkNotice;
+  let hidden=dismissed?.key===notice.key && dismissed.signature===notice.signature;
+  try { hidden=hidden || sessionStorage.getItem(notice.key)===notice.signature; } catch { /* Memory fallback. */ }
+  if(hidden)return '';
   return `<section class="local-work-status" role="status" aria-live="polite"><strong>Local work mode</strong>
+    <button class="storage-status-close" data-action="dismiss_local_work_notice" type="button" aria-label="Close" title="Close">${uiIcon('close')}</button>
     <span>Saved on this computer; synchronization is pending.</span>
     <button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button>
     ${isAdminUser()?'<button class="btn btn-secondary" data-action="restore_work_backup" type="button">Restore work lists</button><details><summary>Local work instructions</summary><p>Do not clear browser data. Use separate devices or batches per workstation to avoid duplicate work.</p><p>Offline sign-in is available only after a successful personal-password sign-in on this computer, for up to seven days. Account changes require the server.</p></details>':''}

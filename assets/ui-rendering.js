@@ -318,8 +318,8 @@ function renderStorageStatusCore() {
     let dismissed = STATE.dismissedRecoveryNotice === STATE.sharedWorkspaceId;
     try { dismissed = dismissed || localStorage.getItem(key) === '1'; } catch { /* Memory fallback. */ }
     if (dismissed) return '';
-    return `<section class="storage-status storage-status-dismissible" role="status"><strong>Temporary working database</strong>
-      <button class="storage-status-close" data-action="dismiss_recovery_notice" type="button" aria-label="Close" title="Close">×</button>
+    return `<section class="storage-status storage-status-dismissible recovery-notice" role="status"><strong>Temporary working database</strong>
+      <button class="storage-status-close" data-action="dismiss_recovery_notice" type="button" aria-label="Close" title="Close">${uiIcon('close')}</button>
       <p>Existing accounts and current batches are available. Previous grading history is awaiting recovery.</p>
       <button class="btn btn-secondary" data-action="download_local_backup" type="button">Download local recovery copy</button></section>`;
   }
@@ -491,12 +491,18 @@ function renderThemeToggle() {
   `;
 }
 
+function removeDismissedBanner(selector) {
+  // Closing information must not replace forms or reset the current grading.
+  document.querySelector?.(selector)?.remove();
+  if(typeof fitInspectionViewport==='function')fitInspectionViewport();
+}
+
 function renderAppMessage() {
   if (!STATE.appMessage) return '';
   return `
     <div class="app-alert ${STATE.appMessage.type === 'success' ? 'success' : ''}">
       <span>${escapeHtml(STATE.appMessage.text)}</span>
-      <button type="button" data-action="dismiss_message">Close</button>
+      <button class="storage-status-close" type="button" data-action="dismiss_message" aria-label="Close" title="Close">${uiIcon('close')}</button>
     </div>
   `;
 }

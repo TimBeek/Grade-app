@@ -1067,14 +1067,20 @@ async function handleAction(action, el) {
   if (action === 'toggle_fullscreen') {
     await toggleAppFullscreen(); return;
   }
+  if (action === 'dismiss_local_work_notice') {
+    if(dismissLocalWorkNotice()) {
+      removeDismissedBanner('.local-work-status');
+    }
+    return;
+  }
   if (action === 'dismiss_record_protection') {
     dismissRecordProtectionNotice();
-    render(); return;
+    removeDismissedBanner('.storage-protection'); return;
   }
   if (action === 'dismiss_recovery_notice') {
     STATE.dismissedRecoveryNotice = STATE.sharedWorkspaceId;
     try { localStorage.setItem('remarktRecoveryNoticeDismissed:' + STATE.sharedWorkspaceId, '1'); } catch { /* Memory fallback. */ }
-    render(); return;
+    removeDismissedBanner('.recovery-notice'); return;
   }
   if (action === 'retry_storage') {
     if(typeof appRetryAfter!=='undefined')appRetryAfter=0;
@@ -1132,7 +1138,8 @@ async function handleAction(action, el) {
   switch (action) {
     case 'dismiss_message':
       setAppMessage(null);
-      break;
+      removeDismissedBanner('.app-alert');
+      return;
     case 'confirm_supplier_notice':
       confirmSupplierNotice();
       break;

@@ -148,6 +148,77 @@ test('employees do not see yellow infrastructure notices, but receive actionable
   assert.match(app.renderStorageStatus(),/Data protection/);
 });
 
+test('local work banner closes per account and workspace without replacing input, grading or local saves',async()=>{
+  const app=guidedSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='local-qa';STATE.currentUser={id:'worker',rol:'Grader'};STATE.sharedStorageError='STORAGE_QUOTA_EXCEEDED';STATE.offlineWork=true;STATE.localRecoveryAvailable=true;STATE.pendingRecordMutation={id:'queued'};STATE.sharedSyncPending=true;",app);
+  const before=vm.runInContext('JSON.stringify([STATE.currentLaptop,STATE.currentGrading,STATE.pendingRecordMutation])',app);
+  assert.match(app.renderStorageStatus(),/dismiss_local_work_notice/);
+  assert.match(app.renderStorageStatus(),/type="button" aria-label="Close"/);
+  let removed=0, fitted=0;
+  app.document.querySelector=selector=>selector==='.local-work-status'?{remove(){removed++;}}:null;
+  app.fitInspectionViewport=()=>{fitted++;};
+  app.render=()=>{throw Error('Closing must not repaint or erase form input');};
+  await app.handleAction('dismiss_local_work_notice',{});
+  assert.equal(removed,1);assert.equal(fitted,1);
+  assert.equal(app.renderStorageStatus(),'');
+  assert.equal(app.canWorkLocally(),true);
+  assert.equal(vm.runInContext('STATE.sharedSyncPending',app),true);
+  assert.equal(vm.runInContext('JSON.stringify([STATE.currentLaptop,STATE.currentGrading,STATE.pendingRecordMutation])',app),before);
+  vm.runInContext('STATE.dismissedLocalWorkNotice=null;STATE.currentGrading.huidigeIndex=4;',app);
+  assert.equal(app.renderStorageStatus(),'','Session storage survives refresh and step changes');
+  vm.runInContext("STATE.currentUser={id:'other-worker',rol:'Grader'};",app);
+  assert.match(app.renderStorageStatus(),/dismiss_local_work_notice/);
+  vm.runInContext("STATE.currentUser={id:'worker',rol:'Grader'};STATE.sharedWorkspaceId='other-workspace';",app);
+  assert.match(app.renderStorageStatus(),/dismiss_local_work_notice/);
+  vm.runInContext("STATE.sharedWorkspaceId='local-qa';STATE.localSyncNeedsManager=true;",app);
+  assert.match(app.renderStorageStatus(),/Ask a manager/,'New sync problem reappears');
+  vm.runInContext('STATE.localSyncNeedsManager=false;STATE.offlineManualOnly=true;',app);
+  assert.match(app.renderStorageStatus(),/No cached supplier lists/,'New inventory limitation reappears');
+  vm.runInContext('STATE.offlineManualOnly=false;STATE.localBackupError=true;',app);
+  assert.match(app.renderStorageStatus(),/Work is temporarily paused/);
+  assert.doesNotMatch(app.renderStorageStatus(),/dismiss_local_work_notice/);
+  assert.equal(app.dismissLocalWorkNotice(),false);
+});
+
+test('local work dismissal tolerates unavailable session storage and never hides blocking failures',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='qa';STATE.currentUser={id:'worker',rol:'Grader'};STATE.sharedStorageError='STORAGE_UNAVAILABLE';STATE.offlineWork=true;",app);
+  app.sessionStorage.getItem=()=>{throw Error('Browser storage blocked');};
+  app.sessionStorage.setItem=()=>{throw Error('Browser storage blocked');};
+  await app.handleAction('dismiss_local_work_notice',{});
+  assert.equal(app.renderStorageStatus(),'');
+  vm.runInContext("STATE.sharedStorageError='STORAGE_CORRUPT';",app);
+  assert.match(app.renderStorageStatus(),/Work is temporarily paused/);
+  vm.runInContext('STATE.currentUser=null;',app);
+  assert.equal(app.dismissLocalWorkNotice(),false);
+});
+
+test('information banners share an accessible close icon and closing never repaints employee input',async()=>{
+  const app=loadAppSandbox();
+  vm.runInContext("STATE.storageFormat=3;STATE.sharedWorkspaceId='recovery-qa';STATE.currentUser=USERS.find(u=>u.id==='tim');STATE.currentScreen='home';STATE.recordProtection={status:'current',mirrorStatus:'not-configured'};",app);
+  app.setAppMessage('Saved successfully','success');
+  const removed=[];let fitted=0;
+  app.document.querySelector=selector=>({remove(){removed.push(selector);}});
+  app.fitInspectionViewport=()=>{fitted++;};
+  app.render=()=>{throw Error('Informational dismissal must not replace input');};
+  for(const [action,markup,selector] of [
+    ['dismiss_message',app.renderAppMessage(),'.app-alert'],
+    ['dismiss_recovery_notice',app.renderStorageStatusCore(),'.recovery-notice'],
+    ['dismiss_record_protection',app.renderRecordProtectionAlerts(),'.storage-protection']
+  ]) {
+    assert.match(markup,/aria-label="Close" title="Close"><svg/);
+    await app.handleAction(action,{});
+    assert.equal(removed.at(-1),selector);
+  }
+  assert.equal(fitted,3);
+  assert.equal(app.renderAppMessage(),'');
+  assert.equal(app.renderStorageStatusCore(),'');
+  assert.equal(app.renderRecordProtectionAlerts(),'');
+  vm.runInContext("STATE.sharedStorageError='STORAGE_UNAVAILABLE';",app);
+  assert.match(app.renderStorageStatusCore(),/Live database unavailable/);
+  assert.doesNotMatch(app.renderStorageStatusCore(),/storage-status-close/);
+});
+
 test('local continuity never loads example batches and requires durable storage, correct workspace and verified credentials',async()=>{
   const {webcrypto}=require('node:crypto');
   const app=loadAppSandbox({gzip:true});app.window.crypto=webcrypto;
