@@ -413,6 +413,51 @@ function importedArontoRowToLaptop(row, sourceName) {
   };
 }
 
+function importedTouchValue(value) {
+  const text=normalizeText(value);
+  if(/^(y|yes|ja|true|1)$/i.test(text))return true;
+  if(/^(n|no|nee|false|0)$/i.test(text))return false;
+  return null;
+}
+
+function parseAccountLaptopDescription(row) {
+  // Some supplier exports leave BIOS/spec columns empty and encode the actual
+  // inventory as Make/Model/CPU/RAM/Disk/... in Account Device Name instead.
+  // Recognize only that structure; a free-text name is not a spec source.
+  const description=sanitizeExternalText(getRowValue(row,['Account Device Name','AccountDeviceName']),2000);
+  const parts=description.split('/').map(part=>normalizeText(part));
+  const capacity=/^[1-9]\d*(?:[.,]\d+)?\s*(?:MB|GB|TB)$/i;
+  let cpuIndex=2;
+  // Tablet/Yoga exports sometimes insert empty separators before the CPU.
+  // Skip these only when a recognizable CPU follows, never shift a missing spec.
+  let nextCpuIndex=cpuIndex;
+  while(nextCpuIndex<parts.length && !parts[nextCpuIndex])nextCpuIndex++;
+  if(nextCpuIndex>cpuIndex && /^\d+\s*x\s+\S/i.test(parts[nextCpuIndex]||''))cpuIndex=nextCpuIndex;
+  const diskMatch=(parts[cpuIndex+2]||'').match(/^([1-9]\d*(?:[.,]\d+)?\s*(?:MB|GB|TB))(?:\s+(?:NVMe|SSD|HDD|SATA|SAS|eMMC))*$/i);
+  if(parts.length<5 || !parts[0] || !parts[1] ||
+    !capacity.test(parts[cpuIndex+1]||'') || !diskMatch)return {};
+  const touchMatch=description.match(/(?:^|\/)\s*Touch\s*:\s*(Y|N|Yes|No|Ja|Nee|true|false|1|0)\s*(?=\/|$)/i);
+  const keyboardMatch=description.match(/(?:^|\/)\s*Keyboard\s*Lang\s*:\s*([^/]*)/i);
+  const screenMatch=description.match(/(?:^|\/)\s*Screen\s*Size\s*:\s*([^/]*)/i);
+  // GPU model names can themselves contain '/', e.g. Mobile / Max-Q.
+  // Preserve the complete tail, rather than treating those as new columns.
+  const gradeMarkers=[...description.matchAll(/\/(?:Screen|Case)\s*Grade\s*:[^/]*(?=\/)/gi)];
+  const lastGrade=gradeMarkers.at(-1);
+  let gpu=lastGrade?description.slice(lastGrade.index+lastGrade[0].length+1):'';
+  if(/^[^/]*:/.test(gpu))gpu='';
+  return {
+    merk:sanitizeExternalText(parts[0],80),
+    model:sanitizeExternalText(parts[1],160),
+    processor:sanitizeExternalText(parts[cpuIndex].replace(/^\d+\s*x\s*/i,''),120),
+    ram:parts[cpuIndex+1].replace(/\s+/g,'').toUpperCase(),
+    ssd:diskMatch[1].replace(/\s+/g,'').toUpperCase(),
+    touch:touchMatch?importedTouchValue(touchMatch[1]):null,
+    keyboard:keyboardMatch?sanitizeExternalText(keyboardMatch[1],80):'',
+    display:screenMatch?sanitizeExternalText(screenMatch[1],80):'',
+    gpu:sanitizeExternalText(gpu,180)
+  };
+}
+
 function importedRowToLaptop(row, sourceName, forcedSticker = '') {
   // forcedSticker wordt gebruikt door de geaggregeerde-lijst-import (Count/Model
   // zonder barcode), waar we per stuk zelf een unieke tag toekennen.
@@ -441,26 +486,39 @@ function importedRowToLaptop(row, sourceName, forcedSticker = '') {
   }
   if (!sticker) return null;
 
+  const description=parseAccountLaptopDescription(row);
+  const specValue=(names,maxLength=160)=>{
+    const text=value(names,maxLength);
+    return /^0(?:[.,]0+)?(?:\s*(?:MB|GB|TB))?$/i.test(text)?'':text;
+  };
   const deviceName = value(['Device Name', 'DeviceName', 'Product Name', 'Omschrijving', 'Description', 'Name'], 180);
-  const merk = value(['BIOS Make', 'Make', 'Brand', 'Merk', 'Manufacturer'], 80) || deviceName.split(' ')[0] || '';
-  const model = value(['BIOS Model', 'Model', 'BIOS Product Name'], 160) || deviceName.replace(merk, '').trim();
-  const gpu = cleanGpu(value(['[GPU]', 'GPU', 'Graphics', 'Videokaart', 'Videocard', 'Video Card'], 180));
+  const merk = specValue(['BIOS Make', 'Make', 'Brand', 'Merk', 'Manufacturer'], 80) || description.merk || deviceName.split(' ')[0] || '';
+  const model = specValue(['BIOS Model', 'Model', 'BIOS Product Name'], 160) || description.model || deviceName.replace(merk, '').trim();
+  const gpu = cleanGpu(specValue(['[GPU]', 'GPU', 'Graphics', 'Videokaart', 'Videocard', 'Video Card'], 180) || description.gpu);
+  const displayValue=specValue(['Display', 'DisplaySize', 'Display Size', 'Screen', 'Scherm'],80) || description.display || '';
+  const touchColumn=importedTouchValue(value(['Touchscreen','Touch'],40));
+  const displayDeclaresTouch=/\btouch\b/i.test(displayValue);
+  const touch=touchColumn!==null?touchColumn:displayDeclaresTouch?displayTextHasTouch(displayValue):description.touch;
+  const formattedDisplay=formatDisplay(displayValue);
+  const display=touch===true
+    ? (displayTextHasTouch(formattedDisplay)?formattedDisplay:`touch${formattedDisplay?' '+formattedDisplay:''}`)
+    : touch===false?formattedDisplay.replace(/^touch\s*/i,''):formattedDisplay;
   return {
     sticker,
     merk,
     model,
     processor: formatProcessorWithGeneration(
-      value(['Processor Name', 'Processor', 'CPU', 'Processor Type'], 120),
+      specValue(['Processor Name', 'Processor', 'CPU', 'Processor Type'], 120) || description.processor,
       value(['ProcGen', 'Processor Generation', 'Processor Generatie'], 80)
     ),
-    ram: formatMemory(value(['Memory', 'RAM', 'Geheugen'], 40)),
+    ram: formatMemory(specValue(['Memory', 'RAM', 'Geheugen'], 40) || description.ram),
     ssd: formatStorage(
-      value(['Hard Disk Size Overall', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80),
+      specValue(['Hard Disk Size Overall', 'Storage', 'Disk Size', 'SSD', 'HDD'], 80),
       // Storage1Size/StorageSize bevatten de maat mét eenheid ("512 GB"); die valt
       // in het drive-argument, want formatStorage haalt daar het formaat uit.
-      value(['Hard Drive Count', 'Hard Disk', 'Drive', 'Storage1Size', 'StorageSize'], 80)
-    ),
-    display: formatDisplay(value(['Display', 'DisplaySize', 'Display Size', 'Screen', 'Scherm'], 80)),
+      specValue(['Hard Drive Count', 'Hard Disk', 'Drive', 'Storage1Size', 'StorageSize'], 80)
+    ) || formatStorage('',description.ssd),
+    display,
     serial: value(['Serial Number', 'SerialNumber', 'Serial', 'Serienummer', 'Service Tag'], 80),
     leverancier_class: value(['OpticalGrade', 'Quality class', 'Quality Class', 'Class', 'Grade', 'Leverancier Class'], 40),
     meldingen: value(['Device Errors', 'Errors', 'Meldingen', 'Remarks', 'Remark', 'Defects', 'Problems'], 1000),
@@ -468,7 +526,7 @@ function importedRowToLaptop(row, sourceName, forcedSticker = '') {
     gpu,
     labelGpu: getNoteworthyGpu(gpu),
     pallet: value(['Pallet Id', 'Pallet', 'Pallet ID'], 80),
-    keyboard: value(['Keyboard layout', 'Keyboard', 'Keyb', 'Toetsenbord'], 80),
+    keyboard: value(['Keyboard layout', 'Keyboard', 'Keyb', 'Toetsenbord'], 80) || description.keyboard || '',
     herkomst: sanitizeExternalText(sourceName, 180),
   };
 }

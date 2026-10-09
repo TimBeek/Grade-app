@@ -2957,6 +2957,115 @@ test('gemengde leveranciersrijen scheiden laptops en monitoren', () => {
   assert.equal(monitor.videoInputs, 'HDMI / DisplayPort / VGA');
 });
 
+function accountDescriptionImportRow(overrides={}) {
+  return {
+    'Sticker Number':'IMPORT-SCAN-1','Product Group':'Laptops',
+    'Account Device Name ':'LENOVO/ThinkPad P1 Gen 2/1 x Intel(R) Core(TM) i7-9850H CPU @ 2.60GHz/16 GB/512 GB/PSU: N/Keyboard Lang: QWERTY/WIFI: Y/WebCam: Y/Touch:Y/Case Grade: /Screen Grade: /TU117GLM [Quadro T2000 Mobile / Max-Q]/CoffeeLake-H GT2 [UHD Graphics 630]',
+    'BIOS Make':'Not selected','BIOS Model':'Not selected','Processor Name':'Not selected',
+    Memory:'0','Hard Disk Size Overall':'-','Hard Drive Count':'-',GPU:'-',Display:'Not selected',
+    'Keyboard Layout':'Not selected','Serial Number':'SERIAL-SCAN-1','Quality Class':'Class C',
+    'Device Errors':'MAJOR WEAR MARK/SCRATCH ON SCREEN, MISSING AC-ADAPTER',
+    ...overrides
+  };
+}
+
+test('account description supplies missing laptop specs, complete GPU and touch without inventing a screen size',()=>{
+  const app=loadAppSandbox();
+  const laptop=app.importedRowToLaptop(accountDescriptionImportRow(),'device_list.xlsx:Sheet1');
+  assert.equal(laptop.merk,'LENOVO');assert.equal(laptop.model,'ThinkPad P1 Gen 2');
+  assert.equal(laptop.processor,'Intel(R) Core(TM) i7-9850H CPU @ 2.60GHz');
+  assert.equal(laptop.ram,'16GB');assert.equal(laptop.ssd,'512GB');assert.equal(laptop.keyboard,'QWERTY');
+  assert.equal(laptop.display,'touch','Touch is known, screen size is not');
+  assert.equal(app.isTouchscreenLaptop(laptop),true);
+  assert.match(laptop.gpu,/Quadro T2000 Mobile \/ Max-Q\]/);
+  assert.match(laptop.gpu,/UHD Graphics 630/);assert.match(laptop.labelGpu,/Quadro/);
+  assert.equal(laptop.serial,'SERIAL-SCAN-1');assert.equal(laptop.sticker,'IMPORT-SCAN-1');
+  assert.equal(laptop.leverancier_class,'Class C');assert.match(laptop.meldingen,/MISSING AC-ADAPTER/);
+  assert.equal(laptop.touchOverride,undefined,'Supplier information is not a manager override');
+});
+
+test('tablet and Yoga descriptions allow an empty CPU separator and a Case Grade GPU tail without guessing touch',()=>{
+  const app=loadAppSandbox();
+  for(const model of ['ThinkPad X1 Tablet Gen 3','ThinkPad X1 Yoga Gen 5','ThinkPad X380 Yoga']) {
+    const laptop=app.importedRowToLaptop(accountDescriptionImportRow({
+      'Account Device Name ':`LENOVO/${model}//1 x Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz/16 GB/512 GB/PSU: N/Case Grade: /Kaby Lake-R GT2 [UHD Graphics 620]`
+    }),'list.xlsx');
+    assert.equal(laptop.model,model);assert.match(laptop.processor,/i7-8550U/);
+    assert.equal(laptop.ram,'16GB');assert.equal(laptop.ssd,'512GB');
+    assert.equal(laptop.gpu,'Kaby Lake-R GT2 [UHD Graphics 620]');
+    assert.equal(laptop.display,'','No supplier touch flag or screen size was given');
+    assert.equal(laptop.touchOverride,undefined);
+  }
+});
+
+test('account descriptions support storage type suffixes and named screen sizes without treating flags as GPUs',()=>{
+  const app=loadAppSandbox();
+  const description='Dell Inc./Precision 3551/1 x Intel(R) Core(TM) i7-10850H CPU @ 2.70GHz/32 GB/1TB NVMe/PSU: N/Screen Size: 15.5"/Keyboard Lang: UK/WiFi: Y/WebCam: Y/Touch:N/Case Grade: B/Screen Grade: B/NVIDIA GP107GLM [Quadro P620]';
+  const laptop=app.importedRowToLaptop(accountDescriptionImportRow({'Account Device Name ':description}),'list.xlsx');
+  assert.equal(laptop.model,'Precision 3551');assert.equal(laptop.ram,'32GB');assert.equal(laptop.ssd,'1TB');
+  assert.equal(laptop.display,'15.5"');assert.equal(laptop.keyboard,'UK');
+  assert.equal(laptop.gpu,'NVIDIA GP107GLM [Quadro P620]');
+  assert.equal(app.importedRowToLaptop(accountDescriptionImportRow({'Account Device Name ':description,Display:'14"'}),'list.xlsx').display,'14"');
+  const flags=description.replace('NVIDIA GP107GLM [Quadro P620]','WiFi: Y/WebCam: Y');
+  assert.equal(app.importedRowToLaptop(accountDescriptionImportRow({'Account Device Name ':flags}),'list.xlsx').gpu,'');
+});
+
+test('valid separate supplier fields take precedence over account description fallbacks',()=>{
+  const app=loadAppSandbox();
+  const laptop=app.importedRowToLaptop(accountDescriptionImportRow({
+    'BIOS Make':'Dell','BIOS Model':'Latitude 5430','Processor Name':'Core i5-1245U',
+    Memory:'32768','Hard Disk Size Overall':'1024',GPU:'Intel Iris Xe',
+    Display:'non-touch 14"','Keyboard Layout':'AZERTY',Touchscreen:'No'
+  }),'device_list.xlsx');
+  assert.equal(laptop.merk,'Dell');assert.equal(laptop.model,'Latitude 5430');
+  assert.equal(laptop.processor,'Core i5-1245U');assert.equal(laptop.ram,'32GB');
+  assert.equal(laptop.ssd,'1TB');assert.equal(laptop.gpu,'Intel Iris Xe');
+  assert.equal(laptop.display,'14"');assert.equal(app.isTouchscreenLaptop(laptop),false);
+  assert.equal(laptop.keyboard,'AZERTY');
+});
+
+test('account description imports Touch Y/N while preserving explicit touch information and Surface defaults',()=>{
+  const app=loadAppSandbox();
+  const base=accountDescriptionImportRow();
+  const positive=app.importedRowToLaptop({...base,Display:'W14"'},'list.xlsx');
+  assert.equal(positive.display,'touch 14"');
+  const negative=app.importedRowToLaptop({...base,'Account Device Name ':base['Account Device Name '].replace('Touch:Y','Touch:N'),Display:'W14"'},'list.xlsx');
+  assert.equal(negative.display,'14"');assert.equal(app.isTouchscreenLaptop(negative),false);
+  assert.equal(app.importedRowToLaptop({...base,Display:'non-touch 14"'},'list.xlsx').display,'14"');
+  assert.equal(app.importedRowToLaptop({...base,Display:'touch 14"','Account Device Name ':base['Account Device Name '].replace('Touch:Y','Touch:N')},'list.xlsx').display,'touch 14"');
+  const surface=app.importedRowToLaptop({...base,'BIOS Make':'Microsoft','BIOS Model':'Surface Laptop 5',Touchscreen:'No'},'list.xlsx');
+  assert.equal(app.isTouchscreenLaptop(surface),true,'Existing Surface hardware rule remains authoritative');
+});
+
+test('unreported, unrelated or malformed account names do not invent hardware specs',()=>{
+  const app=loadAppSandbox();
+  for(const description of ['Dell Latitude 5520 - (not reported)','plain text','HP/Laptop/PSU: Y/Touch:Y/Case Grade: B']) {
+    const laptop=app.importedRowToLaptop(accountDescriptionImportRow({
+      'Account Device Name ':description,'BIOS Make':'Dell','BIOS Model':'Latitude 5520'
+    }),'device_list.xlsx');
+    assert.equal(laptop.merk,'Dell');assert.equal(laptop.model,'Latitude 5520');
+    for(const field of ['processor','ram','ssd','gpu','display','keyboard'])assert.equal(laptop[field],'',field);
+  }
+  const desktop=app.importedRowToLaptop(accountDescriptionImportRow({'Product Group':'Desktop'}),'list.xlsx');
+  assert.equal(desktop,null,'Account descriptions cannot turn desktops into laptops');
+});
+
+test('chunked and synchronous account imports agree and imported serial scans keep the canonical sticker',async()=>{
+  const app=loadAppSandbox();
+  const row=accountDescriptionImportRow(),headers=Object.keys(row);
+  const rows=[headers,headers.map(header=>row[header])];
+  const sync=app.parseSupplierRows(rows,'device_list.xlsx:Sheet1');
+  const chunked=await app.parseSupplierRowsChunked(rows,'device_list.xlsx:Sheet1');
+  assert.equal(JSON.stringify(chunked),JSON.stringify(sync));
+  app.__imported=sync.laptops;
+  vm.runInContext("BATCHES.push({id:'import-scan',nummer:'import-scan',laptops:__imported});syncBatchAggregate();STATE.currentUser=USERS.find(u=>u.id==='tim');STATE.storageFormat=3;",app);
+  const traces=[];app.loadRecordTrace=async sticker=>{traces.push(sticker);return true;};
+  await app.selectLaptop('SERIAL-SCAN-1');
+  assert.equal(vm.runInContext('STATE.currentLaptop.sticker',app),'IMPORT-SCAN-1');
+  assert.equal(traces[0],'IMPORT-SCAN-1','Look up trace using sticker, not raw serial');
+  assert.equal(app.laptopMatchesScanQuery(sync.laptops[0],'serial-scan-1'),true);
+});
+
 test('geaggregeerde voorraadlijst zonder barcode klapt uit per Count met unieke tags', () => {
   const app = loadAppSandbox();
 
